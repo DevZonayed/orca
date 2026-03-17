@@ -250,6 +250,52 @@ export default function TerminalPane({
     wasActiveRef.current = isActive
   }, [isActive])
 
+  // Terminal pane shortcuts handled at window capture phase so they remain
+  // reliable even when focus is inside the canvas/IME internals.
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent): void => {
+      if (!isActive || e.repeat) return
+      if (!e.metaKey || e.altKey || e.ctrlKey) return
+
+      const restty = resttyRef.current
+      if (!restty) return
+
+      // Cmd+K clears active pane screen + scrollback.
+      if (!e.shiftKey && e.key.toLowerCase() === 'k') {
+        e.preventDefault()
+        e.stopPropagation()
+        const activePane = restty.activePane?.()
+        if (activePane) {
+          activePane.clearScreen()
+          return
+        }
+        const pane = restty.getActivePane() ?? restty.getPanes()[0]
+        pane?.app.clearScreen()
+        return
+      }
+
+      // Cmd+[ / Cmd+] cycles active split pane focus.
+      if (!e.shiftKey && (e.code === 'BracketLeft' || e.code === 'BracketRight')) {
+        const panes = restty.getPanes()
+        if (panes.length < 2) return
+        e.preventDefault()
+        e.stopPropagation()
+
+        const activeId = restty.getActivePane()?.id ?? panes[0].id
+        const currentIdx = panes.findIndex((p) => p.id === activeId)
+        if (currentIdx === -1) return
+
+        const dir = e.code === 'BracketRight' ? 1 : -1
+        const nextPane = panes[(currentIdx + dir + panes.length) % panes.length]
+        restty.setActivePane(nextPane.id, { focus: true })
+        return
+      }
+    }
+
+    window.addEventListener('keydown', onKeyDown, { capture: true })
+    return () => window.removeEventListener('keydown', onKeyDown, { capture: true })
+  }, [isActive])
+
   return (
     <div
       ref={containerRef}

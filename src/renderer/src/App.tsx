@@ -12,17 +12,19 @@ function App(): React.JSX.Element {
   const activeWorktreeId = useAppStore((s) => s.activeWorktreeId)
   const fetchRepos = useAppStore((s) => s.fetchRepos)
   const fetchSettings = useAppStore((s) => s.fetchSettings)
+  const initGitHubCache = useAppStore((s) => s.initGitHubCache)
 
   // Subscribe to IPC push events
   useIpcEvents()
 
   const settings = useAppStore((s) => s.settings)
 
-  // Fetch initial data
+  // Fetch initial data + hydrate GitHub cache from disk
   useEffect(() => {
     fetchRepos()
     fetchSettings()
-  }, [fetchRepos, fetchSettings])
+    initGitHubCache()
+  }, [fetchRepos, fetchSettings, initGitHubCache])
 
   // Apply theme to document
   useEffect(() => {

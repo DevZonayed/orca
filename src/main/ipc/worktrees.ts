@@ -7,12 +7,12 @@ import { getGitUsername, getDefaultBranch } from '../git/repo'
 import { loadHooks, runHook, hasHooksFile } from '../hooks'
 
 export function registerWorktreeHandlers(mainWindow: BrowserWindow, store: Store): void {
-  ipcMain.handle('worktrees:listAll', () => {
+  ipcMain.handle('worktrees:listAll', async () => {
     const repos = store.getRepos()
     const allWorktrees: Worktree[] = []
 
     for (const repo of repos) {
-      const gitWorktrees = listWorktrees(repo.path)
+      const gitWorktrees = await listWorktrees(repo.path)
       for (const gw of gitWorktrees) {
         const worktreeId = `${repo.id}::${gw.path}`
         const meta = store.getWorktreeMeta(worktreeId)
@@ -23,11 +23,11 @@ export function registerWorktreeHandlers(mainWindow: BrowserWindow, store: Store
     return allWorktrees
   })
 
-  ipcMain.handle('worktrees:list', (_event, args: { repoId: string }) => {
+  ipcMain.handle('worktrees:list', async (_event, args: { repoId: string }) => {
     const repo = store.getRepo(args.repoId)
     if (!repo) return []
 
-    const gitWorktrees = listWorktrees(repo.path)
+    const gitWorktrees = await listWorktrees(repo.path)
     return gitWorktrees.map((gw) => {
       const worktreeId = `${repo.id}::${gw.path}`
       const meta = store.getWorktreeMeta(worktreeId)
@@ -37,7 +37,7 @@ export function registerWorktreeHandlers(mainWindow: BrowserWindow, store: Store
 
   ipcMain.handle(
     'worktrees:create',
-    (_event, args: { repoId: string; name: string; baseBranch?: string }) => {
+    async (_event, args: { repoId: string; name: string; baseBranch?: string }) => {
       const repo = store.getRepo(args.repoId)
       if (!repo) throw new Error(`Repo not found: ${args.repoId}`)
 
@@ -69,7 +69,7 @@ export function registerWorktreeHandlers(mainWindow: BrowserWindow, store: Store
       addWorktree(repo.path, worktreePath, branchName, baseBranch)
 
       // Re-list to get the freshly created worktree info
-      const gitWorktrees = listWorktrees(repo.path)
+      const gitWorktrees = await listWorktrees(repo.path)
       const created = gitWorktrees.find((gw) => gw.path === worktreePath)
       if (!created) throw new Error('Worktree created but not found in listing')
 

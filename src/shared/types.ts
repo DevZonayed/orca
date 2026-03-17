@@ -101,4 +101,8 @@ export interface PersistedState {
     lastActiveWorktreeId: string | null
     sidebarWidth: number
   }
+  githubCache: {
+    pr: Record<string, { data: PRInfo | null; fetchedAt: number }>
+    issue: Record<string, { data: IssueInfo | null; fetchedAt: number }>
+  }
 }

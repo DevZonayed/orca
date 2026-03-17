@@ -59,6 +59,19 @@ interface HooksApi {
   check: (args: { repoId: string }) => Promise<{ hasHooks: boolean; hooks: OrcaHooks | null }>
 }
 
+interface CacheApi {
+  getGitHub: () => Promise<{
+    pr: Record<string, { data: PRInfo | null; fetchedAt: number }>
+    issue: Record<string, { data: IssueInfo | null; fetchedAt: number }>
+  }>
+  setGitHub: (args: {
+    cache: {
+      pr: Record<string, { data: PRInfo | null; fetchedAt: number }>
+      issue: Record<string, { data: IssueInfo | null; fetchedAt: number }>
+    }
+  }) => Promise<void>
+}
+
 interface Api {
   repos: ReposApi
   worktrees: WorktreesApi
@@ -67,6 +80,7 @@ interface Api {
   settings: SettingsApi
   shell: ShellApi
   hooks: HooksApi
+  cache: CacheApi
 }
 
 declare global {

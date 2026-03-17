@@ -1,5 +1,8 @@
-import { execFileSync } from 'child_process'
+import { execFile, execFileSync } from 'child_process'
+import { promisify } from 'util'
 import type { GitWorktreeInfo } from '../../shared/types'
+
+const execFileAsync = promisify(execFile)
 
 /**
  * Parse the porcelain output of `git worktree list --porcelain`.
@@ -40,14 +43,13 @@ export function parseWorktreeList(output: string): GitWorktreeInfo[] {
 /**
  * List all worktrees for a git repo at the given path.
  */
-export function listWorktrees(repoPath: string): GitWorktreeInfo[] {
+export async function listWorktrees(repoPath: string): Promise<GitWorktreeInfo[]> {
   try {
-    const output = execFileSync('git', ['worktree', 'list', '--porcelain'], {
+    const { stdout } = await execFileAsync('git', ['worktree', 'list', '--porcelain'], {
       cwd: repoPath,
-      encoding: 'utf-8',
-      stdio: ['pipe', 'pipe', 'pipe']
+      encoding: 'utf-8'
     })
-    return parseWorktreeList(output)
+    return parseWorktreeList(stdout)
   } catch {
     return []
   }

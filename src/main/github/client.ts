@@ -1,24 +1,51 @@
-import { execFileSync } from 'child_process'
+import { execFile } from 'child_process'
+import { promisify } from 'util'
 import type { PRInfo, IssueInfo, CheckStatus } from '../../shared/types'
+
+const execFileAsync = promisify(execFile)
+
+// Concurrency limiter - max 4 parallel gh processes
+const MAX_CONCURRENT = 4
+let running = 0
+const queue: Array<() => void> = []
+
+function acquire(): Promise<void> {
+  if (running < MAX_CONCURRENT) {
+    running++
+    return Promise.resolve()
+  }
+  return new Promise((resolve) =>
+    queue.push(() => {
+      running++
+      resolve()
+    })
+  )
+}
+
+function release(): void {
+  running--
+  const next = queue.shift()
+  if (next) next()
+}
 
 /**
  * Get PR info for a given branch using gh CLI.
  * Returns null if gh is not installed, or no PR exists for the branch.
  */
-export function getPRForBranch(repoPath: string, branch: string): PRInfo | null {
+export async function getPRForBranch(repoPath: string, branch: string): Promise<PRInfo | null> {
+  await acquire()
   try {
     // Strip refs/heads/ prefix if present
     const branchName = branch.replace(/^refs\/heads\//, '')
-    const raw = execFileSync(
+    const { stdout } = await execFileAsync(
       'gh',
       ['pr', 'view', branchName, '--json', 'number,title,state,url,statusCheckRollup,updatedAt'],
       {
         cwd: repoPath,
-        encoding: 'utf-8',
-        stdio: ['pipe', 'pipe', 'pipe']
+        encoding: 'utf-8'
       }
     )
-    const data = JSON.parse(raw)
+    const data = JSON.parse(stdout)
     return {
       number: data.number,
       title: data.title,
@@ -29,24 +56,26 @@ export function getPRForBranch(repoPath: string, branch: string): PRInfo | null 
     }
   } catch {
     return null
+  } finally {
+    release()
   }
 }
 
 /**
  * Get a single issue by number.
  */
-export function getIssue(repoPath: string, issueNumber: number): IssueInfo | null {
+export async function getIssue(repoPath: string, issueNumber: number): Promise<IssueInfo | null> {
+  await acquire()
   try {
-    const raw = execFileSync(
+    const { stdout } = await execFileAsync(
       'gh',
       ['issue', 'view', String(issueNumber), '--json', 'number,title,state,url,labels'],
       {
         cwd: repoPath,
-        encoding: 'utf-8',
-        stdio: ['pipe', 'pipe', 'pipe']
+        encoding: 'utf-8'
       }
     )
-    const data = JSON.parse(raw)
+    const data = JSON.parse(stdout)
     return {
       number: data.number,
       title: data.title,
@@ -56,24 +85,26 @@ export function getIssue(repoPath: string, issueNumber: number): IssueInfo | nul
     }
   } catch {
     return null
+  } finally {
+    release()
   }
 }
 
 /**
  * List issues for a repo.
  */
-export function listIssues(repoPath: string, limit = 20): IssueInfo[] {
+export async function listIssues(repoPath: string, limit = 20): Promise<IssueInfo[]> {
+  await acquire()
   try {
-    const raw = execFileSync(
+    const { stdout } = await execFileAsync(
       'gh',
       ['issue', 'list', '--json', 'number,title,state,url,labels', '--limit', String(limit)],
       {
         cwd: repoPath,
-        encoding: 'utf-8',
-        stdio: ['pipe', 'pipe', 'pipe']
+        encoding: 'utf-8'
       }
     )
-    const data = JSON.parse(raw) as Array<{
+    const data = JSON.parse(stdout) as Array<{
       number: number
       title: string
       state: string
@@ -89,6 +120,8 @@ export function listIssues(repoPath: string, limit = 20): IssueInfo[] {
     }))
   } catch {
     return []
+  } finally {
+    release()
   }
 }
 

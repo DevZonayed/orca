@@ -103,6 +103,11 @@ const api = {
   hooks: {
     check: (args: { repoId: string }): Promise<{ hasHooks: boolean; hooks: unknown }> =>
       ipcRenderer.invoke('hooks:check', args)
+  },
+
+  cache: {
+    getGitHub: () => ipcRenderer.invoke('cache:getGitHub'),
+    setGitHub: (args: { cache: unknown }) => ipcRenderer.invoke('cache:setGitHub', args)
   }
 }
 

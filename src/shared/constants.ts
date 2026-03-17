@@ -35,6 +35,7 @@ export function getDefaultPersistedState(homedir: string): PersistedState {
       lastActiveRepoId: null,
       lastActiveWorktreeId: null,
       sidebarWidth: 280
-    }
+    },
+    githubCache: { pr: {}, issue: {} }
   }
 }

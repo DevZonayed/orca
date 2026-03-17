@@ -132,6 +132,17 @@ export class Store {
     this.scheduleSave()
   }
 
+  // ── GitHub Cache ──────────────────────────────────────────────────
+
+  getGitHubCache(): PersistedState['githubCache'] {
+    return this.state.githubCache
+  }
+
+  setGitHubCache(cache: PersistedState['githubCache']): void {
+    this.state.githubCache = cache
+    this.scheduleSave()
+  }
+
   // ── Flush (for shutdown) ───────────────────────────────────────────
 
   flush(): void {

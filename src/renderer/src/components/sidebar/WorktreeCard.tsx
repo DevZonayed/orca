@@ -1,17 +1,19 @@
-import React, { useEffect, useMemo, useRef } from 'react'
+import React, { useEffect, useMemo, useRef, useCallback } from 'react'
 import { useAppStore } from '@/store'
 import { Badge } from '@/components/ui/badge'
 import { HoverCard, HoverCardTrigger, HoverCardContent } from '@/components/ui/hover-card'
 import StatusIndicator from './StatusIndicator'
 import WorktreeContextMenu from './WorktreeContextMenu'
 import { cn } from '@/lib/utils'
+import { detectAgentStatusFromTitle } from '@/lib/agent-status'
 import type {
   Worktree,
   Repo,
   PRInfo,
   IssueInfo,
   PRState,
-  CheckStatus
+  CheckStatus,
+  TerminalTab
 } from '../../../../shared/types'
 import type { Status } from './StatusIndicator'
 
@@ -42,6 +44,9 @@ function checksLabel(status: CheckStatus): string {
   }
 }
 
+// ── Stable empty array for tabs fallback ─────────────────────────
+const EMPTY_TABS: TerminalTab[] = []
+
 interface WorktreeCardProps {
   worktree: Worktree
   repo: Repo | undefined
@@ -54,29 +59,39 @@ const WorktreeCard = React.memo(function WorktreeCard({
   isActive
 }: WorktreeCardProps) {
   const setActiveWorktree = useAppStore((s) => s.setActiveWorktree)
-  const tabsByWorktree = useAppStore((s) => s.tabsByWorktree)
-  const prCache = useAppStore((s) => s.prCache)
-  const issueCache = useAppStore((s) => s.issueCache)
   const fetchPRForBranch = useAppStore((s) => s.fetchPRForBranch)
   const fetchIssue = useAppStore((s) => s.fetchIssue)
 
-  const tabs = tabsByWorktree[worktree.id] ?? []
-  const hasTerminals = tabs.length > 0
+  // ── GRANULAR selectors: only subscribe to THIS worktree's data ──
+  const tabs = useAppStore((s) => s.tabsByWorktree[worktree.id] ?? EMPTY_TABS)
+
   const branch = branchDisplayName(worktree.branch)
+  const prCacheKey = repo ? `${repo.path}::${branch}` : ''
+  const issueCacheKey = repo && worktree.linkedIssue ? `${repo.path}::${worktree.linkedIssue}` : ''
+
+  // Subscribe to ONLY the specific cache entry, not entire prCache/issueCache
+  const prEntry = useAppStore((s) => (prCacheKey ? s.prCache[prCacheKey] : undefined))
+  const issueEntry = useAppStore((s) => (issueCacheKey ? s.issueCache[issueCacheKey] : undefined))
+
+  const pr: PRInfo | null | undefined = prEntry !== undefined ? prEntry.data : undefined
+  const issue: IssueInfo | null | undefined = worktree.linkedIssue
+    ? issueEntry !== undefined
+      ? issueEntry.data
+      : undefined
+    : null
+
+  const hasTerminals = tabs.length > 0
 
   // Derive status
   const status: Status = useMemo(() => {
     if (!hasTerminals) return 'inactive'
-    // Simple heuristic: if any tab has a pty, it's active
+    if (tabs.some((t) => detectAgentStatusFromTitle(t.title) === 'permission')) return 'permission'
+    if (tabs.some((t) => detectAgentStatusFromTitle(t.title) === 'working')) return 'working'
     return tabs.some((t) => t.ptyId) ? 'active' : 'inactive'
   }, [hasTerminals, tabs])
 
-  // Fetch PR data
-  const prCacheKey = repo ? `${repo.path}::${branch}` : ''
-  const prEntry = prCacheKey ? prCache[prCacheKey] : undefined
-  const pr: PRInfo | null | undefined = prEntry !== undefined ? prEntry.data : undefined
+  // Fetch PR data (debounced via ref guard)
   const prFetchedRef = useRef<string | null>(null)
-
   useEffect(() => {
     if (
       repo &&
@@ -90,29 +105,32 @@ const WorktreeCard = React.memo(function WorktreeCard({
     }
   }, [repo, worktree.isBare, pr, fetchPRForBranch, branch, prCacheKey])
 
-  // Fetch issue data
-  const issueCacheKey = repo && worktree.linkedIssue ? `${repo.path}::${worktree.linkedIssue}` : ''
-  const issueEntry = issueCacheKey ? issueCache[issueCacheKey] : undefined
-  const issue: IssueInfo | null | undefined = worktree.linkedIssue
-    ? issueEntry !== undefined
-      ? issueEntry.data
-      : undefined
-    : null
+  // Fetch issue data (debounced via ref guard)
   const issueFetchedRef = useRef<string | null>(null)
-
   useEffect(() => {
-    const issueKey = worktree.linkedIssue ?? null
     if (
       repo &&
-      issueKey &&
+      worktree.linkedIssue &&
       issue === undefined &&
       issueCacheKey &&
       issueCacheKey !== issueFetchedRef.current
     ) {
       issueFetchedRef.current = issueCacheKey
-      fetchIssue(repo.path, issueKey)
+      fetchIssue(repo.path, worktree.linkedIssue)
     }
   }, [repo, worktree.linkedIssue, issue, fetchIssue, issueCacheKey])
+
+  // Stable click handler
+  const handleClick = useCallback(
+    () => setActiveWorktree(worktree.id),
+    [worktree.id, setActiveWorktree]
+  )
+
+  // Memoize badge style to avoid new object each render
+  const badgeStyle = useMemo(
+    () => (repo ? { backgroundColor: repo.badgeColor + '22', color: repo.badgeColor } : undefined),
+    [repo?.badgeColor]
+  )
 
   return (
     <WorktreeContextMenu worktree={worktree}>
@@ -121,7 +139,7 @@ const WorktreeCard = React.memo(function WorktreeCard({
           'group relative flex items-start gap-2 px-2.5 py-1.5 rounded-md cursor-pointer transition-colors',
           isActive ? 'bg-accent' : 'hover:bg-accent/50'
         )}
-        onClick={() => setActiveWorktree(worktree.id)}
+        onClick={handleClick}
       >
         {/* Status + unread indicator */}
         <div className="flex items-center pt-1 gap-1">
@@ -144,7 +162,7 @@ const WorktreeCard = React.memo(function WorktreeCard({
               <Badge
                 variant="secondary"
                 className="h-4 px-1.5 text-[9px] font-medium rounded-sm shrink-0"
-                style={{ backgroundColor: repo.badgeColor + '22', color: repo.badgeColor }}
+                style={badgeStyle}
               >
                 {repo.displayName}
               </Badge>

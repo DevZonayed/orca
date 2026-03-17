@@ -145,6 +145,37 @@
   }
 }
 
+/* ── Sleek scrollbar (hover-only, thin) ─────────────── */
+
+.scrollbar-sleek {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+
+.scrollbar-sleek::-webkit-scrollbar {
+  width: 6px;
+}
+
+.scrollbar-sleek::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scrollbar-sleek::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 3px;
+}
+
+.scrollbar-sleek-parent:hover .scrollbar-sleek::-webkit-scrollbar-thumb,
+.scrollbar-sleek:hover::-webkit-scrollbar-thumb {
+  background: var(--muted-foreground, #737373);
+  opacity: 0.4;
+}
+
+.scrollbar-sleek-parent:hover .scrollbar-sleek,
+.scrollbar-sleek:hover {
+  scrollbar-color: var(--muted-foreground, #737373) transparent;
+}
+
 /* ── Layout ──────────────────────────────────────────── */
 
 #root {

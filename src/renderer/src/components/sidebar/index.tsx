@@ -1,6 +1,5 @@
 import React, { useCallback, useRef, useEffect } from 'react'
 import { useAppStore } from '@/store'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import SidebarHeader from './SidebarHeader'
 import SearchBar from './SearchBar'
@@ -72,19 +71,19 @@ export default function Sidebar(): React.JSX.Element {
   return (
     <TooltipProvider delayDuration={400}>
       <div
-        className="relative flex-shrink-0 bg-sidebar flex flex-col overflow-hidden transition-[width] duration-200"
+        className="relative flex-shrink-0 bg-sidebar flex flex-col overflow-hidden transition-[width] duration-200 scrollbar-sleek-parent"
         style={{
           width: sidebarOpen ? sidebarWidth : 0,
           borderRight: sidebarOpen ? '1px solid var(--sidebar-border)' : 'none'
         }}
       >
-        {/* Scrollable area: header + search + controls + list */}
-        <ScrollArea className="flex-1 min-h-0">
-          <SidebarHeader />
-          <SearchBar />
-          <GroupControls />
-          <WorktreeList />
-        </ScrollArea>
+        {/* Fixed controls */}
+        <SidebarHeader />
+        <SearchBar />
+        <GroupControls />
+
+        {/* Virtualized scrollable list */}
+        <WorktreeList />
 
         {/* Fixed bottom toolbar */}
         <SidebarToolbar />

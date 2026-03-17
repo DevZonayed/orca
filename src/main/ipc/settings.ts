@@ -1,6 +1,6 @@
 import { ipcMain } from 'electron'
 import type { Store } from '../persistence'
-import type { GlobalSettings } from '../../shared/types'
+import type { GlobalSettings, PersistedState } from '../../shared/types'
 
 export function registerSettingsHandlers(store: Store): void {
   ipcMain.handle('settings:get', () => {
@@ -9,5 +9,13 @@ export function registerSettingsHandlers(store: Store): void {
 
   ipcMain.handle('settings:set', (_event, args: Partial<GlobalSettings>) => {
     return store.updateSettings(args)
+  })
+
+  ipcMain.handle('cache:getGitHub', () => {
+    return store.getGitHubCache()
+  })
+
+  ipcMain.handle('cache:setGitHub', (_event, args: { cache: PersistedState['githubCache'] }) => {
+    store.setGitHubCache(args.cache)
   })
 }
