@@ -1,0 +1,175 @@
+import { BrowserWindow, ipcMain } from 'electron'
+import { join, basename } from 'path'
+import type { Store } from '../persistence'
+import type { Worktree, WorktreeMeta } from '../../shared/types'
+import { listWorktrees, addWorktree, removeWorktree } from '../git/worktree'
+import { getGitUsername, getDefaultBranch } from '../git/repo'
+import { loadHooks, runHook, hasHooksFile } from '../hooks'
+
+export function registerWorktreeHandlers(mainWindow: BrowserWindow, store: Store): void {
+  ipcMain.handle('worktrees:listAll', () => {
+    const repos = store.getRepos()
+    const allWorktrees: Worktree[] = []
+
+    for (const repo of repos) {
+      const gitWorktrees = listWorktrees(repo.path)
+      for (const gw of gitWorktrees) {
+        const worktreeId = `${repo.id}::${gw.path}`
+        const meta = store.getWorktreeMeta(worktreeId)
+        allWorktrees.push(mergeWorktree(repo.id, gw, meta))
+      }
+    }
+
+    return allWorktrees
+  })
+
+  ipcMain.handle('worktrees:list', (_event, args: { repoId: string }) => {
+    const repo = store.getRepo(args.repoId)
+    if (!repo) return []
+
+    const gitWorktrees = listWorktrees(repo.path)
+    return gitWorktrees.map((gw) => {
+      const worktreeId = `${repo.id}::${gw.path}`
+      const meta = store.getWorktreeMeta(worktreeId)
+      return mergeWorktree(repo.id, gw, meta)
+    })
+  })
+
+  ipcMain.handle(
+    'worktrees:create',
+    (_event, args: { repoId: string; name: string; baseBranch?: string }) => {
+      const repo = store.getRepo(args.repoId)
+      if (!repo) throw new Error(`Repo not found: ${args.repoId}`)
+
+      const settings = store.getSettings()
+
+      // Compute branch name with prefix
+      let branchName = args.name
+      if (settings.branchPrefix === 'git-username') {
+        const username = getGitUsername(repo.path)
+        if (username) {
+          branchName = `${username}/${args.name}`
+        }
+      } else if (settings.branchPrefix === 'custom' && settings.branchPrefixCustom) {
+        branchName = `${settings.branchPrefixCustom}/${args.name}`
+      }
+
+      // Compute worktree path
+      let worktreePath: string
+      if (settings.nestWorkspaces) {
+        const repoName = basename(repo.path).replace(/\.git$/, '')
+        worktreePath = join(settings.workspaceDir, repoName, args.name)
+      } else {
+        worktreePath = join(settings.workspaceDir, args.name)
+      }
+
+      // Determine base branch
+      const baseBranch = args.baseBranch || getDefaultBranch(repo.path)
+
+      addWorktree(repo.path, worktreePath, branchName, baseBranch)
+
+      // Re-list to get the freshly created worktree info
+      const gitWorktrees = listWorktrees(repo.path)
+      const created = gitWorktrees.find((gw) => gw.path === worktreePath)
+      if (!created) throw new Error('Worktree created but not found in listing')
+
+      const worktree = mergeWorktree(repo.id, created, undefined)
+
+      // Run setup hook asynchronously (don't block the UI)
+      const hooks = loadHooks(repo.path)
+      if (hooks?.scripts.setup) {
+        runHook('setup', worktreePath, repo.path).then((result) => {
+          if (!result.success) {
+            console.error(`[hooks] setup hook failed for ${worktreePath}:`, result.output)
+          }
+        })
+      }
+
+      notifyWorktreesChanged(mainWindow, repo.id)
+      return worktree
+    }
+  )
+
+  ipcMain.handle(
+    'worktrees:remove',
+    async (_event, args: { worktreeId: string; force?: boolean }) => {
+      const { repoId, worktreePath } = parseWorktreeId(args.worktreeId)
+      const repo = store.getRepo(repoId)
+      if (!repo) throw new Error(`Repo not found: ${repoId}`)
+
+      // Run archive hook before removal
+      const hooks = loadHooks(repo.path)
+      if (hooks?.scripts.archive) {
+        const result = await runHook('archive', worktreePath, repo.path)
+        if (!result.success) {
+          console.error(`[hooks] archive hook failed for ${worktreePath}:`, result.output)
+        }
+      }
+
+      removeWorktree(repo.path, worktreePath, args.force ?? false)
+      store.removeWorktreeMeta(args.worktreeId)
+
+      notifyWorktreesChanged(mainWindow, repoId)
+    }
+  )
+
+  ipcMain.handle(
+    'worktrees:updateMeta',
+    (_event, args: { worktreeId: string; updates: Partial<WorktreeMeta> }) => {
+      const meta = store.setWorktreeMeta(args.worktreeId, args.updates)
+      const { repoId } = parseWorktreeId(args.worktreeId)
+      notifyWorktreesChanged(mainWindow, repoId)
+      return meta
+    }
+  )
+
+  ipcMain.handle('hooks:check', (_event, args: { repoId: string }) => {
+    const repo = store.getRepo(args.repoId)
+    if (!repo) return { hasHooks: false, hooks: null }
+
+    const has = hasHooksFile(repo.path)
+    const hooks = has ? loadHooks(repo.path) : null
+    return {
+      hasHooks: has,
+      hooks
+    }
+  })
+}
+
+function mergeWorktree(
+  repoId: string,
+  git: { path: string; head: string; branch: string; isBare: boolean },
+  meta: WorktreeMeta | undefined
+): Worktree {
+  const branchShort = git.branch.replace(/^refs\/heads\//, '')
+  return {
+    id: `${repoId}::${git.path}`,
+    repoId,
+    path: git.path,
+    head: git.head,
+    branch: git.branch,
+    isBare: git.isBare,
+    displayName: meta?.displayName || branchShort || basename(git.path),
+    comment: meta?.comment || '',
+    linkedIssue: meta?.linkedIssue ?? null,
+    linkedPR: meta?.linkedPR ?? null,
+    isArchived: meta?.isArchived ?? false,
+    isUnread: meta?.isUnread ?? false,
+    sortOrder: meta?.sortOrder ?? 0
+  }
+}
+
+function parseWorktreeId(worktreeId: string): { repoId: string; worktreePath: string } {
+  const sepIdx = worktreeId.indexOf('::')
+  if (sepIdx === -1) throw new Error(`Invalid worktreeId: ${worktreeId}`)
+  return {
+    repoId: worktreeId.slice(0, sepIdx),
+    worktreePath: worktreeId.slice(sepIdx + 2)
+  }
+}
+
+function notifyWorktreesChanged(mainWindow: BrowserWindow, repoId: string): void {
+  if (!mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('worktrees:changed', { repoId })
+  }
+}

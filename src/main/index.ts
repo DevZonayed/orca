@@ -1,20 +1,20 @@
-import { app, shell, BrowserWindow, ipcMain, Menu, nativeImage } from 'electron'
+import { app, shell, BrowserWindow, Menu, nativeImage } from 'electron'
 import { join } from 'path'
-import { execSync } from 'child_process'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import devIcon from '../../resources/icon-dev.png?asset'
-import * as pty from 'node-pty'
+
+import { Store } from './persistence'
+import { registerRepoHandlers } from './ipc/repos'
+import { registerWorktreeHandlers } from './ipc/worktrees'
+import { registerPtyHandlers, killAllPty } from './ipc/pty'
+import { registerGitHubHandlers } from './ipc/github'
+import { registerSettingsHandlers } from './ipc/settings'
+import { registerShellHandlers } from './ipc/shell'
 
 // Enable WebGPU in Electron
 app.commandLine.appendSwitch('enable-features', 'Vulkan,UseSkiaGraphite')
 app.commandLine.appendSwitch('enable-unsafe-webgpu')
-
-// ---------------------------------------------------------------------------
-// PTY instance tracking
-// ---------------------------------------------------------------------------
-let ptyCounter = 0
-const ptyProcesses = new Map<string, pty.IPty>()
 
 // ---------------------------------------------------------------------------
 // Window creation
@@ -57,49 +57,6 @@ function createWindow(): BrowserWindow {
 }
 
 // ---------------------------------------------------------------------------
-// Worktree helpers
-// ---------------------------------------------------------------------------
-interface WorktreeInfo {
-  path: string
-  head: string
-  branch: string
-  isBare: boolean
-}
-
-function parseWorktreeList(output: string): WorktreeInfo[] {
-  const worktrees: WorktreeInfo[] = []
-  const blocks = output.trim().split('\n\n')
-
-  for (const block of blocks) {
-    if (!block.trim()) continue
-
-    const lines = block.trim().split('\n')
-    let path = ''
-    let head = ''
-    let branch = ''
-    let isBare = false
-
-    for (const line of lines) {
-      if (line.startsWith('worktree ')) {
-        path = line.slice('worktree '.length)
-      } else if (line.startsWith('HEAD ')) {
-        head = line.slice('HEAD '.length)
-      } else if (line.startsWith('branch ')) {
-        branch = line.slice('branch '.length)
-      } else if (line === 'bare') {
-        isBare = true
-      }
-    }
-
-    if (path) {
-      worktrees.push({ path, head, branch, isBare })
-    }
-  }
-
-  return worktrees
-}
-
-// ---------------------------------------------------------------------------
 // App lifecycle
 // ---------------------------------------------------------------------------
 app.whenReady().then(() => {
@@ -108,7 +65,7 @@ app.whenReady().then(() => {
 
   if (process.platform === 'darwin') {
     const dockIcon = nativeImage.createFromPath(is.dev ? devIcon : icon)
-    app.dock.setIcon(dockIcon)
+    app.dock?.setIcon(dockIcon)
   }
 
   app.on('browser-window-created', (_, window) => {
@@ -165,101 +122,21 @@ app.whenReady().then(() => {
   ]
   Menu.setApplicationMenu(Menu.buildFromTemplate(template))
 
+  // Initialize persistence
+  const store = new Store()
+
+  // Create window
   const mainWindow = createWindow()
 
-  // -------------------------------------------------------------------------
-  // PTY IPC handlers
-  // -------------------------------------------------------------------------
-  ipcMain.handle('pty:spawn', (_event, args: { cols: number; rows: number; cwd?: string }) => {
-    const id = String(++ptyCounter)
-    const shell = process.env.SHELL || '/bin/zsh'
+  // Register all IPC handlers
+  registerRepoHandlers(mainWindow, store)
+  registerWorktreeHandlers(mainWindow, store)
+  registerPtyHandlers(mainWindow)
+  registerGitHubHandlers()
+  registerSettingsHandlers(store)
+  registerShellHandlers()
 
-    const ptyProcess = pty.spawn(shell, [], {
-      name: 'xterm-256color',
-      cols: args.cols,
-      rows: args.rows,
-      cwd: args.cwd || process.env.HOME || '/',
-      env: {
-        ...process.env,
-        TERM: 'xterm-256color',
-        COLORTERM: 'truecolor'
-      } as Record<string, string>
-    })
-
-    ptyProcesses.set(id, ptyProcess)
-
-    ptyProcess.onData((data) => {
-      if (!mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('pty:data', { id, data })
-      }
-    })
-
-    ptyProcess.onExit(({ exitCode }) => {
-      ptyProcesses.delete(id)
-      if (!mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('pty:exit', { id, code: exitCode })
-      }
-    })
-
-    return { id }
-  })
-
-  ipcMain.on('pty:write', (_event, args: { id: string; data: string }) => {
-    const proc = ptyProcesses.get(args.id)
-    if (proc) {
-      proc.write(args.data)
-    }
-  })
-
-  ipcMain.handle('pty:resize', (_event, args: { id: string; cols: number; rows: number }) => {
-    const proc = ptyProcesses.get(args.id)
-    if (proc) {
-      proc.resize(args.cols, args.rows)
-    }
-  })
-
-  ipcMain.handle('pty:kill', (_event, args: { id: string }) => {
-    const proc = ptyProcesses.get(args.id)
-    if (proc) {
-      proc.kill()
-      ptyProcesses.delete(args.id)
-    }
-  })
-
-  // -------------------------------------------------------------------------
-  // Worktree IPC handlers
-  // -------------------------------------------------------------------------
-  ipcMain.handle('worktrees:list', (_event, args: { cwd: string }): WorktreeInfo[] => {
-    try {
-      const output = execSync('git worktree list --porcelain', {
-        cwd: args.cwd,
-        encoding: 'utf-8'
-      })
-      return parseWorktreeList(output)
-    } catch {
-      return []
-    }
-  })
-
-  ipcMain.handle('worktrees:get-current', (_event): WorktreeInfo[] => {
-    try {
-      const repoRoot = execSync('git rev-parse --show-toplevel', {
-        encoding: 'utf-8'
-      }).trim()
-
-      const output = execSync('git worktree list --porcelain', {
-        cwd: repoRoot,
-        encoding: 'utf-8'
-      })
-      return parseWorktreeList(output)
-    } catch {
-      return []
-    }
-  })
-
-  // -------------------------------------------------------------------------
   // macOS re-activate
-  // -------------------------------------------------------------------------
   app.on('activate', function () {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
@@ -269,10 +146,7 @@ app.whenReady().then(() => {
 // Cleanup
 // ---------------------------------------------------------------------------
 app.on('before-quit', () => {
-  for (const [id, proc] of ptyProcesses) {
-    proc.kill()
-    ptyProcesses.delete(id)
-  }
+  killAllPty()
 })
 
 app.on('window-all-closed', () => {

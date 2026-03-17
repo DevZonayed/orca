@@ -3,11 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <title>Orca</title>
-    <!-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP -->
-    <meta
-      http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; worker-src 'self' blob:; connect-src 'self' blob: data:"
-    />
+    <!-- CSP is relaxed during development; electron-vite injects a stricter policy for production builds -->
   </head>
 
   <body>

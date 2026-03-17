@@ -1,30 +1,29 @@
 import { useEffect } from 'react'
 import { useAppStore } from './store'
+import { useIpcEvents } from './hooks/useIpcEvents'
 import Sidebar from './components/Sidebar'
 import Terminal from './components/Terminal'
 import Landing from './components/Landing'
+import Settings from './components/Settings'
 
 function App(): React.JSX.Element {
   const toggleSidebar = useAppStore((s) => s.toggleSidebar)
-  const showTerminal = useAppStore((s) => s.showTerminal)
-  const setShowTerminal = useAppStore((s) => s.setShowTerminal)
-  const terminalTitle = useAppStore((s) => s.terminalTitle)
+  const activeView = useAppStore((s) => s.activeView)
+  const activeWorktreeId = useAppStore((s) => s.activeWorktreeId)
+  const fetchRepos = useAppStore((s) => s.fetchRepos)
+  const fetchSettings = useAppStore((s) => s.fetchSettings)
 
-  // Enter key on landing page to spawn a new terminal
+  // Subscribe to IPC push events
+  useIpcEvents()
+
+  // Fetch initial data
   useEffect(() => {
-    if (showTerminal) return
-    const onKeyDown = (e: KeyboardEvent): void => {
-      if (e.key === 'Enter' && !e.repeat) {
-        e.preventDefault()
-        setShowTerminal(true)
-      }
-    }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [showTerminal, setShowTerminal])
+    fetchRepos()
+    fetchSettings()
+  }, [fetchRepos, fetchSettings])
 
   return (
-    <div className="app-layout">
+    <div className="flex flex-col h-screen w-screen overflow-hidden">
       <div className="titlebar">
         <div className="titlebar-traffic-light-pad" />
         <button className="sidebar-toggle" onClick={toggleSidebar} title="Toggle sidebar">
@@ -42,14 +41,12 @@ function App(): React.JSX.Element {
             <line x1="2" y1="12" x2="14" y2="12" />
           </svg>
         </button>
-        <div className="titlebar-title">
-          {showTerminal && terminalTitle ? terminalTitle : 'Orca'}
-        </div>
+        <div className="titlebar-title">Orca</div>
         <div className="titlebar-spacer" />
       </div>
-      <div className="content-area">
+      <div className="flex flex-row flex-1 overflow-hidden">
         <Sidebar />
-        {showTerminal ? <Terminal /> : <Landing />}
+        {activeView === 'settings' ? <Settings /> : activeWorktreeId ? <Terminal /> : <Landing />}
       </div>
     </div>
   )

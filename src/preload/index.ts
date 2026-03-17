@@ -3,6 +3,50 @@ import { electronAPI } from '@electron-toolkit/preload'
 
 // Custom APIs for renderer
 const api = {
+  repos: {
+    list: (): Promise<unknown[]> => ipcRenderer.invoke('repos:list'),
+
+    add: (args: { path: string }): Promise<unknown> => ipcRenderer.invoke('repos:add', args),
+
+    remove: (args: { repoId: string }): Promise<void> => ipcRenderer.invoke('repos:remove', args),
+
+    update: (args: { repoId: string; updates: Record<string, unknown> }): Promise<unknown> =>
+      ipcRenderer.invoke('repos:update', args),
+
+    pickFolder: (): Promise<string | null> => ipcRenderer.invoke('repos:pickFolder'),
+
+    onChanged: (callback: () => void): (() => void) => {
+      const listener = (_event: Electron.IpcRendererEvent) => callback()
+      ipcRenderer.on('repos:changed', listener)
+      return () => ipcRenderer.removeListener('repos:changed', listener)
+    }
+  },
+
+  worktrees: {
+    list: (args: { repoId: string }): Promise<unknown[]> =>
+      ipcRenderer.invoke('worktrees:list', args),
+
+    listAll: (): Promise<unknown[]> => ipcRenderer.invoke('worktrees:listAll'),
+
+    create: (args: { repoId: string; name: string; baseBranch?: string }): Promise<unknown> =>
+      ipcRenderer.invoke('worktrees:create', args),
+
+    remove: (args: { worktreeId: string; force?: boolean }): Promise<void> =>
+      ipcRenderer.invoke('worktrees:remove', args),
+
+    updateMeta: (args: {
+      worktreeId: string
+      updates: Record<string, unknown>
+    }): Promise<unknown> => ipcRenderer.invoke('worktrees:updateMeta', args),
+
+    onChanged: (callback: (data: { repoId: string }) => void): (() => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, data: { repoId: string }) =>
+        callback(data)
+      ipcRenderer.on('worktrees:changed', listener)
+      return () => ipcRenderer.removeListener('worktrees:changed', listener)
+    }
+  },
+
   pty: {
     spawn: (opts: { cols: number; rows: number; cwd?: string }): Promise<{ id: string }> =>
       ipcRenderer.invoke('pty:spawn', opts),
@@ -32,15 +76,33 @@ const api = {
     }
   },
 
-  worktrees: {
-    list: (
-      cwd: string
-    ): Promise<Array<{ path: string; head: string; branch: string; isBare: boolean }>> =>
-      ipcRenderer.invoke('worktrees:list', { cwd }),
+  gh: {
+    prForBranch: (args: { repoPath: string; branch: string }): Promise<unknown> =>
+      ipcRenderer.invoke('gh:prForBranch', args),
 
-    getCurrent: (): Promise<
-      Array<{ path: string; head: string; branch: string; isBare: boolean }>
-    > => ipcRenderer.invoke('worktrees:get-current')
+    issue: (args: { repoPath: string; number: number }): Promise<unknown> =>
+      ipcRenderer.invoke('gh:issue', args),
+
+    listIssues: (args: { repoPath: string; limit?: number }): Promise<unknown[]> =>
+      ipcRenderer.invoke('gh:listIssues', args)
+  },
+
+  settings: {
+    get: (): Promise<unknown> => ipcRenderer.invoke('settings:get'),
+
+    set: (args: Record<string, unknown>): Promise<unknown> =>
+      ipcRenderer.invoke('settings:set', args)
+  },
+
+  shell: {
+    openPath: (path: string): Promise<void> => ipcRenderer.invoke('shell:openPath', path),
+
+    openExternal: (url: string): Promise<void> => ipcRenderer.invoke('shell:openExternal', url)
+  },
+
+  hooks: {
+    check: (args: { repoId: string }): Promise<{ hasHooks: boolean; hooks: unknown }> =>
+      ipcRenderer.invoke('hooks:check', args)
   }
 }
 
