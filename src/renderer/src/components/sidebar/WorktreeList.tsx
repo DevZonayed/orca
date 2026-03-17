@@ -159,7 +159,7 @@ const WorktreeList = React.memo(function WorktreeList() {
 
   if (worktrees.length === 0) {
     return (
-      <div className="px-4 py-6 text-center text-[11px] text-muted-foreground">
+      <div className="flex-1 px-4 py-6 text-center text-[11px] text-muted-foreground">
         No worktrees found
       </div>
     )

@@ -9,7 +9,7 @@ const SidebarToolbar = React.memo(function SidebarToolbar() {
   const setActiveView = useAppStore((s) => s.setActiveView)
 
   return (
-    <div className="flex items-center justify-between px-2 py-1.5 border-t border-sidebar-border shrink-0">
+    <div className="mt-auto flex items-center justify-between px-2 py-1.5 border-t border-sidebar-border shrink-0">
       <Tooltip>
         <TooltipTrigger asChild>
           <Button
