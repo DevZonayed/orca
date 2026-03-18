@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Restty, getBuiltinTheme } from 'restty'
-import { Clipboard, Copy, Eraser, PanelBottomOpen, PanelRightOpen, X } from 'lucide-react'
+import { Clipboard, Copy, Eraser, PanelBottomOpen, PanelRightOpen, X, ZoomIn } from 'lucide-react'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -162,8 +162,123 @@ export default function TerminalPane({
   const resttyRef = useRef<Restty | null>(null)
   const contextPaneIdRef = useRef<number | null>(null)
   const wasActiveRef = useRef(false)
+  const expandedPaneIdRef = useRef<number | null>(null)
+  const expandedStyleSnapshotRef = useRef<Map<HTMLElement, { display: string; flex: string }>>(
+    new Map()
+  )
   const [terminalMenuOpen, setTerminalMenuOpen] = useState(false)
   const [terminalMenuPoint, setTerminalMenuPoint] = useState({ x: 0, y: 0 })
+  const [expandedPaneId, setExpandedPaneId] = useState<number | null>(null)
+
+  const setExpandedPane = (paneId: number | null): void => {
+    expandedPaneIdRef.current = paneId
+    setExpandedPaneId(paneId)
+  }
+
+  const rememberPaneStyle = (
+    snapshots: Map<HTMLElement, { display: string; flex: string }>,
+    el: HTMLElement
+  ): void => {
+    if (snapshots.has(el)) return
+    snapshots.set(el, { display: el.style.display, flex: el.style.flex })
+  }
+
+  const restoreExpandedLayout = (): void => {
+    const snapshots = expandedStyleSnapshotRef.current
+    for (const [el, prev] of snapshots.entries()) {
+      el.style.display = prev.display
+      el.style.flex = prev.flex
+    }
+    snapshots.clear()
+  }
+
+  const applyExpandedLayout = (paneId: number): boolean => {
+    const restty = resttyRef.current
+    const root = containerRef.current
+    if (!restty || !root) return false
+
+    const panes = restty.getPanes()
+    if (panes.length <= 1) return false
+    const targetPane = panes.find((pane) => pane.id === paneId)
+    if (!targetPane) return false
+
+    restoreExpandedLayout()
+    const snapshots = expandedStyleSnapshotRef.current
+    let current: HTMLElement | null = targetPane.container
+    while (current && current !== root) {
+      const parent = current.parentElement
+      if (!parent) break
+      for (const child of Array.from(parent.children)) {
+        if (!(child instanceof HTMLElement)) continue
+        rememberPaneStyle(snapshots, child)
+        if (child === current) {
+          child.style.display = ''
+          child.style.flex = '1 1 auto'
+        } else {
+          child.style.display = 'none'
+        }
+      }
+      current = parent
+    }
+    return true
+  }
+
+  const refreshPaneSizes = (focusActive: boolean): void => {
+    requestAnimationFrame(() => {
+      const restty = resttyRef.current
+      if (!restty) return
+      const panes = restty.getPanes()
+      for (const p of panes) {
+        p.app.updateSize(true)
+      }
+      if (focusActive) {
+        const active = restty.getActivePane() ?? panes[0]
+        active?.canvas.focus({ preventScroll: true })
+      }
+    })
+  }
+
+  const syncExpandedLayout = (): void => {
+    const paneId = expandedPaneIdRef.current
+    if (paneId === null) {
+      restoreExpandedLayout()
+      return
+    }
+
+    const restty = resttyRef.current
+    if (!restty) return
+    const panes = restty.getPanes()
+    if (panes.length <= 1 || !panes.some((pane) => pane.id === paneId)) {
+      setExpandedPane(null)
+      restoreExpandedLayout()
+      return
+    }
+    applyExpandedLayout(paneId)
+  }
+
+  const toggleExpandPane = (paneId: number): void => {
+    const restty = resttyRef.current
+    if (!restty) return
+    const panes = restty.getPanes()
+    if (panes.length <= 1) return
+
+    const isAlreadyExpanded = expandedPaneIdRef.current === paneId
+    if (isAlreadyExpanded) {
+      setExpandedPane(null)
+      restoreExpandedLayout()
+      refreshPaneSizes(true)
+      return
+    }
+
+    setExpandedPane(paneId)
+    if (!applyExpandedLayout(paneId)) {
+      setExpandedPane(null)
+      restoreExpandedLayout()
+      return
+    }
+    restty.setActivePane(paneId, { focus: true })
+    refreshPaneSizes(true)
+  }
 
   useEffect(() => {
     const closeMenu = (): void => setTerminalMenuOpen(false)
@@ -258,6 +373,7 @@ export default function TerminalPane({
       onPaneClosed: () => {},
       onActivePaneChange: () => {},
       onLayoutChanged: () => {
+        syncExpandedLayout()
         queueResizeAll(false)
       }
     })
@@ -268,6 +384,7 @@ export default function TerminalPane({
 
     return () => {
       if (resizeRaf !== null) cancelAnimationFrame(resizeRaf)
+      restoreExpandedLayout()
       restty.destroy()
       resttyRef.current = null
     }
@@ -356,6 +473,18 @@ export default function TerminalPane({
         restty.setActivePane(nextPane.id, { focus: true })
         return
       }
+
+      // Cmd+Shift+Enter expands/collapses the active pane to full terminal area.
+      if (e.shiftKey && e.key === 'Enter' && (e.code === 'Enter' || e.code === 'NumpadEnter')) {
+        const panes = restty.getPanes()
+        if (panes.length < 2) return
+        e.preventDefault()
+        e.stopPropagation()
+        const pane = restty.getActivePane() ?? panes[0]
+        if (!pane) return
+        toggleExpandPane(pane.id)
+        return
+      }
     }
 
     window.addEventListener('keydown', onKeyDown, { capture: true })
@@ -412,7 +541,17 @@ export default function TerminalPane({
     pane.app.clearScreen()
   }
 
-  const canClosePane = (resttyRef.current?.getPanes().length ?? 1) > 1
+  const handleToggleExpand = (): void => {
+    const pane = resolveMenuPane()
+    if (!pane) return
+    toggleExpandPane(pane.id)
+  }
+
+  const paneCount = resttyRef.current?.getPanes().length ?? 1
+  const canClosePane = paneCount > 1
+  const canExpandPane = paneCount > 1
+  const menuPaneId = resolveMenuPane()?.id ?? null
+  const menuPaneIsExpanded = menuPaneId !== null && menuPaneId === expandedPaneId
 
   return (
     <>
@@ -475,6 +614,13 @@ export default function TerminalPane({
             Split Down
             <DropdownMenuShortcut>⌘⇧D</DropdownMenuShortcut>
           </DropdownMenuItem>
+          {canExpandPane && (
+            <DropdownMenuItem onSelect={handleToggleExpand}>
+              <ZoomIn />
+              {menuPaneIsExpanded ? 'Collapse Pane' : 'Expand Pane'}
+              <DropdownMenuShortcut>⌘⇧↩</DropdownMenuShortcut>
+            </DropdownMenuItem>
+          )}
           <DropdownMenuItem
             variant="destructive"
             disabled={!canClosePane}
