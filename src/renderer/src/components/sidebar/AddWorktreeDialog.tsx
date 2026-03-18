@@ -18,6 +18,7 @@ import {
   SelectItem
 } from '@/components/ui/select'
 import RepoDotLabel from '@/components/repo/RepoDotLabel'
+import { parseGitHubIssueOrPRNumber } from '@/lib/github-links'
 
 const AddWorktreeDialog = React.memo(function AddWorktreeDialog() {
   const activeModal = useAppStore((s) => s.activeModal)
@@ -56,8 +57,10 @@ const AddWorktreeDialog = React.memo(function AddWorktreeDialog() {
       if (wt) {
         const metaUpdates: Record<string, unknown> = {}
         if (linkedIssue.trim()) {
-          const num = parseInt(linkedIssue.trim(), 10)
-          if (!isNaN(num)) (metaUpdates as { linkedIssue: number }).linkedIssue = num
+          const linkedIssueNumber = parseGitHubIssueOrPRNumber(linkedIssue)
+          if (linkedIssueNumber !== null) {
+            ;(metaUpdates as { linkedIssue: number }).linkedIssue = linkedIssueNumber
+          }
         }
         if (comment.trim()) {
           ;(metaUpdates as { comment: string }).comment = comment.trim()
@@ -130,14 +133,17 @@ const AddWorktreeDialog = React.memo(function AddWorktreeDialog() {
           {/* Link GH Issue */}
           <div className="space-y-1">
             <label className="text-[11px] font-medium text-muted-foreground">
-              Link GH Issue <span className="text-muted-foreground/50">(optional)</span>
+              Link GH Issue/PR <span className="text-muted-foreground/50">(optional)</span>
             </label>
             <Input
               value={linkedIssue}
               onChange={(e) => setLinkedIssue(e.target.value)}
-              placeholder="Issue number, e.g. 42"
+              placeholder="Issue/PR # or GitHub URL"
               className="h-8 text-xs"
             />
+            <p className="text-[10px] text-muted-foreground">
+              Paste an issue or PR URL, or enter a number.
+            </p>
           </div>
 
           {/* Comment */}

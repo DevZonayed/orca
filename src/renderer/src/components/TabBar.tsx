@@ -14,7 +14,7 @@ import {
   arrayMove
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { X, Plus, Terminal as TerminalIcon } from 'lucide-react'
+import { X, Plus, Terminal as TerminalIcon, Minimize2 } from 'lucide-react'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -29,12 +29,14 @@ interface SortableTabProps {
   tabCount: number
   hasTabsToRight: boolean
   isActive: boolean
+  isExpanded: boolean
   onActivate: (tabId: string) => void
   onClose: (tabId: string) => void
   onCloseOthers: (tabId: string) => void
   onCloseToRight: (tabId: string) => void
   onSetCustomTitle: (tabId: string, title: string | null) => void
   onSetTabColor: (tabId: string, color: string | null) => void
+  onToggleExpand: (tabId: string) => void
 }
 
 const TAB_COLORS = [
@@ -57,12 +59,14 @@ function SortableTab({
   tabCount,
   hasTabsToRight,
   isActive,
+  isExpanded,
   onActivate,
   onClose,
   onCloseOthers,
   onCloseToRight,
   onSetCustomTitle,
-  onSetTabColor
+  onSetTabColor,
+  onToggleExpand
 }: SortableTabProps): React.JSX.Element {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: tab.id
@@ -123,6 +127,24 @@ function SortableTab({
               className="mr-1.5 size-2 rounded-full shrink-0"
               style={{ backgroundColor: tab.color }}
             />
+          )}
+          {isExpanded && (
+            <button
+              className={`mr-1 flex items-center justify-center w-4 h-4 rounded-sm shrink-0 ${
+                isActive
+                  ? 'text-muted-foreground hover:text-foreground hover:bg-muted'
+                  : 'text-transparent group-hover:text-muted-foreground hover:!text-foreground hover:!bg-muted'
+              }`}
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation()
+                onToggleExpand(tab.id)
+              }}
+              title="Collapse pane"
+              aria-label="Collapse pane"
+            >
+              <Minimize2 className="w-3 h-3" />
+            </button>
           )}
           <button
             className={`flex items-center justify-center w-4 h-4 rounded-sm shrink-0 ${
@@ -209,6 +231,7 @@ interface TabBarProps {
   tabs: TerminalTab[]
   activeTabId: string | null
   worktreeId: string
+  expandedPaneByTabId: Record<string, boolean>
   onActivate: (tabId: string) => void
   onClose: (tabId: string) => void
   onCloseOthers: (tabId: string) => void
@@ -217,12 +240,14 @@ interface TabBarProps {
   onNewTab: () => void
   onSetCustomTitle: (tabId: string, title: string | null) => void
   onSetTabColor: (tabId: string, color: string | null) => void
+  onTogglePaneExpand: (tabId: string) => void
 }
 
 export default function TabBar({
   tabs,
   activeTabId,
   worktreeId,
+  expandedPaneByTabId,
   onActivate,
   onClose,
   onCloseOthers,
@@ -230,7 +255,8 @@ export default function TabBar({
   onReorder,
   onNewTab,
   onSetCustomTitle,
-  onSetTabColor
+  onSetTabColor,
+  onTogglePaneExpand
 }: TabBarProps): React.JSX.Element {
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -259,7 +285,7 @@ export default function TabBar({
     <div className="flex items-stretch h-9 bg-card border-b border-border overflow-hidden shrink-0">
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <SortableContext items={tabIds} strategy={horizontalListSortingStrategy}>
-          <div className="flex items-stretch overflow-x-auto">
+          <div className="terminal-tab-strip flex items-stretch overflow-x-auto overflow-y-hidden">
             {tabs.map((tab, index) => (
               <SortableTab
                 key={tab.id}
@@ -267,12 +293,14 @@ export default function TabBar({
                 tabCount={tabs.length}
                 hasTabsToRight={index < tabs.length - 1}
                 isActive={tab.id === activeTabId}
+                isExpanded={expandedPaneByTabId[tab.id] === true}
                 onActivate={onActivate}
                 onClose={onClose}
                 onCloseOthers={onCloseOthers}
                 onCloseToRight={onCloseToRight}
                 onSetCustomTitle={onSetCustomTitle}
                 onSetTabColor={onSetTabColor}
+                onToggleExpand={onTogglePaneExpand}
               />
             ))}
           </div>

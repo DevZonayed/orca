@@ -1,4 +1,5 @@
 import { useEffect, useCallback, useRef } from 'react'
+import { TOGGLE_TERMINAL_PANE_EXPAND_EVENT } from '@/constants/terminal'
 import { useAppStore } from '../store'
 import TabBar from './TabBar'
 import TerminalPane from './TerminalPane'
@@ -15,10 +16,12 @@ export default function Terminal(): React.JSX.Element | null {
   const setActiveWorktree = useAppStore((s) => s.setActiveWorktree)
   const setTabCustomTitle = useAppStore((s) => s.setTabCustomTitle)
   const setTabColor = useAppStore((s) => s.setTabColor)
+  const expandedPaneByTabId = useAppStore((s) => s.expandedPaneByTabId)
 
   const tabs = activeWorktreeId ? (tabsByWorktree[activeWorktreeId] ?? []) : []
   const prevTabCountRef = useRef(tabs.length)
   const tabBarRef = useRef<HTMLDivElement>(null)
+  const initialTabCreationGuardRef = useRef<string | null>(null)
 
   // Find the active worktree to get its path
   const activeWorktree = activeWorktreeId
@@ -31,10 +34,23 @@ export default function Terminal(): React.JSX.Element | null {
 
   // Auto-create first tab when worktree activates
   useEffect(() => {
-    if (!activeWorktreeId) return
-    if (activeWorktreeId && tabs.length === 0) {
-      createTab(activeWorktreeId)
+    if (!activeWorktreeId) {
+      initialTabCreationGuardRef.current = null
+      return
     }
+
+    if (tabs.length > 0) {
+      if (initialTabCreationGuardRef.current === activeWorktreeId) {
+        initialTabCreationGuardRef.current = null
+      }
+      return
+    }
+
+    // In React StrictMode (dev), mount effects are intentionally invoked twice.
+    // Track the worktree we already initialized so we only create one first tab.
+    if (initialTabCreationGuardRef.current === activeWorktreeId) return
+    initialTabCreationGuardRef.current = activeWorktreeId
+    createTab(activeWorktreeId)
   }, [activeWorktreeId, tabs.length, createTab])
 
   // Ensure activeTabId is valid
@@ -120,6 +136,20 @@ export default function Terminal(): React.JSX.Element | null {
     [activeWorktreeId, closeTab]
   )
 
+  const handleTogglePaneExpand = useCallback(
+    (tabId: string) => {
+      setActiveTab(tabId)
+      requestAnimationFrame(() => {
+        window.dispatchEvent(
+          new CustomEvent(TOGGLE_TERMINAL_PANE_EXPAND_EVENT, {
+            detail: { tabId }
+          })
+        )
+      })
+    },
+    [setActiveTab]
+  )
+
   // Keyboard shortcuts
   useEffect(() => {
     if (!activeWorktreeId) return
@@ -183,6 +213,8 @@ export default function Terminal(): React.JSX.Element | null {
             onNewTab={handleNewTab}
             onSetCustomTitle={setTabCustomTitle}
             onSetTabColor={setTabColor}
+            expandedPaneByTabId={expandedPaneByTabId}
+            onTogglePaneExpand={handleTogglePaneExpand}
           />
         </div>
       </div>

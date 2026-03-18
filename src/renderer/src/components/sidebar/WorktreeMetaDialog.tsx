@@ -10,6 +10,7 @@ import {
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { parseGitHubIssueOrPRNumber } from '@/lib/github-links'
 
 const WorktreeMetaDialog = React.memo(function WorktreeMetaDialog() {
   const activeModal = useAppStore((s) => s.activeModal)
@@ -39,7 +40,8 @@ const WorktreeMetaDialog = React.memo(function WorktreeMetaDialog() {
 
   const canSave = useMemo(() => {
     if (!worktreeId) return false
-    if (isLinkIssue) return issueInput.trim() === '' || !isNaN(parseInt(issueInput.trim(), 10))
+    if (isLinkIssue)
+      return issueInput.trim() === '' || parseGitHubIssueOrPRNumber(issueInput) !== null
     return true
   }, [worktreeId, isLinkIssue, issueInput])
 
@@ -56,9 +58,9 @@ const WorktreeMetaDialog = React.memo(function WorktreeMetaDialog() {
     try {
       if (isLinkIssue) {
         const trimmed = issueInput.trim()
-        const linkedIssue = trimmed === '' ? null : parseInt(trimmed, 10)
-        if (!isNaN(linkedIssue as number) || trimmed === '') {
-          await updateWorktreeMeta(worktreeId, { linkedIssue: linkedIssue as number | null })
+        const linkedIssueNumber = parseGitHubIssueOrPRNumber(trimmed)
+        if (trimmed === '' || linkedIssueNumber !== null) {
+          await updateWorktreeMeta(worktreeId, { linkedIssue: linkedIssueNumber })
         }
       } else if (isEditComment) {
         await updateWorktreeMeta(worktreeId, { comment: commentInput.trim() })
@@ -82,25 +84,28 @@ const WorktreeMetaDialog = React.memo(function WorktreeMetaDialog() {
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle className="text-sm">
-            {isLinkIssue ? 'Link GH Issue' : 'Edit Comment'}
+            {isLinkIssue ? 'Link GH Issue/PR' : 'Edit Comment'}
           </DialogTitle>
           <DialogDescription className="text-xs">
             {isLinkIssue
-              ? 'Add an issue number to link this worktree. Leave blank to remove the link.'
+              ? 'Add an issue/PR number or URL to link this worktree. Leave blank to remove the link.'
               : 'Add or edit notes for this worktree.'}
           </DialogDescription>
         </DialogHeader>
 
         {isLinkIssue ? (
           <div className="space-y-1">
-            <label className="text-[11px] font-medium text-muted-foreground">Issue Number</label>
+            <label className="text-[11px] font-medium text-muted-foreground">GH Issue / PR</label>
             <Input
               value={issueInput}
               onChange={(e) => setIssueInput(e.target.value)}
-              placeholder="e.g. 42"
+              placeholder="Issue/PR # or GitHub URL"
               className="h-8 text-xs"
               autoFocus
             />
+            <p className="text-[10px] text-muted-foreground">
+              Paste an issue or PR URL, or enter a number.
+            </p>
           </div>
         ) : (
           <div className="space-y-1">

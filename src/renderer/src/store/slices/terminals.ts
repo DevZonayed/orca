@@ -5,6 +5,8 @@ import type { TerminalTab } from '../../../../shared/types'
 export interface TerminalSlice {
   tabsByWorktree: Record<string, TerminalTab[]>
   activeTabId: string | null
+  expandedPaneByTabId: Record<string, boolean>
+  canExpandPaneByTabId: Record<string, boolean>
   createTab: (worktreeId: string) => TerminalTab
   closeTab: (tabId: string) => void
   reorderTabs: (worktreeId: string, tabIds: string[]) => void
@@ -13,11 +15,15 @@ export interface TerminalSlice {
   setTabCustomTitle: (tabId: string, title: string | null) => void
   setTabColor: (tabId: string, color: string | null) => void
   updateTabPtyId: (tabId: string, ptyId: string) => void
+  setTabPaneExpanded: (tabId: string, expanded: boolean) => void
+  setTabCanExpandPane: (tabId: string, canExpand: boolean) => void
 }
 
 export const createTerminalSlice: StateCreator<AppState, [], [], TerminalSlice> = (set) => ({
   tabsByWorktree: {},
   activeTabId: null,
+  expandedPaneByTabId: {},
+  canExpandPaneByTabId: {},
 
   createTab: (worktreeId) => {
     const id = globalThis.crypto.randomUUID()
@@ -55,9 +61,15 @@ export const createTerminalSlice: StateCreator<AppState, [], [], TerminalSlice> 
           next[wId] = after
         }
       }
+      const nextExpanded = { ...s.expandedPaneByTabId }
+      delete nextExpanded[tabId]
+      const nextCanExpand = { ...s.canExpandPaneByTabId }
+      delete nextCanExpand[tabId]
       return {
         tabsByWorktree: next,
-        activeTabId: s.activeTabId === tabId ? null : s.activeTabId
+        activeTabId: s.activeTabId === tabId ? null : s.activeTabId,
+        expandedPaneByTabId: nextExpanded,
+        canExpandPaneByTabId: nextCanExpand
       }
     })
   },
@@ -118,5 +130,17 @@ export const createTerminalSlice: StateCreator<AppState, [], [], TerminalSlice> 
       }
       return { tabsByWorktree: next }
     })
+  },
+
+  setTabPaneExpanded: (tabId, expanded) => {
+    set((s) => ({
+      expandedPaneByTabId: { ...s.expandedPaneByTabId, [tabId]: expanded }
+    }))
+  },
+
+  setTabCanExpandPane: (tabId, canExpand) => {
+    set((s) => ({
+      canExpandPaneByTabId: { ...s.canExpandPaneByTabId, [tabId]: canExpand }
+    }))
   }
 })

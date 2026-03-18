@@ -1,6 +1,15 @@
 import { useEffect, useRef, useState } from 'react'
 import { Restty, getBuiltinTheme } from 'restty'
-import { Clipboard, Copy, Eraser, PanelBottomOpen, PanelRightOpen, X, ZoomIn } from 'lucide-react'
+import {
+  Clipboard,
+  Copy,
+  Eraser,
+  Maximize2,
+  Minimize2,
+  PanelBottomOpen,
+  PanelRightOpen,
+  X
+} from 'lucide-react'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -9,6 +18,7 @@ import {
   DropdownMenuShortcut,
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu'
+import { TOGGLE_TERMINAL_PANE_EXPAND_EVENT } from '@/constants/terminal'
 import { useAppStore } from '../store'
 
 type PtyTransport = {
@@ -169,10 +179,13 @@ export default function TerminalPane({
   const [terminalMenuOpen, setTerminalMenuOpen] = useState(false)
   const [terminalMenuPoint, setTerminalMenuPoint] = useState({ x: 0, y: 0 })
   const [expandedPaneId, setExpandedPaneId] = useState<number | null>(null)
+  const setTabPaneExpanded = useAppStore((s) => s.setTabPaneExpanded)
+  const setTabCanExpandPane = useAppStore((s) => s.setTabCanExpandPane)
 
   const setExpandedPane = (paneId: number | null): void => {
     expandedPaneIdRef.current = paneId
     setExpandedPaneId(paneId)
+    setTabPaneExpanded(tabId, paneId !== null)
   }
 
   const rememberPaneStyle = (
@@ -254,6 +267,11 @@ export default function TerminalPane({
       return
     }
     applyExpandedLayout(paneId)
+  }
+
+  const syncCanExpandState = (): void => {
+    const paneCount = resttyRef.current?.getPanes().length ?? 1
+    setTabCanExpandPane(tabId, paneCount > 1)
   }
 
   const toggleExpandPane = (paneId: number): void => {
@@ -374,12 +392,14 @@ export default function TerminalPane({
       onActivePaneChange: () => {},
       onLayoutChanged: () => {
         syncExpandedLayout()
+        syncCanExpandState()
         queueResizeAll(false)
       }
     })
 
     restty.createInitialPane({ focus: isActive })
     resttyRef.current = restty
+    syncCanExpandState()
     queueResizeAll(isActive)
 
     return () => {
@@ -387,6 +407,8 @@ export default function TerminalPane({
       restoreExpandedLayout()
       restty.destroy()
       resttyRef.current = null
+      setTabPaneExpanded(tabId, false)
+      setTabCanExpandPane(tabId, false)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tabId, cwd])
@@ -411,6 +433,23 @@ export default function TerminalPane({
     }
     wasActiveRef.current = isActive
   }, [isActive])
+
+  useEffect(() => {
+    const onToggleExpand = (event: Event): void => {
+      const detail = (event as CustomEvent<{ tabId?: string }>).detail
+      if (!detail?.tabId || detail.tabId !== tabId) return
+      const restty = resttyRef.current
+      if (!restty) return
+      const panes = restty.getPanes()
+      if (panes.length < 2) return
+      const pane = restty.getActivePane() ?? panes[0]
+      if (!pane) return
+      toggleExpandPane(pane.id)
+    }
+
+    window.addEventListener(TOGGLE_TERMINAL_PANE_EXPAND_EVENT, onToggleExpand)
+    return () => window.removeEventListener(TOGGLE_TERMINAL_PANE_EXPAND_EVENT, onToggleExpand)
+  }, [tabId])
 
   // ResizeObserver to keep terminal sized to container
   useEffect(() => {
@@ -616,7 +655,7 @@ export default function TerminalPane({
           </DropdownMenuItem>
           {canExpandPane && (
             <DropdownMenuItem onSelect={handleToggleExpand}>
-              <ZoomIn />
+              {menuPaneIsExpanded ? <Minimize2 /> : <Maximize2 />}
               {menuPaneIsExpanded ? 'Collapse Pane' : 'Expand Pane'}
               <DropdownMenuShortcut>⌘⇧↩</DropdownMenuShortcut>
             </DropdownMenuItem>

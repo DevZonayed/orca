@@ -1,4 +1,6 @@
 import { useEffect } from 'react'
+import { Minimize2, PanelLeft } from 'lucide-react'
+import { TOGGLE_TERMINAL_PANE_EXPAND_EVENT } from '@/constants/terminal'
 import { useAppStore } from './store'
 import { useIpcEvents } from './hooks/useIpcEvents'
 import Sidebar from './components/Sidebar'
@@ -10,6 +12,10 @@ function App(): React.JSX.Element {
   const toggleSidebar = useAppStore((s) => s.toggleSidebar)
   const activeView = useAppStore((s) => s.activeView)
   const activeWorktreeId = useAppStore((s) => s.activeWorktreeId)
+  const tabsByWorktree = useAppStore((s) => s.tabsByWorktree)
+  const activeTabId = useAppStore((s) => s.activeTabId)
+  const expandedPaneByTabId = useAppStore((s) => s.expandedPaneByTabId)
+  const canExpandPaneByTabId = useAppStore((s) => s.canExpandPaneByTabId)
   const fetchRepos = useAppStore((s) => s.fetchRepos)
   const fetchSettings = useAppStore((s) => s.fetchSettings)
   const initGitHubCache = useAppStore((s) => s.initGitHubCache)
@@ -50,27 +56,50 @@ function App(): React.JSX.Element {
     }
   }, [settings?.theme])
 
+  const tabs = activeWorktreeId ? (tabsByWorktree[activeWorktreeId] ?? []) : []
+  const hasTabBar = tabs.length >= 2
+  const effectiveActiveTabId = activeTabId ?? tabs[0]?.id ?? null
+  const activeTabCanExpand = effectiveActiveTabId
+    ? (canExpandPaneByTabId[effectiveActiveTabId] ?? false)
+    : false
+  const effectiveActiveTabExpanded = effectiveActiveTabId
+    ? (expandedPaneByTabId[effectiveActiveTabId] ?? false)
+    : false
+  const showTitlebarExpandButton =
+    activeView !== 'settings' &&
+    activeWorktreeId !== null &&
+    !hasTabBar &&
+    effectiveActiveTabExpanded
+
+  const handleToggleExpand = (): void => {
+    if (!effectiveActiveTabId) return
+    window.dispatchEvent(
+      new CustomEvent(TOGGLE_TERMINAL_PANE_EXPAND_EVENT, {
+        detail: { tabId: effectiveActiveTabId }
+      })
+    )
+  }
+
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden">
       <div className="titlebar">
         <div className="titlebar-traffic-light-pad" />
         <button className="sidebar-toggle" onClick={toggleSidebar} title="Toggle sidebar">
-          <svg
-            width="16"
-            height="16"
-            viewBox="0 0 16 16"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-          >
-            <line x1="2" y1="4" x2="14" y2="4" />
-            <line x1="2" y1="8" x2="14" y2="8" />
-            <line x1="2" y1="12" x2="14" y2="12" />
-          </svg>
+          <PanelLeft size={16} />
         </button>
         <div className="titlebar-title">Orca</div>
         <div className="titlebar-spacer" />
+        {showTitlebarExpandButton && (
+          <button
+            className="titlebar-icon-button"
+            onClick={handleToggleExpand}
+            title="Collapse pane"
+            aria-label="Collapse pane"
+            disabled={!activeTabCanExpand}
+          >
+            <Minimize2 size={14} />
+          </button>
+        )}
       </div>
       <div className="flex flex-row flex-1 min-h-0 overflow-hidden">
         <Sidebar />
