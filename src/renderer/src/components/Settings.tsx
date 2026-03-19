@@ -7,7 +7,15 @@ import { Button } from './ui/button'
 import { Input } from './ui/input'
 import { Label } from './ui/label'
 import { Separator } from './ui/separator'
-import { ArrowLeft, FolderOpen, Minus, Plus, Trash2 } from 'lucide-react'
+import {
+  ArrowLeft,
+  FolderOpen,
+  Minus,
+  Plus,
+  SlidersHorizontal,
+  SquareTerminal,
+  Trash2
+} from 'lucide-react'
 
 type HookName = keyof OrcaHooks['scripts']
 const DEFAULT_REPO_HOOK_SETTINGS = getDefaultRepoHookSettings()
@@ -22,7 +30,7 @@ function Settings(): React.JSX.Element {
   const removeRepo = useAppStore((s) => s.removeRepo)
 
   const [confirmingRemove, setConfirmingRemove] = useState<string | null>(null)
-  const [selectedPane, setSelectedPane] = useState<'general' | 'repo'>('general')
+  const [selectedPane, setSelectedPane] = useState<'general' | 'terminal' | 'repo'>('general')
   const [selectedRepoId, setSelectedRepoId] = useState<string | null>(null)
   const [repoHooksMap, setRepoHooksMap] = useState<
     Record<string, { hasHooks: boolean; hooks: OrcaHooks | null }>
@@ -185,7 +193,8 @@ function Settings(): React.JSX.Element {
 
   const selectedRepo = repos.find((repo) => repo.id === selectedRepoId) ?? null
   const selectedYamlHooks = selectedRepo ? (repoHooksMap[selectedRepo.id]?.hooks ?? null) : null
-  const showGeneralPane = selectedPane === 'general' || !selectedRepo
+  const showGeneralPane = selectedPane === 'general'
+  const showTerminalPane = selectedPane === 'terminal'
   const displayedGitUsername = (selectedRepo ?? repos[0])?.gitUsername ?? ''
   const effectiveBaseRef = selectedRepo?.worktreeBaseRef ?? defaultBaseRef
 
@@ -245,7 +254,19 @@ function Settings(): React.JSX.Element {
                     : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
                 }`}
               >
+                <SlidersHorizontal className="mr-2 size-4" />
                 General
+              </button>
+              <button
+                onClick={() => setSelectedPane('terminal')}
+                className={`flex w-full items-center rounded-lg px-3 py-2 text-left text-sm transition-colors ${
+                  showTerminalPane
+                    ? 'bg-accent font-medium text-accent-foreground'
+                    : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
+                }`}
+              >
+                <SquareTerminal className="mr-2 size-4" />
+                Terminal
               </button>
             </div>
 
@@ -292,7 +313,7 @@ function Settings(): React.JSX.Element {
               <div className="space-y-1">
                 <h1 className="text-2xl font-semibold">General</h1>
                 <p className="text-sm text-muted-foreground">
-                  Workspace, naming, appearance, and terminal defaults.
+                  Workspace, naming, and appearance defaults.
                 </p>
               </div>
 
@@ -433,12 +454,19 @@ function Settings(): React.JSX.Element {
                   ))}
                 </div>
               </section>
-
-              <Separator />
+            </div>
+          ) : showTerminalPane ? (
+            <div className="space-y-8">
+              <div className="space-y-1">
+                <h1 className="text-2xl font-semibold">Terminal</h1>
+                <p className="text-sm text-muted-foreground">
+                  Default terminal typography for new panes.
+                </p>
+              </div>
 
               <section className="space-y-4">
                 <div className="space-y-1">
-                  <h2 className="text-sm font-semibold">Terminal</h2>
+                  <h2 className="text-sm font-semibold">Typography</h2>
                   <p className="text-xs text-muted-foreground">
                     Default terminal typography for new panes.
                   </p>

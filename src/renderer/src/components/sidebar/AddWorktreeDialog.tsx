@@ -21,6 +21,8 @@ import RepoDotLabel from '@/components/repo/RepoDotLabel'
 import { parseGitHubIssueOrPRNumber } from '@/lib/github-links'
 import { SPACE_NAMES } from '@/constants/space-names'
 
+const DIALOG_CLOSE_RESET_DELAY_MS = 200
+
 const AddWorktreeDialog = React.memo(function AddWorktreeDialog() {
   const activeModal = useAppStore((s) => s.activeModal)
   const modalData = useAppStore((s) => s.modalData)
@@ -48,6 +50,7 @@ const AddWorktreeDialog = React.memo(function AddWorktreeDialog() {
   const [creating, setCreating] = useState(false)
   const nameInputRef = useRef<HTMLInputElement>(null)
   const lastSuggestedNameRef = useRef('')
+  const resetTimeoutRef = useRef<number | null>(null)
 
   const isOpen = activeModal === 'create-worktree'
   const preselectedRepoId =
@@ -66,11 +69,6 @@ const AddWorktreeDialog = React.memo(function AddWorktreeDialog() {
     (open: boolean) => {
       if (!open) {
         closeModal()
-        setRepoId('')
-        setName('')
-        setLinkedIssue('')
-        setComment('')
-        lastSuggestedNameRef.current = ''
       }
     },
     [closeModal]
@@ -128,6 +126,31 @@ const AddWorktreeDialog = React.memo(function AddWorktreeDialog() {
   ])
 
   // Auto-select repo when opening.
+  React.useEffect(() => {
+    if (resetTimeoutRef.current !== null) {
+      window.clearTimeout(resetTimeoutRef.current)
+      resetTimeoutRef.current = null
+    }
+
+    if (isOpen) return
+
+    resetTimeoutRef.current = window.setTimeout(() => {
+      setRepoId('')
+      setName('')
+      setLinkedIssue('')
+      setComment('')
+      lastSuggestedNameRef.current = ''
+      resetTimeoutRef.current = null
+    }, DIALOG_CLOSE_RESET_DELAY_MS)
+
+    return () => {
+      if (resetTimeoutRef.current !== null) {
+        window.clearTimeout(resetTimeoutRef.current)
+        resetTimeoutRef.current = null
+      }
+    }
+  }, [isOpen])
+
   React.useEffect(() => {
     if (!isOpen || repos.length === 0) return
 
