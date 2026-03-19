@@ -173,7 +173,20 @@ function App(): React.JSX.Element {
       </div>
       <div className="flex flex-row flex-1 min-h-0 overflow-hidden">
         <Sidebar />
-        {activeView === 'settings' ? <Settings /> : activeWorktreeId ? <Terminal /> : <Landing />}
+        <div className="relative flex flex-1 min-w-0 min-h-0 overflow-hidden">
+          {activeWorktreeId && (
+            <div
+              className={
+                activeView === 'settings'
+                  ? 'hidden flex-1 min-w-0 min-h-0'
+                  : 'flex flex-1 min-w-0 min-h-0'
+              }
+            >
+              <Terminal />
+            </div>
+          )}
+          {activeView === 'settings' ? <Settings /> : !activeWorktreeId ? <Landing /> : null}
+        </div>
       </div>
     </div>
   )

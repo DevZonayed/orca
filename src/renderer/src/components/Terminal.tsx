@@ -6,6 +6,7 @@ import TerminalPane from './TerminalPane'
 
 export default function Terminal(): React.JSX.Element | null {
   const activeWorktreeId = useAppStore((s) => s.activeWorktreeId)
+  const activeView = useAppStore((s) => s.activeView)
   const worktreesByRepo = useAppStore((s) => s.worktreesByRepo)
   const tabsByWorktree = useAppStore((s) => s.tabsByWorktree)
   const activeTabId = useAppStore((s) => s.activeTabId)
@@ -21,18 +22,10 @@ export default function Terminal(): React.JSX.Element | null {
   const workspaceSessionReady = useAppStore((s) => s.workspaceSessionReady)
 
   const tabs = activeWorktreeId ? (tabsByWorktree[activeWorktreeId] ?? []) : []
+  const allWorktrees = Object.values(worktreesByRepo).flat()
   const prevTabCountRef = useRef(tabs.length)
   const tabBarRef = useRef<HTMLDivElement>(null)
   const initialTabCreationGuardRef = useRef<string | null>(null)
-
-  // Find the active worktree to get its path
-  const activeWorktree = activeWorktreeId
-    ? Object.values(worktreesByRepo)
-        .flat()
-        .find((w) => w.id === activeWorktreeId)
-    : null
-
-  const cwd = activeWorktree?.path
 
   // Auto-create first tab when worktree activates
   useEffect(() => {
@@ -225,15 +218,28 @@ export default function Terminal(): React.JSX.Element | null {
 
       {/* Terminal panes container */}
       <div className="relative flex-1 min-h-0 overflow-hidden">
-        {tabs.map((tab) => (
-          <TerminalPane
-            key={tab.id}
-            tabId={tab.id}
-            cwd={cwd}
-            isActive={tab.id === activeTabId}
-            onPtyExit={(ptyId) => handlePtyExit(tab.id, ptyId)}
-          />
-        ))}
+        {allWorktrees.map((worktree) => {
+          const worktreeTabs = tabsByWorktree[worktree.id] ?? []
+          const isVisible = activeView !== 'settings' && worktree.id === activeWorktreeId
+
+          return (
+            <div
+              key={worktree.id}
+              className={isVisible ? 'absolute inset-0' : 'absolute inset-0 hidden'}
+              aria-hidden={!isVisible}
+            >
+              {worktreeTabs.map((tab) => (
+                <TerminalPane
+                  key={tab.id}
+                  tabId={tab.id}
+                  cwd={worktree.path}
+                  isActive={isVisible && tab.id === activeTabId}
+                  onPtyExit={(ptyId) => handlePtyExit(tab.id, ptyId)}
+                />
+              ))}
+            </div>
+          )
+        })}
       </div>
     </div>
   )
