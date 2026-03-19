@@ -245,6 +245,11 @@ function buildTerminalFontSources(fontFamily: string) {
       type: 'local' as const,
       label: 'Menlo',
       matchers: ['menlo', 'menlo regular']
+    },
+    {
+      type: 'local' as const,
+      label: 'Monospace fallback',
+      matchers: ['dejavu sans mono', 'liberation mono', 'ubuntu mono', 'monospace']
     }
   ]
 }
@@ -615,7 +620,7 @@ export default function TerminalPane({
           restty.closePane(id)
         }
         return {
-          renderer: 'webgpu',
+          renderer: 'auto',
           fontSize: currentSettings?.terminalFontSize ?? 14,
           fontSizeMode: 'em',
           alphaBlending: 'native',
