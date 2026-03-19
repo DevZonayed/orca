@@ -5,10 +5,13 @@ import type {
   TerminalTab,
   WorkspaceSessionState
 } from '../../../../shared/types'
+import { detectAgentStatusFromTitle } from '@/lib/agent-status'
 
 export interface TerminalSlice {
   tabsByWorktree: Record<string, TerminalTab[]>
   activeTabId: string | null
+  ptyIdsByTabId: Record<string, string[]>
+  suppressedPtyExitIds: Record<string, true>
   expandedPaneByTabId: Record<string, boolean>
   canExpandPaneByTabId: Record<string, boolean>
   terminalLayoutsByTabId: Record<string, TerminalLayoutSnapshot>
@@ -21,15 +24,20 @@ export interface TerminalSlice {
   setTabCustomTitle: (tabId: string, title: string | null) => void
   setTabColor: (tabId: string, color: string | null) => void
   updateTabPtyId: (tabId: string, ptyId: string) => void
+  clearTabPtyId: (tabId: string, ptyId?: string) => void
+  shutdownWorktreeTerminals: (worktreeId: string) => Promise<void>
+  consumeSuppressedPtyExit: (ptyId: string) => boolean
   setTabPaneExpanded: (tabId: string, expanded: boolean) => void
   setTabCanExpandPane: (tabId: string, canExpand: boolean) => void
   setTabLayout: (tabId: string, layout: TerminalLayoutSnapshot | null) => void
   hydrateWorkspaceSession: (session: WorkspaceSessionState) => void
 }
 
-export const createTerminalSlice: StateCreator<AppState, [], [], TerminalSlice> = (set) => ({
+export const createTerminalSlice: StateCreator<AppState, [], [], TerminalSlice> = (set, get) => ({
   tabsByWorktree: {},
   activeTabId: null,
+  ptyIdsByTabId: {},
+  suppressedPtyExitIds: {},
   expandedPaneByTabId: {},
   canExpandPaneByTabId: {},
   terminalLayoutsByTabId: {},
@@ -56,6 +64,7 @@ export const createTerminalSlice: StateCreator<AppState, [], [], TerminalSlice> 
           [worktreeId]: [...existing, tab]
         },
         activeTabId: tab.id,
+        ptyIdsByTabId: { ...s.ptyIdsByTabId, [tab.id]: [] },
         terminalLayoutsByTabId: { ...s.terminalLayoutsByTabId, [tab.id]: emptyLayoutSnapshot() }
       }
     })
@@ -78,9 +87,12 @@ export const createTerminalSlice: StateCreator<AppState, [], [], TerminalSlice> 
       delete nextCanExpand[tabId]
       const nextLayouts = { ...s.terminalLayoutsByTabId }
       delete nextLayouts[tabId]
+      const nextPtyIdsByTabId = { ...s.ptyIdsByTabId }
+      delete nextPtyIdsByTabId[tabId]
       return {
         tabsByWorktree: next,
         activeTabId: s.activeTabId === tabId ? null : s.activeTabId,
+        ptyIdsByTabId: nextPtyIdsByTabId,
         expandedPaneByTabId: nextExpanded,
         canExpandPaneByTabId: nextCanExpand,
         terminalLayoutsByTabId: nextLayouts
@@ -142,8 +154,84 @@ export const createTerminalSlice: StateCreator<AppState, [], [], TerminalSlice> 
       for (const wId of Object.keys(next)) {
         next[wId] = next[wId].map((t) => (t.id === tabId ? { ...t, ptyId } : t))
       }
-      return { tabsByWorktree: next }
+      const existingPtyIds = s.ptyIdsByTabId[tabId] ?? []
+      return {
+        tabsByWorktree: next,
+        ptyIdsByTabId: {
+          ...s.ptyIdsByTabId,
+          [tabId]: existingPtyIds.includes(ptyId) ? existingPtyIds : [...existingPtyIds, ptyId]
+        }
+      }
     })
+  },
+
+  clearTabPtyId: (tabId, ptyId) => {
+    set((s) => {
+      const next = { ...s.tabsByWorktree }
+      for (const wId of Object.keys(next)) {
+        next[wId] = next[wId].map((t) => {
+          if (t.id !== tabId) return t
+          const remainingPtyIds = ptyId
+            ? (s.ptyIdsByTabId[tabId] ?? []).filter((id) => id !== ptyId)
+            : []
+          return { ...t, ptyId: remainingPtyIds[remainingPtyIds.length - 1] ?? null }
+        })
+      }
+      const nextPtyIdsByTabId = { ...s.ptyIdsByTabId }
+      if (ptyId) {
+        nextPtyIdsByTabId[tabId] = (nextPtyIdsByTabId[tabId] ?? []).filter((id) => id !== ptyId)
+      } else {
+        nextPtyIdsByTabId[tabId] = []
+      }
+      return { tabsByWorktree: next, ptyIdsByTabId: nextPtyIdsByTabId }
+    })
+  },
+
+  shutdownWorktreeTerminals: async (worktreeId) => {
+    const tabs = get().tabsByWorktree[worktreeId] ?? []
+    const tabIds = new Set(tabs.map((tab) => tab.id))
+    const ptyIds = tabs.flatMap((tab) => get().ptyIdsByTabId[tab.id] ?? [])
+
+    set((s) => {
+      const nextTabsByWorktree = {
+        ...s.tabsByWorktree,
+        [worktreeId]: (s.tabsByWorktree[worktreeId] ?? []).map((tab, index) =>
+          clearTransientTerminalState(tab, index)
+        )
+      }
+      const nextPtyIdsByTabId = {
+        ...s.ptyIdsByTabId,
+        ...Object.fromEntries(tabs.map((tab) => [tab.id, [] as string[]] as const))
+      }
+      const nextSuppressedPtyExitIds = {
+        ...s.suppressedPtyExitIds,
+        ...Object.fromEntries(ptyIds.map((ptyId) => [ptyId, true] as const))
+      }
+
+      return {
+        tabsByWorktree: nextTabsByWorktree,
+        ptyIdsByTabId: nextPtyIdsByTabId,
+        suppressedPtyExitIds: nextSuppressedPtyExitIds,
+        activeWorktreeId: s.activeWorktreeId === worktreeId ? null : s.activeWorktreeId,
+        activeTabId: s.activeTabId && tabIds.has(s.activeTabId) ? null : s.activeTabId
+      }
+    })
+
+    if (ptyIds.length === 0) return
+
+    await Promise.allSettled(ptyIds.map((ptyId) => window.api.pty.kill(ptyId)))
+  },
+
+  consumeSuppressedPtyExit: (ptyId) => {
+    let wasSuppressed = false
+    set((s) => {
+      if (!s.suppressedPtyExitIds[ptyId]) return {}
+      wasSuppressed = true
+      const next = { ...s.suppressedPtyExitIds }
+      delete next[ptyId]
+      return { suppressedPtyExitIds: next }
+    })
+    return wasSuppressed
   },
 
   setTabPaneExpanded: (tabId, expanded) => {
@@ -182,8 +270,7 @@ export const createTerminalSlice: StateCreator<AppState, [], [], TerminalSlice> 
             [...tabs]
               .sort((a, b) => a.sortOrder - b.sortOrder || a.createdAt - b.createdAt)
               .map((tab, index) => ({
-                ...tab,
-                ptyId: null,
+                ...clearTransientTerminalState(tab, index),
                 sortOrder: index
               }))
           ])
@@ -211,6 +298,11 @@ export const createTerminalSlice: StateCreator<AppState, [], [], TerminalSlice> 
         activeWorktreeId,
         activeTabId,
         tabsByWorktree,
+        ptyIdsByTabId: Object.fromEntries(
+          Object.values(tabsByWorktree)
+            .flat()
+            .map((tab) => [tab.id, []] as const)
+        ),
         terminalLayoutsByTabId: Object.fromEntries(
           Object.entries(session.terminalLayoutsByTabId).filter(([tabId]) => validTabIds.has(tabId))
         ),
@@ -226,4 +318,17 @@ function emptyLayoutSnapshot(): TerminalLayoutSnapshot {
     activeLeafId: null,
     expandedLeafId: null
   }
+}
+
+function clearTransientTerminalState(tab: TerminalTab, index: number): TerminalTab {
+  return {
+    ...tab,
+    ptyId: null,
+    title: getResetTitle(tab, index)
+  }
+}
+
+function getResetTitle(tab: TerminalTab, index: number): string {
+  const fallbackTitle = tab.customTitle?.trim() || `Terminal ${index + 1}`
+  return detectAgentStatusFromTitle(tab.title) ? fallbackTitle : tab.title
 }

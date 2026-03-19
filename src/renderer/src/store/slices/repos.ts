@@ -48,11 +48,15 @@ export const createRepoSlice: StateCreator<AppState, [], [], RepoSlice> = (set, 
       // Kill PTYs for all worktrees belonging to this repo
       const worktreeIds = (get().worktreesByRepo[repoId] ?? []).map((w) => w.id)
       const killedTabIds = new Set<string>()
+      const killedPtyIds = new Set<string>()
       for (const wId of worktreeIds) {
         const tabs = get().tabsByWorktree[wId] ?? []
         for (const tab of tabs) {
           killedTabIds.add(tab.id)
-          if (tab.ptyId) window.api.pty.kill(tab.ptyId)
+          for (const ptyId of get().ptyIdsByTabId[tab.id] ?? []) {
+            killedPtyIds.add(ptyId)
+            window.api.pty.kill(ptyId)
+          }
         }
       }
 
@@ -61,17 +65,25 @@ export const createRepoSlice: StateCreator<AppState, [], [], RepoSlice> = (set, 
         delete nextWorktrees[repoId]
         const nextTabs = { ...s.tabsByWorktree }
         const nextLayouts = { ...s.terminalLayoutsByTabId }
+        const nextPtyIdsByTabId = { ...s.ptyIdsByTabId }
+        const nextSuppressedPtyExitIds = { ...s.suppressedPtyExitIds }
         for (const wId of worktreeIds) {
           delete nextTabs[wId]
         }
         for (const tabId of killedTabIds) {
           delete nextLayouts[tabId]
+          delete nextPtyIdsByTabId[tabId]
+        }
+        for (const ptyId of killedPtyIds) {
+          nextSuppressedPtyExitIds[ptyId] = true
         }
         return {
           repos: s.repos.filter((r) => r.id !== repoId),
           activeRepoId: s.activeRepoId === repoId ? null : s.activeRepoId,
           worktreesByRepo: nextWorktrees,
           tabsByWorktree: nextTabs,
+          ptyIdsByTabId: nextPtyIdsByTabId,
+          suppressedPtyExitIds: nextSuppressedPtyExitIds,
           terminalLayoutsByTabId: nextLayouts,
           activeTabId: s.activeTabId && killedTabIds.has(s.activeTabId) ? null : s.activeTabId
         }

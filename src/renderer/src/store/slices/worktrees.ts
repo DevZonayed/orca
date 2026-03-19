@@ -2,13 +2,24 @@ import type { StateCreator } from 'zustand'
 import type { AppState } from '../types'
 import type { Worktree, WorktreeMeta } from '../../../../shared/types'
 
+export interface WorktreeDeleteState {
+  isDeleting: boolean
+  error: string | null
+  canForceDelete: boolean
+}
+
 export interface WorktreeSlice {
   worktreesByRepo: Record<string, Worktree[]>
   activeWorktreeId: string | null
+  deleteStateByWorktreeId: Record<string, WorktreeDeleteState>
   fetchWorktrees: (repoId: string) => Promise<void>
   fetchAllWorktrees: () => Promise<void>
   createWorktree: (repoId: string, name: string, baseBranch?: string) => Promise<Worktree | null>
-  removeWorktree: (worktreeId: string, force?: boolean) => Promise<void>
+  removeWorktree: (
+    worktreeId: string,
+    force?: boolean
+  ) => Promise<{ ok: true } | { ok: false; error: string }>
+  clearWorktreeDeleteState: (worktreeId: string) => void
   updateWorktreeMeta: (worktreeId: string, updates: Partial<WorktreeMeta>) => Promise<void>
   setActiveWorktree: (worktreeId: string | null) => void
   allWorktrees: () => Worktree[]
@@ -17,6 +28,7 @@ export interface WorktreeSlice {
 export const createWorktreeSlice: StateCreator<AppState, [], [], WorktreeSlice> = (set, get) => ({
   worktreesByRepo: {},
   activeWorktreeId: null,
+  deleteStateByWorktreeId: {},
 
   fetchWorktrees: async (repoId) => {
     try {
@@ -51,14 +63,22 @@ export const createWorktreeSlice: StateCreator<AppState, [], [], WorktreeSlice> 
   },
 
   removeWorktree: async (worktreeId, force) => {
+    set((s) => ({
+      deleteStateByWorktreeId: {
+        ...s.deleteStateByWorktreeId,
+        [worktreeId]: {
+          isDeleting: true,
+          error: null,
+          canForceDelete: false
+        }
+      }
+    }))
+
     try {
       await window.api.worktrees.remove({ worktreeId, force })
-      // Kill PTYs for tabs belonging to this worktree
+      await get().shutdownWorktreeTerminals(worktreeId)
       const tabs = get().tabsByWorktree[worktreeId] ?? []
       const tabIds = new Set(tabs.map((t) => t.id))
-      for (const tab of tabs) {
-        if (tab.ptyId) window.api.pty.kill(tab.ptyId)
-      }
 
       set((s) => {
         const next = { ...s.worktreesByRepo }
@@ -68,20 +88,48 @@ export const createWorktreeSlice: StateCreator<AppState, [], [], WorktreeSlice> 
         const nextTabs = { ...s.tabsByWorktree }
         delete nextTabs[worktreeId]
         const nextLayouts = { ...s.terminalLayoutsByTabId }
+        const nextPtyIdsByTabId = { ...s.ptyIdsByTabId }
         for (const tabId of tabIds) {
           delete nextLayouts[tabId]
+          delete nextPtyIdsByTabId[tabId]
         }
+        const nextDeleteState = { ...s.deleteStateByWorktreeId }
+        delete nextDeleteState[worktreeId]
         return {
           worktreesByRepo: next,
           tabsByWorktree: nextTabs,
+          ptyIdsByTabId: nextPtyIdsByTabId,
           terminalLayoutsByTabId: nextLayouts,
+          deleteStateByWorktreeId: nextDeleteState,
           activeWorktreeId: s.activeWorktreeId === worktreeId ? null : s.activeWorktreeId,
           activeTabId: s.activeTabId && tabIds.has(s.activeTabId) ? null : s.activeTabId
         }
       })
+      return { ok: true as const }
     } catch (err) {
       console.error('Failed to remove worktree:', err)
+      const error = err instanceof Error ? err.message : String(err)
+      set((s) => ({
+        deleteStateByWorktreeId: {
+          ...s.deleteStateByWorktreeId,
+          [worktreeId]: {
+            isDeleting: false,
+            error,
+            canForceDelete: !(force ?? false)
+          }
+        }
+      }))
+      return { ok: false as const, error }
     }
+  },
+
+  clearWorktreeDeleteState: (worktreeId) => {
+    set((s) => {
+      if (!s.deleteStateByWorktreeId[worktreeId]) return {}
+      const next = { ...s.deleteStateByWorktreeId }
+      delete next[worktreeId]
+      return { deleteStateByWorktreeId: next }
+    })
   },
 
   updateWorktreeMeta: async (worktreeId, updates) => {

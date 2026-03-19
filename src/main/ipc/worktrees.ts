@@ -106,7 +106,11 @@ export function registerWorktreeHandlers(mainWindow: BrowserWindow, store: Store
         }
       }
 
-      removeWorktree(repo.path, worktreePath, args.force ?? false)
+      try {
+        await removeWorktree(repo.path, worktreePath, args.force ?? false)
+      } catch (error) {
+        throw new Error(formatWorktreeRemovalError(error, worktreePath, args.force ?? false))
+      }
       store.removeWorktreeMeta(args.worktreeId)
 
       notifyWorktreesChanged(mainWindow, repoId)
@@ -172,4 +176,19 @@ function notifyWorktreesChanged(mainWindow: BrowserWindow, repoId: string): void
   if (!mainWindow.isDestroyed()) {
     mainWindow.webContents.send('worktrees:changed', { repoId })
   }
+}
+
+function formatWorktreeRemovalError(error: unknown, worktreePath: string, force: boolean): string {
+  const fallback = force
+    ? `Failed to force delete worktree at ${worktreePath}.`
+    : `Failed to delete worktree at ${worktreePath}.`
+
+  if (!(error instanceof Error)) return fallback
+
+  const errorWithStreams = error as Error & { stderr?: string; stdout?: string }
+  const details = [errorWithStreams.stderr, errorWithStreams.stdout, error.message]
+    .map((value) => value?.trim())
+    .find(Boolean)
+
+  return details ? `${fallback} ${details}` : fallback
 }

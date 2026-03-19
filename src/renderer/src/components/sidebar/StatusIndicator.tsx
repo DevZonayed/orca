@@ -53,8 +53,6 @@ function getFrame(): number {
   return _frame
 }
 
-// ─────────────────────────────────────────────────────────────────
-
 type Status = 'active' | 'working' | 'permission' | 'inactive'
 
 interface StatusIndicatorProps {
@@ -66,8 +64,6 @@ const StatusIndicator = React.memo(function StatusIndicator({
   status,
   className
 }: StatusIndicatorProps) {
-  // Only subscribes to the shared timer when status === 'working'.
-  // When not working, the subscribe is a no-op (returns identity unsub).
   const frame = useSyncExternalStore(
     status === 'working' ? subscribeFrame : noopSubscribe,
     getFrame

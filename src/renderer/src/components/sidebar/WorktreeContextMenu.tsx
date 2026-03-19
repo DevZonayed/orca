@@ -6,17 +6,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu'
-import {
-  FolderOpen,
-  Copy,
-  Bell,
-  BellOff,
-  Link,
-  MessageSquare,
-  XCircle,
-  Archive,
-  Trash2
-} from 'lucide-react'
+import { FolderOpen, Copy, Bell, BellOff, Link, MessageSquare, XCircle, Trash2 } from 'lucide-react'
 import { useAppStore } from '@/store'
 import type { Worktree } from '../../../../shared/types'
 
@@ -29,11 +19,13 @@ const CLOSE_ALL_CONTEXT_MENUS_EVENT = 'orca-close-all-context-menus'
 
 const WorktreeContextMenu = React.memo(function WorktreeContextMenu({ worktree, children }: Props) {
   const updateWorktreeMeta = useAppStore((s) => s.updateWorktreeMeta)
-  const removeWorktree = useAppStore((s) => s.removeWorktree)
   const openModal = useAppStore((s) => s.openModal)
-  const closeTab = useAppStore((s) => s.closeTab)
+  const shutdownWorktreeTerminals = useAppStore((s) => s.shutdownWorktreeTerminals)
+  const clearWorktreeDeleteState = useAppStore((s) => s.clearWorktreeDeleteState)
+  const deleteState = useAppStore((s) => s.deleteStateByWorktreeId[worktree.id])
   const [menuOpen, setMenuOpen] = useState(false)
   const [menuPoint, setMenuPoint] = useState({ x: 0, y: 0 })
+  const isDeleting = deleteState?.isDeleting ?? false
 
   useEffect(() => {
     const closeMenu = (): void => setMenuOpen(false)
@@ -62,22 +54,13 @@ const WorktreeContextMenu = React.memo(function WorktreeContextMenu({ worktree, 
   }, [worktree.id, worktree.comment, openModal])
 
   const handleCloseTerminals = useCallback(() => {
-    const tabs = useAppStore.getState().tabsByWorktree[worktree.id] ?? []
-    for (const tab of tabs) {
-      if (tab.ptyId) {
-        window.api.pty.kill(tab.ptyId)
-      }
-      closeTab(tab.id)
-    }
-  }, [worktree.id, closeTab])
-
-  const handleArchive = useCallback(() => {
-    updateWorktreeMeta(worktree.id, { isArchived: true })
-  }, [worktree.id, updateWorktreeMeta])
+    shutdownWorktreeTerminals(worktree.id)
+  }, [worktree.id, shutdownWorktreeTerminals])
 
   const handleDelete = useCallback(() => {
-    removeWorktree(worktree.id)
-  }, [worktree.id, removeWorktree])
+    clearWorktreeDeleteState(worktree.id)
+    openModal('delete-worktree', { worktreeId: worktree.id })
+  }, [worktree.id, clearWorktreeDeleteState, openModal])
 
   return (
     <>
@@ -104,39 +87,35 @@ const WorktreeContextMenu = React.memo(function WorktreeContextMenu({ worktree, 
           />
         </DropdownMenuTrigger>
         <DropdownMenuContent className="w-52" sideOffset={0} align="start">
-          <DropdownMenuItem onSelect={handleOpenInFinder}>
+          <DropdownMenuItem onSelect={handleOpenInFinder} disabled={isDeleting}>
             <FolderOpen className="size-3.5" />
             Open in Finder
           </DropdownMenuItem>
-          <DropdownMenuItem onSelect={handleCopyPath}>
+          <DropdownMenuItem onSelect={handleCopyPath} disabled={isDeleting}>
             <Copy className="size-3.5" />
             Copy Path
           </DropdownMenuItem>
           <DropdownMenuSeparator />
-          <DropdownMenuItem onSelect={handleToggleRead}>
+          <DropdownMenuItem onSelect={handleToggleRead} disabled={isDeleting}>
             {worktree.isUnread ? <BellOff className="size-3.5" /> : <Bell className="size-3.5" />}
             {worktree.isUnread ? 'Mark Read' : 'Mark Unread'}
           </DropdownMenuItem>
-          <DropdownMenuItem onSelect={handleLinkIssue}>
+          <DropdownMenuItem onSelect={handleLinkIssue} disabled={isDeleting}>
             <Link className="size-3.5" />
             {worktree.linkedIssue ? 'Edit GH Issue/PR' : 'Link GH Issue/PR'}
           </DropdownMenuItem>
-          <DropdownMenuItem onSelect={handleComment}>
+          <DropdownMenuItem onSelect={handleComment} disabled={isDeleting}>
             <MessageSquare className="size-3.5" />
             {worktree.comment ? 'Edit Comment' : 'Add Comment'}
           </DropdownMenuItem>
           <DropdownMenuSeparator />
-          <DropdownMenuItem onSelect={handleCloseTerminals}>
+          <DropdownMenuItem onSelect={handleCloseTerminals} disabled={isDeleting}>
             <XCircle className="size-3.5" />
-            Close Terminals
+            Shutdown
           </DropdownMenuItem>
-          <DropdownMenuItem onSelect={handleArchive}>
-            <Archive className="size-3.5" />
-            Archive
-          </DropdownMenuItem>
-          <DropdownMenuItem variant="destructive" onSelect={handleDelete}>
+          <DropdownMenuItem variant="destructive" onSelect={handleDelete} disabled={isDeleting}>
             <Trash2 className="size-3.5" />
-            Delete
+            {isDeleting ? 'Deleting…' : 'Delete'}
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>

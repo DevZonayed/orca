@@ -80,12 +80,15 @@ export function addWorktree(
 /**
  * Remove a worktree.
  */
-export function removeWorktree(repoPath: string, worktreePath: string, force = false): void {
+export async function removeWorktree(
+  repoPath: string,
+  worktreePath: string,
+  force = false
+): Promise<void> {
   const args = ['worktree', 'remove', worktreePath]
   if (force) args.push('--force')
-  execFileSync('git', args, {
+  await execFileAsync('git', args, {
     cwd: repoPath,
-    encoding: 'utf-8',
-    stdio: ['pipe', 'pipe', 'pipe']
+    encoding: 'utf-8'
   })
 }

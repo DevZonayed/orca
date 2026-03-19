@@ -72,7 +72,7 @@ function extractLastOscTitle(data: string): string | null {
 
 function createIpcPtyTransport(
   cwd?: string,
-  onPtyExit?: () => void,
+  onPtyExit?: (ptyId: string) => void,
   onTitleChange?: (title: string) => void,
   onPtySpawn?: (ptyId: string) => void
 ): PtyTransport {
@@ -116,9 +116,11 @@ function createIpcPtyTransport(
         unsubExit = window.api.pty.onExit((payload) => {
           if (payload.id === ptyId) {
             connected = false
+            const exitedPtyId = payload.id
             storedCallbacks.onExit?.(payload.code)
             storedCallbacks.onDisconnect?.()
-            onPtyExit?.()
+            ptyId = null
+            onPtyExit?.(exitedPtyId)
           }
         })
 
@@ -265,7 +267,7 @@ interface TerminalPaneProps {
   tabId: string
   cwd?: string
   isActive: boolean
-  onPtyExit: () => void
+  onPtyExit: (ptyId: string) => void
 }
 
 export default function TerminalPane({
@@ -427,6 +429,7 @@ export default function TerminalPane({
 
   const updateTabTitle = useAppStore((s) => s.updateTabTitle)
   const updateTabPtyId = useAppStore((s) => s.updateTabPtyId)
+  const clearTabPtyId = useAppStore((s) => s.clearTabPtyId)
 
   // Use a ref so the Restty closure always calls the latest onPtyExit
   const onPtyExitRef = useRef(onPtyExit)
@@ -459,9 +462,7 @@ export default function TerminalPane({
       updateTabTitle(tabId, title)
     }
 
-    const onPtySpawn = (ptyId: string): void => {
-      updateTabPtyId(tabId, ptyId)
-    }
+    const onPtySpawn = (ptyId: string): void => updateTabPtyId(tabId, ptyId)
 
     let shouldPersistLayout = false
 
@@ -472,11 +473,12 @@ export default function TerminalPane({
       shortcuts: { enabled: false },
       defaultContextMenu: false,
       appOptions: ({ id }) => {
-        const onExit = (): void => {
+        const onExit = (ptyId: string): void => {
           // Schedule close via parent
           const panes = restty.getPanes()
           if (panes.length <= 1) {
-            onPtyExitRef.current()
+            clearTabPtyId(tabId, ptyId)
+            onPtyExitRef.current(ptyId)
             return
           }
           restty.closePane(id)
@@ -669,6 +671,19 @@ export default function TerminalPane({
         const pane = restty.getActivePane() ?? panes[0]
         if (!pane) return
         toggleExpandPane(pane.id)
+        return
+      }
+
+      // Cmd+W closes only the active split pane and prevents the tab-level
+      // handler from closing the entire terminal tab.
+      if (!e.shiftKey && e.key.toLowerCase() === 'w') {
+        const panes = restty.getPanes()
+        if (panes.length < 2) return
+        e.preventDefault()
+        e.stopPropagation()
+        const pane = restty.getActivePane() ?? panes[0]
+        if (!pane) return
+        restty.closePane(pane.id)
         return
       }
 

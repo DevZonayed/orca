@@ -3,7 +3,7 @@ import { useAppStore } from '@/store'
 import { Badge } from '@/components/ui/badge'
 import { HoverCard, HoverCardTrigger, HoverCardContent } from '@/components/ui/hover-card'
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
-import { Bell } from 'lucide-react'
+import { Bell, LoaderCircle } from 'lucide-react'
 import RepoDotLabel from '@/components/repo/RepoDotLabel'
 import StatusIndicator from './StatusIndicator'
 import WorktreeContextMenu from './WorktreeContextMenu'
@@ -78,6 +78,7 @@ const WorktreeCard = React.memo(function WorktreeCard({
   const updateWorktreeMeta = useAppStore((s) => s.updateWorktreeMeta)
   const fetchPRForBranch = useAppStore((s) => s.fetchPRForBranch)
   const fetchIssue = useAppStore((s) => s.fetchIssue)
+  const deleteState = useAppStore((s) => s.deleteStateByWorktreeId[worktree.id])
 
   // ── GRANULAR selectors: only subscribe to THIS worktree's data ──
   const tabs = useAppStore((s) => s.tabsByWorktree[worktree.id] ?? EMPTY_TABS)
@@ -98,13 +99,19 @@ const WorktreeCard = React.memo(function WorktreeCard({
     : null
 
   const hasTerminals = tabs.length > 0
+  const isDeleting = deleteState?.isDeleting ?? false
 
   // Derive status
   const status: Status = useMemo(() => {
     if (!hasTerminals) return 'inactive'
-    if (tabs.some((t) => detectAgentStatusFromTitle(t.title) === 'permission')) return 'permission'
-    if (tabs.some((t) => detectAgentStatusFromTitle(t.title) === 'working')) return 'working'
-    return tabs.some((t) => t.ptyId) ? 'active' : 'inactive'
+    const liveTabs = tabs.filter((tab) => tab.ptyId)
+    if (liveTabs.some((tab) => detectAgentStatusFromTitle(tab.title) === 'permission')) {
+      return 'permission'
+    }
+    if (liveTabs.some((tab) => detectAgentStatusFromTitle(tab.title) === 'working')) {
+      return 'working'
+    }
+    return liveTabs.length > 0 ? 'active' : 'inactive'
   }, [hasTerminals, tabs])
 
   // Fetch PR data (debounced via ref guard)
@@ -161,10 +168,21 @@ const WorktreeCard = React.memo(function WorktreeCard({
       <div
         className={cn(
           'group relative flex items-start gap-2 px-2.5 py-1.5 rounded-md cursor-pointer transition-colors',
-          isActive ? 'bg-accent' : 'hover:bg-accent/50'
+          isActive ? 'bg-accent' : 'hover:bg-accent/50',
+          isDeleting && 'opacity-70'
         )}
         onClick={handleClick}
+        aria-busy={isDeleting}
       >
+        {isDeleting && (
+          <div className="absolute inset-0 z-10 flex items-center justify-end rounded-md bg-background/45 px-2 backdrop-blur-[1px]">
+            <div className="inline-flex items-center gap-1.5 rounded-md border border-border/70 bg-background/90 px-2 py-1 text-[10px] font-medium text-foreground shadow-sm">
+              <LoaderCircle className="size-3 animate-spin" />
+              Deleting…
+            </div>
+          </div>
+        )}
+
         {/* Status + quick unread bell */}
         <div className="flex flex-col items-center self-start pt-1 gap-1.5">
           <StatusIndicator status={status} />

@@ -16,6 +16,7 @@ export default function Terminal(): React.JSX.Element | null {
   const setActiveWorktree = useAppStore((s) => s.setActiveWorktree)
   const setTabCustomTitle = useAppStore((s) => s.setTabCustomTitle)
   const setTabColor = useAppStore((s) => s.setTabColor)
+  const consumeSuppressedPtyExit = useAppStore((s) => s.consumeSuppressedPtyExit)
   const expandedPaneByTabId = useAppStore((s) => s.expandedPaneByTabId)
   const workspaceSessionReady = useAppStore((s) => s.workspaceSessionReady)
 
@@ -104,10 +105,11 @@ export default function Terminal(): React.JSX.Element | null {
   )
 
   const handlePtyExit = useCallback(
-    (tabId: string) => {
+    (tabId: string, ptyId: string) => {
+      if (consumeSuppressedPtyExit(ptyId)) return
       handleCloseTab(tabId)
     },
-    [handleCloseTab]
+    [consumeSuppressedPtyExit, handleCloseTab]
   )
 
   const handleCloseOthers = useCallback(
@@ -229,7 +231,7 @@ export default function Terminal(): React.JSX.Element | null {
             tabId={tab.id}
             cwd={cwd}
             isActive={tab.id === activeTabId}
-            onPtyExit={() => handlePtyExit(tab.id)}
+            onPtyExit={(ptyId) => handlePtyExit(tab.id, ptyId)}
           />
         ))}
       </div>

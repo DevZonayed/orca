@@ -8,6 +8,7 @@ import WorktreeList from './WorktreeList'
 import SidebarToolbar from './SidebarToolbar'
 import AddWorktreeDialog from './AddWorktreeDialog'
 import WorktreeMetaDialog from './WorktreeMetaDialog'
+import DeleteWorktreeDialog from './DeleteWorktreeDialog'
 
 const MIN_WIDTH = 220
 const MAX_WIDTH = 500
@@ -99,6 +100,7 @@ export default function Sidebar(): React.JSX.Element {
       {/* Dialog (rendered outside sidebar to avoid clipping) */}
       <AddWorktreeDialog />
       <WorktreeMetaDialog />
+      <DeleteWorktreeDialog />
     </TooltipProvider>
   )
 }
