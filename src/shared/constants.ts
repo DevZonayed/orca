@@ -28,6 +28,8 @@ export function getDefaultSettings(homedir: string): GlobalSettings {
     theme: 'system',
     terminalFontSize: 14,
     terminalFontFamily: 'SF Mono',
+    terminalCursorStyle: 'bar',
+    terminalCursorBlink: true,
     terminalThemeDark: 'Ghostty Default Style Dark',
     terminalDividerColorDark: '#3f3f46',
     terminalUseSeparateLightTheme: false,
@@ -36,7 +38,8 @@ export function getDefaultSettings(homedir: string): GlobalSettings {
     terminalInactivePaneOpacity: 0.8,
     terminalActivePaneOpacity: 1,
     terminalPaneOpacityTransitionMs: 140,
-    terminalDividerThicknessPx: 1
+    terminalDividerThicknessPx: 1,
+    terminalScrollbackBytes: 10_000_000
   }
 }
 

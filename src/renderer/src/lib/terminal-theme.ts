@@ -94,6 +94,26 @@ export function resolvePaneStyleOptions(
   }
 }
 
+export function getCursorStyleSequence(
+  style: 'bar' | 'block' | 'underline',
+  blinking: boolean
+): string {
+  const code =
+    style === 'block'
+      ? blinking
+        ? 1
+        : 2
+      : style === 'underline'
+        ? blinking
+          ? 3
+          : 4
+        : blinking
+          ? 5
+          : 6
+
+  return `\u001b[${code} q`
+}
+
 export function colorToCss(
   color: { r: number; g: number; b: number; a?: number } | string | undefined,
   fallback: string

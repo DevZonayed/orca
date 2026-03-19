@@ -7,6 +7,7 @@ import { Button } from './ui/button'
 import { Input } from './ui/input'
 import { Label } from './ui/label'
 import { Separator } from './ui/separator'
+import { ToggleGroup, ToggleGroupItem } from './ui/toggle-group'
 import { TerminalThemePreview } from './settings/TerminalThemePreview'
 import {
   BUILTIN_TERMINAL_THEME_NAMES,
@@ -33,6 +34,7 @@ type HookName = keyof OrcaHooks['scripts']
 const DEFAULT_REPO_HOOK_SETTINGS = getDefaultRepoHookSettings()
 const MAX_THEME_RESULTS = 80
 const MAX_FONT_RESULTS = 12
+const SCROLLBACK_PRESETS_MB = [10, 25, 50, 100, 250] as const
 
 function getFallbackTerminalFonts(): string[] {
   const nav =
@@ -372,6 +374,7 @@ function Settings(): React.JSX.Element {
   const [themeSearchDark, setThemeSearchDark] = useState('')
   const [themeSearchLight, setThemeSearchLight] = useState('')
   const [systemPrefersDark, setSystemPrefersDark] = useState(getSystemPrefersDark())
+  const [scrollbackMode, setScrollbackMode] = useState<'preset' | 'custom'>('preset')
   const [terminalFontSuggestions, setTerminalFontSuggestions] = useState<string[]>(
     getFallbackTerminalFonts()
   )
@@ -413,6 +416,17 @@ function Settings(): React.JSX.Element {
       stale = true
     }
   }, [selectedPane])
+
+  useEffect(() => {
+    if (!settings) return
+
+    const scrollbackMb = Math.max(1, Math.round(settings.terminalScrollbackBytes / 1_000_000))
+    setScrollbackMode(
+      SCROLLBACK_PRESETS_MB.includes(scrollbackMb as (typeof SCROLLBACK_PRESETS_MB)[number])
+        ? 'preset'
+        : 'custom'
+    )
+  }, [settings])
 
   useEffect(() => {
     let stale = false
@@ -614,6 +628,13 @@ function Settings(): React.JSX.Element {
     systemPrefersDark
   )
   const paneStyleOptions = resolvePaneStyleOptions(settings)
+  const scrollbackMb = Math.max(1, Math.round(settings.terminalScrollbackBytes / 1_000_000))
+  const scrollbackPresetSelection = SCROLLBACK_PRESETS_MB.includes(
+    scrollbackMb as (typeof SCROLLBACK_PRESETS_MB)[number]
+  )
+    ? `${scrollbackMb}`
+    : 'custom'
+  const scrollbackToggleValue = scrollbackMode === 'custom' ? 'custom' : scrollbackPresetSelection
   const contentClassName = 'w-full max-w-5xl px-8'
   const pageHeader = showGeneralPane ? (
     <div className="space-y-1">
@@ -936,6 +957,65 @@ function Settings(): React.JSX.Element {
 
                 <section className="space-y-4">
                   <div className="space-y-1">
+                    <h2 className="text-sm font-semibold">Cursor</h2>
+                    <p className="text-xs text-muted-foreground">
+                      Default cursor appearance for Orca terminal panes.
+                    </p>
+                  </div>
+
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <Label className="text-sm">Cursor Shape</Label>
+                      <div className="flex w-fit gap-1 rounded-md border p-1">
+                        {(['bar', 'block', 'underline'] as const).map((option) => (
+                          <button
+                            key={option}
+                            onClick={() => updateSettings({ terminalCursorStyle: option })}
+                            className={`rounded-sm px-3 py-1 text-sm capitalize transition-colors ${
+                              settings.terminalCursorStyle === option
+                                ? 'bg-accent font-medium text-accent-foreground'
+                                : 'text-muted-foreground hover:text-foreground'
+                            }`}
+                          >
+                            {option}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-4 px-1 py-2">
+                      <div className="space-y-0.5">
+                        <Label className="text-sm">Blinking Cursor</Label>
+                        <p className="text-xs text-muted-foreground">
+                          Uses the blinking variant of the selected cursor shape.
+                        </p>
+                      </div>
+                      <button
+                        role="switch"
+                        aria-checked={settings.terminalCursorBlink}
+                        onClick={() =>
+                          updateSettings({
+                            terminalCursorBlink: !settings.terminalCursorBlink
+                          })
+                        }
+                        className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border border-transparent transition-colors ${
+                          settings.terminalCursorBlink ? 'bg-foreground' : 'bg-muted-foreground/30'
+                        }`}
+                      >
+                        <span
+                          className={`pointer-events-none block size-3.5 rounded-full bg-background shadow-sm transition-transform ${
+                            settings.terminalCursorBlink ? 'translate-x-4' : 'translate-x-0.5'
+                          }`}
+                        />
+                      </button>
+                    </div>
+                  </div>
+                </section>
+
+                <Separator />
+
+                <section className="space-y-4">
+                  <div className="space-y-1">
                     <h2 className="text-sm font-semibold">Pane Styling</h2>
                     <p className="text-xs text-muted-foreground">
                       Control inactive pane dimming, divider thickness, and transition timing.
@@ -1086,6 +1166,77 @@ function Settings(): React.JSX.Element {
                         />
                       </div>
                     </div>
+                  </div>
+                </section>
+
+                <Separator />
+
+                <section className="space-y-4">
+                  <div className="space-y-1">
+                    <h2 className="text-sm font-semibold">Advanced</h2>
+                    <p className="text-xs text-muted-foreground">
+                      Scrollback is bounded for stability. This setting applies to new terminal
+                      panes.
+                    </p>
+                  </div>
+
+                  <div className="space-y-3">
+                    <Label className="text-sm">Scrollback Size</Label>
+                    <ToggleGroup
+                      type="single"
+                      value={scrollbackToggleValue}
+                      onValueChange={(value) => {
+                        if (!value) return
+                        if (value === 'custom') {
+                          setScrollbackMode('custom')
+                          return
+                        }
+
+                        setScrollbackMode('preset')
+                        updateSettings({
+                          terminalScrollbackBytes: Number(value) * 1_000_000
+                        })
+                      }}
+                      variant="outline"
+                      size="sm"
+                      className="h-8 flex-wrap"
+                    >
+                      {SCROLLBACK_PRESETS_MB.map((preset) => (
+                        <ToggleGroupItem
+                          key={preset}
+                          value={`${preset}`}
+                          className="h-8 px-3 text-xs"
+                          aria-label={`${preset} megabytes`}
+                        >
+                          {preset} MB
+                        </ToggleGroupItem>
+                      ))}
+                      <ToggleGroupItem
+                        value="custom"
+                        className="h-8 px-3 text-xs"
+                        aria-label="Custom"
+                      >
+                        Custom
+                      </ToggleGroupItem>
+                    </ToggleGroup>
+
+                    {scrollbackMode === 'custom' ? (
+                      <NumberField
+                        label="Custom Scrollback"
+                        description="Maximum terminal scrollback buffer size."
+                        value={scrollbackMb}
+                        defaultValue={10}
+                        min={1}
+                        max={256}
+                        step={1}
+                        suffix="MB"
+                        onChange={(value) =>
+                          updateSettings({
+                            terminalScrollbackBytes: clampNumber(value, 1, 256) * 1_000_000
+                          })
+                        }
+                      />
+                    ) : null}
                   </div>
                 </section>
               </div>

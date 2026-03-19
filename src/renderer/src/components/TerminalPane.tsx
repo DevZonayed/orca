@@ -30,6 +30,7 @@ import {
   DEFAULT_TERMINAL_DIVIDER_DARK,
   buildTerminalFontMatchers,
   colorToCss,
+  getCursorStyleSequence,
   normalizeColor,
   resolvePaneStyleOptions,
   resolveEffectiveTerminalAppearance
@@ -539,13 +540,18 @@ export default function TerminalPane({
 
     const appearance = resolveEffectiveTerminalAppearance(currentSettings, systemPrefersDark)
     const paneStyles = resolvePaneStyleOptions(currentSettings)
+    const cursorSequence = getCursorStyleSequence(
+      currentSettings.terminalCursorStyle,
+      currentSettings.terminalCursorBlink
+    )
     const theme = appearance.theme ?? getBuiltinTheme(appearance.themeName)
     const paneBackground = colorToCss(theme?.colors.background, '#000000')
-    if (theme) {
-      for (const pane of restty.getPanes()) {
+    for (const pane of restty.getPanes()) {
+      if (theme) {
         pane.app.applyTheme(theme, appearance.themeName)
-        pane.app.setFontSize(currentSettings.terminalFontSize)
       }
+      pane.app.setFontSize(currentSettings.terminalFontSize)
+      pane.app.sendInput(cursorSequence, 'pty')
     }
 
     restty.setPaneStyleOptions({
@@ -613,6 +619,7 @@ export default function TerminalPane({
           fontSize: currentSettings?.terminalFontSize ?? 14,
           fontSizeMode: 'em',
           alphaBlending: 'native',
+          maxScrollbackBytes: currentSettings?.terminalScrollbackBytes ?? 10_000_000,
           ptyTransport: createIpcPtyTransport(
             cwd,
             onExit,
