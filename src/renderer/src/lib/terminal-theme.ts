@@ -70,7 +70,21 @@ export function buildTerminalFontMatchers(fontFamily: string): string[] {
   const trimmed = fontFamily.trim()
   const normalized = trimmed.toLowerCase()
   const matchers = trimmed ? [trimmed, normalized] : []
-  return Array.from(new Set([...matchers, 'sf mono', 'sfmono-regular', 'menlo', 'menlo regular']))
+  return Array.from(
+    new Set([
+      ...matchers,
+      // macOS
+      'sf mono',
+      'sfmono-regular',
+      'menlo',
+      'menlo regular',
+      // Linux
+      'dejavu sans mono',
+      'liberation mono',
+      'ubuntu mono',
+      'monospace'
+    ])
+  )
 }
 
 export function clampNumber(value: number, min: number, max: number): number {
