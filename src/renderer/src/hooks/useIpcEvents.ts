@@ -17,6 +17,12 @@ export function useIpcEvents(): void {
       })
     )
 
+    unsubs.push(
+      window.api.ui.onOpenSettings(() => {
+        useAppStore.getState().setActiveView('settings')
+      })
+    )
+
     return () => unsubs.forEach((fn) => fn())
   }, [])
 }

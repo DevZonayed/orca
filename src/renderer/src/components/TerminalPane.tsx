@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Restty, getBuiltinTheme } from 'restty'
+import type { CSSProperties } from 'react'
 import {
   Clipboard,
   Copy,
@@ -25,6 +26,14 @@ import type {
   TerminalPaneSplitDirection
 } from '../../../shared/types'
 import { useAppStore } from '../store'
+import {
+  DEFAULT_TERMINAL_DIVIDER_DARK,
+  buildTerminalFontMatchers,
+  colorToCss,
+  normalizeColor,
+  resolvePaneStyleOptions,
+  resolveEffectiveTerminalAppearance
+} from '@/lib/terminal-theme'
 
 type PtyTransport = {
   connect: (options: {
@@ -221,6 +230,22 @@ function createIpcPtyTransport(
 
 function paneLeafId(paneId: number): string {
   return `pane:${paneId}`
+}
+
+function buildTerminalFontSources(fontFamily: string) {
+  return [
+    {
+      type: 'local' as const,
+      label: fontFamily || 'Preferred terminal font',
+      matchers: buildTerminalFontMatchers(fontFamily),
+      required: true
+    },
+    {
+      type: 'local' as const,
+      label: 'Menlo',
+      matchers: ['menlo', 'menlo regular']
+    }
+  ]
 }
 
 function getLayoutChildNodes(split: HTMLElement): HTMLElement[] {
@@ -485,10 +510,53 @@ export default function TerminalPane({
   const updateTabPtyId = useAppStore((s) => s.updateTabPtyId)
   const clearTabPtyId = useAppStore((s) => s.clearTabPtyId)
   const markWorktreeUnreadFromBell = useAppStore((s) => s.markWorktreeUnreadFromBell)
+  const settings = useAppStore((s) => s.settings)
+  const [systemPrefersDark, setSystemPrefersDark] = useState(() =>
+    typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+      ? window.matchMedia('(prefers-color-scheme: dark)').matches
+      : true
+  )
+  const settingsRef = useRef(settings)
+  settingsRef.current = settings
 
   // Use a ref so the Restty closure always calls the latest onPtyExit
   const onPtyExitRef = useRef(onPtyExit)
   onPtyExitRef.current = onPtyExit
+
+  useEffect(() => {
+    const media = window.matchMedia('(prefers-color-scheme: dark)')
+    const handleChange = (event: MediaQueryListEvent): void => {
+      setSystemPrefersDark(event.matches)
+    }
+    setSystemPrefersDark(media.matches)
+    media.addEventListener('change', handleChange)
+    return () => media.removeEventListener('change', handleChange)
+  }, [])
+
+  const applyTerminalAppearance = (restty: Restty): void => {
+    const currentSettings = settingsRef.current
+    if (!currentSettings) return
+
+    const appearance = resolveEffectiveTerminalAppearance(currentSettings, systemPrefersDark)
+    const paneStyles = resolvePaneStyleOptions(currentSettings)
+    const theme = appearance.theme ?? getBuiltinTheme(appearance.themeName)
+    const paneBackground = colorToCss(theme?.colors.background, '#000000')
+    if (theme) {
+      for (const pane of restty.getPanes()) {
+        pane.app.applyTheme(theme, appearance.themeName)
+        pane.app.setFontSize(currentSettings.terminalFontSize)
+      }
+    }
+
+    restty.setPaneStyleOptions({
+      splitBackground: paneBackground,
+      paneBackground,
+      inactivePaneOpacity: paneStyles.inactivePaneOpacity,
+      activePaneOpacity: paneStyles.activePaneOpacity,
+      opacityTransitionMs: paneStyles.opacityTransitionMs,
+      dividerThicknessPx: paneStyles.dividerThicknessPx
+    })
+  }
 
   // Initialize Restty instance once
   useEffect(() => {
@@ -529,6 +597,7 @@ export default function TerminalPane({
       shortcuts: { enabled: false },
       defaultContextMenu: false,
       appOptions: ({ id }) => {
+        const currentSettings = settingsRef.current
         const onExit = (ptyId: string): void => {
           // Schedule close via parent
           const panes = restty.getPanes()
@@ -541,7 +610,7 @@ export default function TerminalPane({
         }
         return {
           renderer: 'webgpu',
-          fontSize: 14,
+          fontSize: currentSettings?.terminalFontSize ?? 14,
           fontSizeMode: 'em',
           alphaBlending: 'native',
           ptyTransport: createIpcPtyTransport(
@@ -551,25 +620,12 @@ export default function TerminalPane({
             onPtySpawn,
             onBell
           ) as never,
-          fontSources: [
-            {
-              type: 'local' as const,
-              label: 'SF Mono',
-              matchers: ['sf mono', 'sfmono-regular'],
-              required: true
-            },
-            {
-              type: 'local' as const,
-              label: 'Menlo',
-              matchers: ['menlo', 'menlo regular']
-            }
-          ]
+          fontSources: buildTerminalFontSources(currentSettings?.terminalFontFamily ?? 'SF Mono')
         }
       },
       onPaneCreated: async (pane) => {
         await pane.app.init()
-        const theme = getBuiltinTheme('Aizen Dark')
-        if (theme) pane.app.applyTheme(theme, 'Aizen Dark')
+        applyTerminalAppearance(restty)
         pane.app.updateSize(true)
         pane.app.connectPty('')
         pane.canvas.focus({ preventScroll: true })
@@ -610,6 +666,7 @@ export default function TerminalPane({
     }
     shouldPersistLayout = true
     syncCanExpandState()
+    applyTerminalAppearance(restty)
     queueResizeAll(isActive)
     persistLayoutSnapshot()
 
@@ -623,6 +680,19 @@ export default function TerminalPane({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tabId, cwd])
+
+  useEffect(() => {
+    const restty = resttyRef.current
+    if (!restty || !settings) return
+    applyTerminalAppearance(restty)
+    void Promise.all(
+      restty
+        .getPanes()
+        .map((pane) =>
+          pane.app.setFontSources(buildTerminalFontSources(settings.terminalFontFamily))
+        )
+    )
+  }, [settings, systemPrefersDark])
 
   // Handle focus and resize when tab becomes active
   useEffect(() => {
@@ -824,13 +894,25 @@ export default function TerminalPane({
   const canExpandPane = paneCount > 1
   const menuPaneId = resolveMenuPane()?.id ?? null
   const menuPaneIsExpanded = menuPaneId !== null && menuPaneId === expandedPaneId
+  const effectiveAppearance = settings
+    ? resolveEffectiveTerminalAppearance(settings, systemPrefersDark)
+    : null
+  const terminalContainerStyle: CSSProperties = {
+    display: isActive ? 'flex' : 'none',
+    ['--orca-terminal-divider-color' as string]:
+      effectiveAppearance?.dividerColor ?? DEFAULT_TERMINAL_DIVIDER_DARK,
+    ['--orca-terminal-divider-color-strong' as string]: normalizeColor(
+      effectiveAppearance?.dividerColor,
+      DEFAULT_TERMINAL_DIVIDER_DARK
+    )
+  }
 
   return (
     <>
       <div
         ref={containerRef}
         className="absolute inset-0 min-h-0 min-w-0"
-        style={{ display: isActive ? 'flex' : 'none' }}
+        style={terminalContainerStyle}
         onContextMenuCapture={(event) => {
           event.preventDefault()
           window.dispatchEvent(new Event(CLOSE_ALL_CONTEXT_MENUS_EVENT))

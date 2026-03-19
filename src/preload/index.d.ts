@@ -53,6 +53,7 @@ interface GhApi {
 interface SettingsApi {
   get: () => Promise<GlobalSettings>
   set: (args: Partial<GlobalSettings>) => Promise<GlobalSettings>
+  listFonts: () => Promise<string[]>
 }
 
 interface ShellApi {
@@ -85,6 +86,7 @@ interface SessionApi {
 interface UIApi {
   get: () => Promise<PersistedUIState>
   set: (args: Partial<PersistedUIState>) => Promise<void>
+  onOpenSettings: (callback: () => void) => () => void
 }
 
 interface Api {

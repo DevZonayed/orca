@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import type { OrcaHooks, Repo, RepoHookSettings } from '../../../shared/types'
 import { REPO_COLORS, getDefaultRepoHookSettings } from '../../../shared/constants'
 import { useAppStore } from '../store'
@@ -7,8 +7,20 @@ import { Button } from './ui/button'
 import { Input } from './ui/input'
 import { Label } from './ui/label'
 import { Separator } from './ui/separator'
+import { TerminalThemePreview } from './settings/TerminalThemePreview'
+import {
+  BUILTIN_TERMINAL_THEME_NAMES,
+  clampNumber,
+  getSystemPrefersDark,
+  normalizeColor,
+  resolvePaneStyleOptions,
+  resolveEffectiveTerminalAppearance
+} from '@/lib/terminal-theme'
 import {
   ArrowLeft,
+  Check,
+  ChevronsUpDown,
+  CircleX,
   FolderOpen,
   Minus,
   Plus,
@@ -19,6 +31,324 @@ import {
 
 type HookName = keyof OrcaHooks['scripts']
 const DEFAULT_REPO_HOOK_SETTINGS = getDefaultRepoHookSettings()
+const MAX_THEME_RESULTS = 80
+const MAX_FONT_RESULTS = 12
+
+function getFallbackTerminalFonts(): string[] {
+  const nav =
+    typeof navigator !== 'undefined'
+      ? (navigator as Navigator & { userAgentData?: { platform?: string } })
+      : null
+  const platform = nav ? (nav.userAgentData?.platform ?? nav.platform ?? '') : ''
+  const normalizedPlatform = platform.toLowerCase()
+
+  if (normalizedPlatform.includes('mac')) {
+    return ['SF Mono', 'Menlo', 'Monaco', 'JetBrains Mono', 'Fira Code']
+  }
+
+  if (normalizedPlatform.includes('win')) {
+    return ['Cascadia Mono', 'Consolas', 'Lucida Console', 'JetBrains Mono', 'Fira Code']
+  }
+
+  return [
+    'JetBrains Mono',
+    'Fira Code',
+    'DejaVu Sans Mono',
+    'Liberation Mono',
+    'Ubuntu Mono',
+    'Noto Sans Mono'
+  ]
+}
+
+type ThemePickerProps = {
+  label: string
+  description: string
+  selectedTheme: string
+  query: string
+  onQueryChange: (value: string) => void
+  onSelectTheme: (theme: string) => void
+}
+
+type ColorFieldProps = {
+  label: string
+  description: string
+  value: string
+  fallback: string
+  onChange: (value: string) => void
+}
+
+function ThemePicker({
+  label,
+  description,
+  selectedTheme,
+  query,
+  onQueryChange,
+  onSelectTheme
+}: ThemePickerProps): React.JSX.Element {
+  const normalizedQuery = query.trim().toLowerCase()
+  const filteredThemes = BUILTIN_TERMINAL_THEME_NAMES.filter((theme) =>
+    theme.toLowerCase().includes(normalizedQuery)
+  ).slice(0, MAX_THEME_RESULTS)
+
+  return (
+    <div className="space-y-3">
+      <div className="space-y-1">
+        <Label className="text-sm">{label}</Label>
+        <p className="text-xs text-muted-foreground">{description}</p>
+      </div>
+      <Input
+        value={query}
+        onChange={(e) => onQueryChange(e.target.value)}
+        placeholder="Search builtin themes"
+      />
+      <div className="rounded-lg border">
+        <div className="flex items-center justify-between border-b px-3 py-2 text-xs text-muted-foreground">
+          <span>Selected: {selectedTheme}</span>
+          <span>
+            Showing {filteredThemes.length}
+            {normalizedQuery
+              ? ` matching "${query.trim()}"`
+              : ` of ${BUILTIN_TERMINAL_THEME_NAMES.length}`}
+          </span>
+        </div>
+        <ScrollArea className="h-64">
+          <div className="space-y-1 p-2">
+            {filteredThemes.map((theme) => (
+              <button
+                key={theme}
+                onClick={() => onSelectTheme(theme)}
+                className={`flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-sm transition-colors ${
+                  selectedTheme === theme
+                    ? 'bg-accent font-medium text-accent-foreground'
+                    : 'hover:bg-muted/60'
+                }`}
+              >
+                <span className="truncate">{theme}</span>
+                {selectedTheme === theme ? (
+                  <span className="ml-3 shrink-0 text-[11px] uppercase tracking-[0.16em]">
+                    Current
+                  </span>
+                ) : null}
+              </button>
+            ))}
+            {filteredThemes.length === 0 ? (
+              <div className="px-3 py-6 text-sm text-muted-foreground">No themes found.</div>
+            ) : null}
+          </div>
+        </ScrollArea>
+      </div>
+    </div>
+  )
+}
+
+function ColorField({
+  label,
+  description,
+  value,
+  fallback,
+  onChange
+}: ColorFieldProps): React.JSX.Element {
+  const normalized = normalizeColor(value, fallback)
+
+  return (
+    <div className="space-y-2">
+      <div className="space-y-1">
+        <Label className="text-sm">{label}</Label>
+        <p className="text-xs text-muted-foreground">{description}</p>
+      </div>
+      <div className="flex items-center gap-3">
+        <input
+          type="color"
+          value={normalized}
+          onChange={(e) => onChange(e.target.value)}
+          className="h-9 w-12 rounded-md border border-input bg-transparent p-1"
+        />
+        <Input
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={fallback}
+          className="max-w-xs font-mono text-xs"
+        />
+      </div>
+    </div>
+  )
+}
+
+type NumberFieldProps = {
+  label: string
+  description: string
+  value: number
+  defaultValue?: number
+  min: number
+  max: number
+  step?: number
+  onChange: (value: number) => void
+  suffix?: string
+}
+
+type FontAutocompleteProps = {
+  value: string
+  suggestions: string[]
+  onChange: (value: string) => void
+}
+
+function NumberField({
+  label,
+  description,
+  value,
+  defaultValue,
+  min,
+  max,
+  step = 1,
+  onChange,
+  suffix
+}: NumberFieldProps): React.JSX.Element {
+  return (
+    <div className="space-y-2">
+      <div className="space-y-1">
+        <Label className="text-sm">{label}</Label>
+        <p className="text-xs text-muted-foreground">{description}</p>
+      </div>
+      <div className="flex items-center gap-3">
+        <Input
+          type="number"
+          min={min}
+          max={max}
+          step={step}
+          value={Number.isFinite(value) ? String(value) : ''}
+          onChange={(e) => {
+            const next = Number(e.target.value)
+            if (!Number.isFinite(next)) return
+            onChange(next)
+          }}
+          className="number-input-clean w-28 tabular-nums"
+        />
+        {suffix ? <span className="text-xs text-muted-foreground">{suffix}</span> : null}
+      </div>
+      <p className="text-[11px] text-muted-foreground">
+        Current: {value}
+        {defaultValue !== undefined ? ` · Default: ${defaultValue}` : ''}
+      </p>
+    </div>
+  )
+}
+
+function FontAutocomplete({
+  value,
+  suggestions,
+  onChange
+}: FontAutocompleteProps): React.JSX.Element {
+  const [query, setQuery] = useState(value)
+  const [open, setOpen] = useState(false)
+  const rootRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    setQuery(value)
+  }, [value])
+
+  useEffect(() => {
+    if (!open) return
+
+    const handlePointerDown = (event: MouseEvent): void => {
+      if (!rootRef.current?.contains(event.target as Node)) {
+        setOpen(false)
+      }
+    }
+
+    document.addEventListener('mousedown', handlePointerDown)
+    return () => document.removeEventListener('mousedown', handlePointerDown)
+  }, [open])
+
+  const normalizedQuery = query.trim().toLowerCase()
+  const filteredSuggestions = useMemo(() => {
+    const startsWith = suggestions.filter((font) => font.toLowerCase().startsWith(normalizedQuery))
+    const includes = suggestions.filter(
+      (font) =>
+        !font.toLowerCase().startsWith(normalizedQuery) &&
+        font.toLowerCase().includes(normalizedQuery)
+    )
+    const ordered = normalizedQuery ? [...startsWith, ...includes] : suggestions
+    return ordered.slice(0, MAX_FONT_RESULTS)
+  }, [suggestions, normalizedQuery])
+
+  const commitValue = (nextValue: string): void => {
+    setQuery(nextValue)
+    onChange(nextValue)
+    setOpen(false)
+  }
+
+  return (
+    <div ref={rootRef} className="relative max-w-sm">
+      <div className="relative">
+        <Input
+          value={query}
+          onChange={(e) => {
+            const next = e.target.value
+            setQuery(next)
+            onChange(next)
+            setOpen(true)
+          }}
+          onFocus={() => setOpen(true)}
+          placeholder="SF Mono"
+          className="pr-18"
+        />
+        <div className="absolute inset-y-0 right-2 flex items-center gap-1">
+          {query ? (
+            <button
+              type="button"
+              onClick={() => {
+                setQuery('')
+                onChange('')
+                setOpen(true)
+              }}
+              className="rounded-sm p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              aria-label="Clear font selection"
+              title="Clear"
+            >
+              <CircleX className="size-3.5" />
+            </button>
+          ) : null}
+          <button
+            type="button"
+            onClick={() => setOpen((current) => !current)}
+            className="rounded-sm p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            aria-label="Toggle font suggestions"
+            title="Fonts"
+          >
+            <ChevronsUpDown className="size-3.5" />
+          </button>
+        </div>
+      </div>
+
+      {open ? (
+        <div className="absolute top-full z-20 mt-2 w-full overflow-hidden rounded-md border bg-popover shadow-md">
+          <ScrollArea className="max-h-64">
+            <div className="p-1">
+              {filteredSuggestions.length > 0 ? (
+                filteredSuggestions.map((font) => (
+                  <button
+                    key={font}
+                    type="button"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => commitValue(font)}
+                    className={`flex w-full items-center justify-between rounded-sm px-3 py-2 text-left text-sm transition-colors ${
+                      font === value ? 'bg-accent text-accent-foreground' : 'hover:bg-muted/60'
+                    }`}
+                  >
+                    <span className="truncate">{font}</span>
+                    {font === value ? <Check className="ml-3 size-4 shrink-0" /> : null}
+                  </button>
+                ))
+              ) : (
+                <div className="px-3 py-3 text-sm text-muted-foreground">No matching fonts.</div>
+              )}
+            </div>
+          </ScrollArea>
+        </div>
+      ) : null}
+    </div>
+  )
+}
 
 function Settings(): React.JSX.Element {
   const settings = useAppStore((s) => s.settings)
@@ -39,10 +369,50 @@ function Settings(): React.JSX.Element {
   const [baseRefQuery, setBaseRefQuery] = useState('')
   const [baseRefResults, setBaseRefResults] = useState<string[]>([])
   const [isSearchingBaseRefs, setIsSearchingBaseRefs] = useState(false)
+  const [themeSearchDark, setThemeSearchDark] = useState('')
+  const [themeSearchLight, setThemeSearchLight] = useState('')
+  const [systemPrefersDark, setSystemPrefersDark] = useState(getSystemPrefersDark())
+  const [terminalFontSuggestions, setTerminalFontSuggestions] = useState<string[]>(
+    getFallbackTerminalFonts()
+  )
+  const terminalFontsLoadedRef = useRef(false)
 
   useEffect(() => {
     fetchSettings()
   }, [fetchSettings])
+
+  useEffect(() => {
+    const media = window.matchMedia('(prefers-color-scheme: dark)')
+    const handleChange = (event: MediaQueryListEvent): void => {
+      setSystemPrefersDark(event.matches)
+    }
+    setSystemPrefersDark(media.matches)
+    media.addEventListener('change', handleChange)
+    return () => media.removeEventListener('change', handleChange)
+  }, [])
+
+  useEffect(() => {
+    if (selectedPane !== 'terminal' || terminalFontsLoadedRef.current) return
+
+    let stale = false
+
+    const loadFontSuggestions = async (): Promise<void> => {
+      try {
+        const fonts = await window.api.settings.listFonts()
+        if (stale || fonts.length === 0) return
+        terminalFontsLoadedRef.current = true
+        setTerminalFontSuggestions((prev) => Array.from(new Set([...fonts, ...prev])).slice(0, 320))
+      } catch {
+        // Fall back to curated cross-platform suggestions.
+      }
+    }
+
+    void loadFontSuggestions()
+
+    return () => {
+      stale = true
+    }
+  }, [selectedPane])
 
   useEffect(() => {
     let stale = false
@@ -228,6 +598,22 @@ function Settings(): React.JSX.Element {
       </div>
     )
   }
+
+  const darkPreviewAppearance = resolveEffectiveTerminalAppearance(
+    {
+      ...settings,
+      theme: 'dark'
+    },
+    systemPrefersDark
+  )
+  const lightPreviewAppearance = resolveEffectiveTerminalAppearance(
+    {
+      ...settings,
+      theme: 'light'
+    },
+    systemPrefersDark
+  )
+  const paneStyleOptions = resolvePaneStyleOptions(settings)
 
   return (
     <div className="settings-view-shell flex min-h-0 flex-1 overflow-hidden bg-background">
@@ -461,7 +847,7 @@ function Settings(): React.JSX.Element {
               <div className="space-y-1">
                 <h1 className="text-2xl font-semibold">Terminal</h1>
                 <p className="text-sm text-muted-foreground">
-                  Default terminal typography for new panes.
+                  Terminal appearance, previews, and defaults for new panes.
                 </p>
               </div>
 
@@ -469,7 +855,7 @@ function Settings(): React.JSX.Element {
                 <div className="space-y-1">
                   <h2 className="text-sm font-semibold">Typography</h2>
                   <p className="text-xs text-muted-foreground">
-                    Default terminal typography for new panes.
+                    Default terminal typography for new panes and live updates.
                   </p>
                 </div>
 
@@ -517,12 +903,164 @@ function Settings(): React.JSX.Element {
 
                 <div className="space-y-2">
                   <Label className="text-sm">Font Family</Label>
-                  <Input
+                  <FontAutocomplete
                     value={settings.terminalFontFamily}
-                    onChange={(e) => updateSettings({ terminalFontFamily: e.target.value })}
-                    placeholder="SF Mono"
-                    className="max-w-xs"
+                    suggestions={terminalFontSuggestions}
+                    onChange={(value) => updateSettings({ terminalFontFamily: value })}
                   />
+                </div>
+              </section>
+
+              <Separator />
+
+              <section className="space-y-4">
+                <div className="space-y-1">
+                  <h2 className="text-sm font-semibold">Pane Styling</h2>
+                  <p className="text-xs text-muted-foreground">
+                    Control inactive pane dimming, divider thickness, and transition timing.
+                  </p>
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  <NumberField
+                    label="Inactive Pane Opacity"
+                    description="Opacity applied to panes that are not currently active."
+                    value={paneStyleOptions.inactivePaneOpacity}
+                    defaultValue={0.8}
+                    min={0}
+                    max={1}
+                    step={0.05}
+                    suffix="0 to 1"
+                    onChange={(value) =>
+                      updateSettings({
+                        terminalInactivePaneOpacity: clampNumber(value, 0, 1)
+                      })
+                    }
+                  />
+                  <NumberField
+                    label="Divider Thickness"
+                    description="Thickness of the pane divider line."
+                    value={paneStyleOptions.dividerThicknessPx}
+                    defaultValue={1}
+                    min={1}
+                    max={32}
+                    step={1}
+                    suffix="px"
+                    onChange={(value) =>
+                      updateSettings({
+                        terminalDividerThicknessPx: clampNumber(value, 1, 32)
+                      })
+                    }
+                  />
+                </div>
+              </section>
+
+              <Separator />
+
+              <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
+                <div className="space-y-6">
+                  <ThemePicker
+                    label="Dark Theme"
+                    description="Choose the terminal theme used in dark mode."
+                    selectedTheme={settings.terminalThemeDark}
+                    query={themeSearchDark}
+                    onQueryChange={setThemeSearchDark}
+                    onSelectTheme={(theme) => updateSettings({ terminalThemeDark: theme })}
+                  />
+
+                  <ColorField
+                    label="Dark Divider Color"
+                    description="Controls the split divider line between panes in dark mode."
+                    value={settings.terminalDividerColorDark}
+                    fallback="#3f3f46"
+                    onChange={(value) => updateSettings({ terminalDividerColorDark: value })}
+                  />
+                </div>
+
+                <TerminalThemePreview
+                  title="Dark Mode Preview"
+                  description={
+                    settings.theme === 'system'
+                      ? `System mode is currently ${systemPrefersDark ? 'Dark' : 'Light'}.`
+                      : `Orca is currently in ${settings.theme} mode.`
+                  }
+                  appearance={darkPreviewAppearance}
+                  dividerThicknessPx={paneStyleOptions.dividerThicknessPx}
+                  inactivePaneOpacity={paneStyleOptions.inactivePaneOpacity}
+                  activePaneOpacity={paneStyleOptions.activePaneOpacity}
+                />
+              </section>
+
+              <Separator />
+
+              <section className="space-y-4">
+                <div className="flex items-center justify-between gap-4 px-1 py-2">
+                  <div className="space-y-0.5">
+                    <Label className="text-sm">Use Separate Theme In Light Mode</Label>
+                    <p className="text-xs text-muted-foreground">
+                      When disabled, light mode reuses the dark terminal theme.
+                    </p>
+                  </div>
+                  <button
+                    role="switch"
+                    aria-checked={settings.terminalUseSeparateLightTheme}
+                    onClick={() =>
+                      updateSettings({
+                        terminalUseSeparateLightTheme: !settings.terminalUseSeparateLightTheme
+                      })
+                    }
+                    className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border border-transparent transition-colors ${
+                      settings.terminalUseSeparateLightTheme
+                        ? 'bg-foreground'
+                        : 'bg-muted-foreground/30'
+                    }`}
+                  >
+                    <span
+                      className={`pointer-events-none block size-3.5 rounded-full bg-background shadow-sm transition-transform ${
+                        settings.terminalUseSeparateLightTheme ? 'translate-x-4' : 'translate-x-0.5'
+                      }`}
+                    />
+                  </button>
+                </div>
+
+                <div
+                  className={`grid overflow-hidden transition-all duration-300 ease-out ${
+                    settings.terminalUseSeparateLightTheme
+                      ? 'grid-rows-[1fr] opacity-100'
+                      : 'grid-rows-[0fr] opacity-0'
+                  }`}
+                >
+                  <div className="min-h-0">
+                    <div className="grid gap-6 pt-2 xl:grid-cols-[minmax(0,1fr)_360px]">
+                      <div className="space-y-6">
+                        <ThemePicker
+                          label="Light Theme"
+                          description="Choose the theme used when Orca is in light mode."
+                          selectedTheme={settings.terminalThemeLight}
+                          query={themeSearchLight}
+                          onQueryChange={setThemeSearchLight}
+                          onSelectTheme={(theme) => updateSettings({ terminalThemeLight: theme })}
+                        />
+
+                        <ColorField
+                          label="Light Divider Color"
+                          description="Controls the split divider line between panes in light mode."
+                          value={settings.terminalDividerColorLight}
+                          fallback="#d4d4d8"
+                          onChange={(value) => updateSettings({ terminalDividerColorLight: value })}
+                        />
+                      </div>
+
+                      <TerminalThemePreview
+                        title="Light Mode Preview"
+                        description="Updates live as you change the light theme or divider color."
+                        appearance={lightPreviewAppearance}
+                        dividerThicknessPx={paneStyleOptions.dividerThicknessPx}
+                        inactivePaneOpacity={paneStyleOptions.inactivePaneOpacity}
+                        activePaneOpacity={paneStyleOptions.activePaneOpacity}
+                      />
+                    </div>
+                  </div>
                 </div>
               </section>
             </div>

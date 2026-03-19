@@ -27,7 +27,16 @@ export function getDefaultSettings(homedir: string): GlobalSettings {
     branchPrefixCustom: '',
     theme: 'system',
     terminalFontSize: 14,
-    terminalFontFamily: 'SF Mono'
+    terminalFontFamily: 'SF Mono',
+    terminalThemeDark: 'Ghostty Default Style Dark',
+    terminalDividerColorDark: '#3f3f46',
+    terminalUseSeparateLightTheme: false,
+    terminalThemeLight: 'Builtin Tango Light',
+    terminalDividerColorLight: '#d4d4d8',
+    terminalInactivePaneOpacity: 0.8,
+    terminalActivePaneOpacity: 1,
+    terminalPaneOpacityTransitionMs: 140,
+    terminalDividerThicknessPx: 1
   }
 }
 

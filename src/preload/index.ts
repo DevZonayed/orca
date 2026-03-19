@@ -100,7 +100,9 @@ const api = {
     get: (): Promise<unknown> => ipcRenderer.invoke('settings:get'),
 
     set: (args: Record<string, unknown>): Promise<unknown> =>
-      ipcRenderer.invoke('settings:set', args)
+      ipcRenderer.invoke('settings:set', args),
+
+    listFonts: (): Promise<string[]> => ipcRenderer.invoke('settings:listFonts')
   },
 
   shell: {
@@ -126,7 +128,12 @@ const api = {
 
   ui: {
     get: (): Promise<unknown> => ipcRenderer.invoke('ui:get'),
-    set: (args: Record<string, unknown>): Promise<void> => ipcRenderer.invoke('ui:set', args)
+    set: (args: Record<string, unknown>): Promise<void> => ipcRenderer.invoke('ui:set', args),
+    onOpenSettings: (callback: () => void): (() => void) => {
+      const listener = (_event: Electron.IpcRendererEvent) => callback()
+      ipcRenderer.on('ui:openSettings', listener)
+      return () => ipcRenderer.removeListener('ui:openSettings', listener)
+    }
   }
 }
 

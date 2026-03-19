@@ -403,6 +403,31 @@
   height: 100% !important;
 }
 
+.restty-pane-root .pane-divider.is-vertical,
+.restty-pane-root .pane-divider.is-horizontal {
+  background: var(--orca-terminal-divider-color, transparent) !important;
+}
+
+.restty-pane-root .pane-divider.is-vertical:hover,
+.restty-pane-root .pane-divider.is-vertical.is-dragging,
+.restty-pane-root .pane-divider.is-horizontal:hover,
+.restty-pane-root .pane-divider.is-horizontal.is-dragging {
+  background: var(
+    --orca-terminal-divider-color-strong,
+    var(--orca-terminal-divider-color, transparent)
+  ) !important;
+}
+
+.number-input-clean {
+  appearance: textfield;
+}
+
+.number-input-clean::-webkit-outer-spin-button,
+.number-input-clean::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
 /* ── Landing ─────────────────────────────────────────── */
 
 .landing {

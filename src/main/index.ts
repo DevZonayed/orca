@@ -13,6 +13,7 @@ import { registerSettingsHandlers } from './ipc/settings'
 import { registerShellHandlers } from './ipc/shell'
 import { registerSessionHandlers } from './ipc/session'
 import { registerUIHandlers } from './ipc/ui'
+import { warmSystemFontFamilies } from './system-fonts'
 
 let mainWindow: BrowserWindow | null = null
 let store: Store | null = null
@@ -85,6 +86,13 @@ app.whenReady().then(() => {
       label: app.name,
       submenu: [
         { role: 'about' },
+        {
+          label: 'Settings',
+          accelerator: 'CmdOrCtrl+,',
+          click: () => {
+            mainWindow?.webContents.send('ui:openSettings')
+          }
+        },
         { type: 'separator' },
         { role: 'services' },
         { type: 'separator' },
@@ -143,6 +151,7 @@ app.whenReady().then(() => {
   registerShellHandlers()
   registerSessionHandlers(store)
   registerUIHandlers(store)
+  warmSystemFontFamilies()
 
   // macOS re-activate
   app.on('activate', function () {

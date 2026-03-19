@@ -129,6 +129,15 @@ export interface GlobalSettings {
   theme: 'system' | 'dark' | 'light'
   terminalFontSize: number
   terminalFontFamily: string
+  terminalThemeDark: string
+  terminalDividerColorDark: string
+  terminalUseSeparateLightTheme: boolean
+  terminalThemeLight: string
+  terminalDividerColorLight: string
+  terminalInactivePaneOpacity: number
+  terminalActivePaneOpacity: number
+  terminalPaneOpacityTransitionMs: number
+  terminalDividerThicknessPx: number
 }
 
 export interface PersistedUIState {

@@ -1,6 +1,7 @@
 import { ipcMain } from 'electron'
 import type { Store } from '../persistence'
 import type { GlobalSettings, PersistedState } from '../../shared/types'
+import { listSystemFontFamilies } from '../system-fonts'
 
 export function registerSettingsHandlers(store: Store): void {
   ipcMain.handle('settings:get', () => {
@@ -9,6 +10,10 @@ export function registerSettingsHandlers(store: Store): void {
 
   ipcMain.handle('settings:set', (_event, args: Partial<GlobalSettings>) => {
     return store.updateSettings(args)
+  })
+
+  ipcMain.handle('settings:listFonts', () => {
+    return listSystemFontFamilies()
   })
 
   ipcMain.handle('cache:getGitHub', () => {
