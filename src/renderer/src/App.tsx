@@ -161,6 +161,7 @@ function App(): React.JSX.Element {
     activeWorktreeId !== null &&
     !hasTabBar &&
     effectiveActiveTabExpanded
+  const showSidebar = activeView !== 'settings'
 
   const handleToggleExpand = (): void => {
     if (!effectiveActiveTabId) return
@@ -189,7 +190,13 @@ function App(): React.JSX.Element {
     <div className="flex flex-col h-screen w-screen overflow-hidden">
       <div className="titlebar">
         <div className="titlebar-traffic-light-pad" />
-        <button className="sidebar-toggle" onClick={toggleSidebar} title="Toggle sidebar">
+        <button
+          className="sidebar-toggle"
+          onClick={toggleSidebar}
+          title={showSidebar ? 'Toggle sidebar' : 'Sidebar unavailable in settings'}
+          aria-label={showSidebar ? 'Toggle sidebar' : 'Sidebar unavailable in settings'}
+          disabled={!showSidebar}
+        >
           <PanelLeft size={16} />
         </button>
         <div className="titlebar-title">Orca</div>
@@ -207,7 +214,7 @@ function App(): React.JSX.Element {
         )}
       </div>
       <div className="flex flex-row flex-1 min-h-0 overflow-hidden">
-        <Sidebar />
+        {showSidebar ? <Sidebar /> : null}
         <div className="relative flex flex-1 min-w-0 min-h-0 overflow-hidden">
           {activeWorktreeId && (
             <div
