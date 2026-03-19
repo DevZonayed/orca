@@ -14,6 +14,7 @@ import { registerShellHandlers } from './ipc/shell'
 import { registerSessionHandlers } from './ipc/session'
 import { registerUIHandlers } from './ipc/ui'
 import { warmSystemFontFamilies } from './system-fonts'
+import { setupAutoUpdater } from './updater'
 
 let mainWindow: BrowserWindow | null = null
 let store: Store | null = null
@@ -67,7 +68,7 @@ function createWindow(): BrowserWindow {
 // App lifecycle
 // ---------------------------------------------------------------------------
 app.whenReady().then(() => {
-  electronApp.setAppUserModelId('com.electron')
+  electronApp.setAppUserModelId('com.stablyai.orca')
   app.setName('Orca')
 
   if (process.platform === 'darwin') {
@@ -152,6 +153,7 @@ app.whenReady().then(() => {
   registerSessionHandlers(store)
   registerUIHandlers(store)
   warmSystemFontFamilies()
+  setupAutoUpdater(mainWindow)
 
   // macOS re-activate
   app.on('activate', function () {

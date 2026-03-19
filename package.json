@@ -2,8 +2,8 @@
   "name": "orca",
   "version": "1.0.0",
   "description": "An Electron application with React and TypeScript",
-  "homepage": "https://electron-vite.org",
-  "author": "example.com",
+  "homepage": "https://github.com/stablyai/orca",
+  "author": "stablyai",
   "main": "./out/main/index.js",
   "scripts": {
     "format": "oxfmt --write .",
@@ -19,7 +19,10 @@
     "build:unpack": "npm run build && electron-builder --dir",
     "build:win": "npm run build && electron-builder --win",
     "build:mac": "electron-vite build && electron-builder --mac",
-    "build:linux": "electron-vite build && electron-builder --linux"
+    "build:linux": "electron-vite build && electron-builder --linux",
+    "release:patch": "npm version patch && git push --follow-tags",
+    "release:minor": "npm version minor && git push --follow-tags",
+    "release:major": "npm version major && git push --follow-tags"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
