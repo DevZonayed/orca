@@ -41,7 +41,10 @@ export function registerRepoHandlers(mainWindow: BrowserWindow, store: Store): v
     'repos:update',
     (
       _event,
-      args: { repoId: string; updates: Partial<Pick<Repo, 'displayName' | 'badgeColor'>> }
+      args: {
+        repoId: string
+        updates: Partial<Pick<Repo, 'displayName' | 'badgeColor' | 'hookSettings'>>
+      }
     ) => {
       const updated = store.updateRepo(args.repoId, args.updates)
       if (updated) notifyReposChanged(mainWindow)

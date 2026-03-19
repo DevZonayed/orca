@@ -1,9 +1,11 @@
 import { readFileSync, existsSync } from 'fs'
 import { join } from 'path'
 import { exec } from 'child_process'
-import type { OrcaHooks } from '../shared/types'
+import { getDefaultRepoHookSettings } from '../shared/constants'
+import type { OrcaHooks, Repo } from '../shared/types'
 
 const HOOK_TIMEOUT = 120_000 // 2 minutes
+type HookName = keyof OrcaHooks['scripts']
 
 /**
  * Parse a simple orca.yaml file. Handles only the `scripts:` block with
@@ -39,7 +41,7 @@ function parseOrcaYaml(content: string): OrcaHooks | null {
     }
 
     // Content line (indented by 4+ spaces under a key)
-    if (currentKey && /^    /.test(line)) {
+    if (currentKey && line.startsWith('    ')) {
       currentValue += line.slice(4) + '\n'
     }
   }
@@ -75,15 +77,45 @@ export function hasHooksFile(repoPath: string): boolean {
   return existsSync(join(repoPath, 'orca.yaml'))
 }
 
+export function getEffectiveHooks(repo: Repo): OrcaHooks | null {
+  const defaults = getDefaultRepoHookSettings()
+  const yamlHooks = loadHooks(repo.path)
+  const repoSettings = {
+    ...defaults,
+    ...repo.hookSettings,
+    scripts: {
+      ...defaults.scripts,
+      ...repo.hookSettings?.scripts
+    }
+  }
+
+  const hooks: OrcaHooks = { scripts: {} }
+
+  for (const hookName of ['setup', 'archive'] as HookName[]) {
+    const yamlScript = yamlHooks?.scripts[hookName]?.trim()
+    const uiScript = repoSettings.scripts[hookName].trim()
+
+    const autoScript = yamlScript || uiScript || undefined
+    const effectiveScript = repoSettings.mode === 'auto' ? autoScript : uiScript || undefined
+
+    if (effectiveScript) {
+      hooks.scripts[hookName] = effectiveScript
+    }
+  }
+
+  if (!hooks.scripts.setup && !hooks.scripts.archive) return null
+  return hooks
+}
+
 /**
  * Run a named hook script in the given working directory.
  */
 export function runHook(
   hookName: 'setup' | 'archive',
   cwd: string,
-  repoPath: string
+  repo: Repo
 ): Promise<{ success: boolean; output: string }> {
-  const hooks = loadHooks(repoPath)
+  const hooks = getEffectiveHooks(repo)
   const script = hooks?.scripts[hookName]
 
   if (!script) {
@@ -99,11 +131,11 @@ export function runHook(
         shell: '/bin/bash',
         env: {
           ...process.env,
-          ORCA_ROOT_PATH: repoPath,
+          ORCA_ROOT_PATH: repo.path,
           ORCA_WORKTREE_PATH: cwd,
           // Compat with conductor.json users
-          CONDUCTOR_ROOT_PATH: repoPath,
-          GHOSTX_ROOT_PATH: repoPath
+          CONDUCTOR_ROOT_PATH: repo.path,
+          GHOSTX_ROOT_PATH: repo.path
         }
       },
       (error, stdout, stderr) => {

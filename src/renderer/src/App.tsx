@@ -12,13 +12,18 @@ function App(): React.JSX.Element {
   const toggleSidebar = useAppStore((s) => s.toggleSidebar)
   const activeView = useAppStore((s) => s.activeView)
   const activeWorktreeId = useAppStore((s) => s.activeWorktreeId)
+  const activeRepoId = useAppStore((s) => s.activeRepoId)
   const tabsByWorktree = useAppStore((s) => s.tabsByWorktree)
   const activeTabId = useAppStore((s) => s.activeTabId)
   const expandedPaneByTabId = useAppStore((s) => s.expandedPaneByTabId)
   const canExpandPaneByTabId = useAppStore((s) => s.canExpandPaneByTabId)
+  const terminalLayoutsByTabId = useAppStore((s) => s.terminalLayoutsByTabId)
+  const workspaceSessionReady = useAppStore((s) => s.workspaceSessionReady)
   const fetchRepos = useAppStore((s) => s.fetchRepos)
+  const fetchAllWorktrees = useAppStore((s) => s.fetchAllWorktrees)
   const fetchSettings = useAppStore((s) => s.fetchSettings)
   const initGitHubCache = useAppStore((s) => s.initGitHubCache)
+  const hydrateWorkspaceSession = useAppStore((s) => s.hydrateWorkspaceSession)
   const openModal = useAppStore((s) => s.openModal)
   const repos = useAppStore((s) => s.repos)
 
@@ -29,10 +34,59 @@ function App(): React.JSX.Element {
 
   // Fetch initial data + hydrate GitHub cache from disk
   useEffect(() => {
-    fetchRepos()
-    fetchSettings()
-    initGitHubCache()
-  }, [fetchRepos, fetchSettings, initGitHubCache])
+    let cancelled = false
+
+    void (async () => {
+      try {
+        await fetchRepos()
+        await fetchAllWorktrees()
+        const session = await window.api.session.get()
+        if (!cancelled) {
+          hydrateWorkspaceSession(session)
+        }
+      } catch (error) {
+        console.error('Failed to hydrate workspace session:', error)
+        if (!cancelled) {
+          hydrateWorkspaceSession({
+            activeRepoId: null,
+            activeWorktreeId: null,
+            activeTabId: null,
+            tabsByWorktree: {},
+            terminalLayoutsByTabId: {}
+          })
+        }
+      }
+      void fetchSettings()
+      void initGitHubCache()
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [fetchRepos, fetchAllWorktrees, fetchSettings, initGitHubCache, hydrateWorkspaceSession])
+
+  useEffect(() => {
+    if (!workspaceSessionReady) return
+
+    const timer = window.setTimeout(() => {
+      void window.api.session.set({
+        activeRepoId,
+        activeWorktreeId,
+        activeTabId,
+        tabsByWorktree,
+        terminalLayoutsByTabId
+      })
+    }, 150)
+
+    return () => window.clearTimeout(timer)
+  }, [
+    workspaceSessionReady,
+    activeRepoId,
+    activeWorktreeId,
+    activeTabId,
+    tabsByWorktree,
+    terminalLayoutsByTabId
+  ])
 
   // Apply theme to document
   useEffect(() => {

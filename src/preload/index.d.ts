@@ -6,7 +6,8 @@ import type {
   PRInfo,
   IssueInfo,
   GlobalSettings,
-  OrcaHooks
+  OrcaHooks,
+  WorkspaceSessionState
 } from '../../shared/types'
 
 interface ReposApi {
@@ -15,7 +16,7 @@ interface ReposApi {
   remove: (args: { repoId: string }) => Promise<void>
   update: (args: {
     repoId: string
-    updates: Partial<Pick<Repo, 'displayName' | 'badgeColor'>>
+    updates: Partial<Pick<Repo, 'displayName' | 'badgeColor' | 'hookSettings'>>
   }) => Promise<Repo>
   pickFolder: () => Promise<string | null>
   onChanged: (callback: () => void) => () => void
@@ -72,6 +73,11 @@ interface CacheApi {
   }) => Promise<void>
 }
 
+interface SessionApi {
+  get: () => Promise<WorkspaceSessionState>
+  set: (args: WorkspaceSessionState) => Promise<void>
+}
+
 interface Api {
   repos: ReposApi
   worktrees: WorktreesApi
@@ -81,6 +87,7 @@ interface Api {
   shell: ShellApi
   hooks: HooksApi
   cache: CacheApi
+  session: SessionApi
 }
 
 declare global {

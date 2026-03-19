@@ -1,4 +1,9 @@
-import type { GlobalSettings, PersistedState } from './types'
+import type {
+  GlobalSettings,
+  PersistedState,
+  RepoHookSettings,
+  WorkspaceSessionState
+} from './types'
 
 export const SCHEMA_VERSION = 1
 
@@ -25,6 +30,16 @@ export function getDefaultSettings(homedir: string): GlobalSettings {
   }
 }
 
+export function getDefaultRepoHookSettings(): RepoHookSettings {
+  return {
+    mode: 'auto',
+    scripts: {
+      setup: '',
+      archive: ''
+    }
+  }
+}
+
 export function getDefaultPersistedState(homedir: string): PersistedState {
   return {
     schemaVersion: SCHEMA_VERSION,
@@ -36,6 +51,17 @@ export function getDefaultPersistedState(homedir: string): PersistedState {
       lastActiveWorktreeId: null,
       sidebarWidth: 280
     },
-    githubCache: { pr: {}, issue: {} }
+    githubCache: { pr: {}, issue: {} },
+    workspaceSession: getDefaultWorkspaceSession()
+  }
+}
+
+export function getDefaultWorkspaceSession(): WorkspaceSessionState {
+  return {
+    activeRepoId: null,
+    activeWorktreeId: null,
+    activeTabId: null,
+    tabsByWorktree: {},
+    terminalLayoutsByTabId: {}
   }
 }

@@ -3,7 +3,11 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync, renameSync } from '
 import { join, dirname } from 'path'
 import { homedir } from 'os'
 import type { PersistedState, Repo, WorktreeMeta, GlobalSettings } from '../shared/types'
-import { getDefaultPersistedState } from '../shared/constants'
+import {
+  getDefaultPersistedState,
+  getDefaultRepoHookSettings,
+  getDefaultWorkspaceSession
+} from '../shared/constants'
 
 const DATA_FILE = join(app.getPath('userData'), 'orca-data.json')
 
@@ -26,7 +30,8 @@ export class Store {
           ...defaults,
           ...parsed,
           settings: { ...defaults.settings, ...parsed.settings },
-          ui: { ...defaults.ui, ...parsed.ui }
+          ui: { ...defaults.ui, ...parsed.ui },
+          workspaceSession: { ...defaults.workspaceSession, ...parsed.workspaceSession }
         }
       }
     } catch (err) {
@@ -54,15 +59,17 @@ export class Store {
   // ── Repos ──────────────────────────────────────────────────────────
 
   getRepos(): Repo[] {
-    return this.state.repos
+    return this.state.repos.map((repo) => this.hydrateRepo(repo))
   }
 
   getRepo(id: string): Repo | undefined {
-    return this.state.repos.find((r) => r.id === id)
+    const repo = this.state.repos.find((r) => r.id === id)
+    if (!repo) return undefined
+    return this.hydrateRepo(repo)
   }
 
   addRepo(repo: Repo): void {
-    this.state.repos.push(repo)
+    this.state.repos.push(this.hydrateRepo(repo))
     this.scheduleSave()
   }
 
@@ -78,12 +85,29 @@ export class Store {
     this.scheduleSave()
   }
 
-  updateRepo(id: string, updates: Partial<Pick<Repo, 'displayName' | 'badgeColor'>>): Repo | null {
+  updateRepo(
+    id: string,
+    updates: Partial<Pick<Repo, 'displayName' | 'badgeColor' | 'hookSettings'>>
+  ): Repo | null {
     const repo = this.state.repos.find((r) => r.id === id)
     if (!repo) return null
     Object.assign(repo, updates)
     this.scheduleSave()
-    return repo
+    return this.hydrateRepo(repo)
+  }
+
+  private hydrateRepo(repo: Repo): Repo {
+    return {
+      ...repo,
+      hookSettings: {
+        ...getDefaultRepoHookSettings(),
+        ...repo.hookSettings,
+        scripts: {
+          ...getDefaultRepoHookSettings().scripts,
+          ...repo.hookSettings?.scripts
+        }
+      }
+    }
   }
 
   // ── Worktree Meta ──────────────────────────────────────────────────
@@ -140,6 +164,17 @@ export class Store {
 
   setGitHubCache(cache: PersistedState['githubCache']): void {
     this.state.githubCache = cache
+    this.scheduleSave()
+  }
+
+  // ── Workspace Session ─────────────────────────────────────────────
+
+  getWorkspaceSession(): PersistedState['workspaceSession'] {
+    return this.state.workspaceSession ?? getDefaultWorkspaceSession()
+  }
+
+  setWorkspaceSession(session: PersistedState['workspaceSession']): void {
+    this.state.workspaceSession = session
     this.scheduleSave()
   }
 

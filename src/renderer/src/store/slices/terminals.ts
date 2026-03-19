@@ -1,12 +1,18 @@
 import type { StateCreator } from 'zustand'
 import type { AppState } from '../types'
-import type { TerminalTab } from '../../../../shared/types'
+import type {
+  TerminalLayoutSnapshot,
+  TerminalTab,
+  WorkspaceSessionState
+} from '../../../../shared/types'
 
 export interface TerminalSlice {
   tabsByWorktree: Record<string, TerminalTab[]>
   activeTabId: string | null
   expandedPaneByTabId: Record<string, boolean>
   canExpandPaneByTabId: Record<string, boolean>
+  terminalLayoutsByTabId: Record<string, TerminalLayoutSnapshot>
+  workspaceSessionReady: boolean
   createTab: (worktreeId: string) => TerminalTab
   closeTab: (tabId: string) => void
   reorderTabs: (worktreeId: string, tabIds: string[]) => void
@@ -17,6 +23,8 @@ export interface TerminalSlice {
   updateTabPtyId: (tabId: string, ptyId: string) => void
   setTabPaneExpanded: (tabId: string, expanded: boolean) => void
   setTabCanExpandPane: (tabId: string, canExpand: boolean) => void
+  setTabLayout: (tabId: string, layout: TerminalLayoutSnapshot | null) => void
+  hydrateWorkspaceSession: (session: WorkspaceSessionState) => void
 }
 
 export const createTerminalSlice: StateCreator<AppState, [], [], TerminalSlice> = (set) => ({
@@ -24,6 +32,8 @@ export const createTerminalSlice: StateCreator<AppState, [], [], TerminalSlice> 
   activeTabId: null,
   expandedPaneByTabId: {},
   canExpandPaneByTabId: {},
+  terminalLayoutsByTabId: {},
+  workspaceSessionReady: false,
 
   createTab: (worktreeId) => {
     const id = globalThis.crypto.randomUUID()
@@ -45,7 +55,8 @@ export const createTerminalSlice: StateCreator<AppState, [], [], TerminalSlice> 
           ...s.tabsByWorktree,
           [worktreeId]: [...existing, tab]
         },
-        activeTabId: tab.id
+        activeTabId: tab.id,
+        terminalLayoutsByTabId: { ...s.terminalLayoutsByTabId, [tab.id]: emptyLayoutSnapshot() }
       }
     })
     return tab
@@ -65,11 +76,14 @@ export const createTerminalSlice: StateCreator<AppState, [], [], TerminalSlice> 
       delete nextExpanded[tabId]
       const nextCanExpand = { ...s.canExpandPaneByTabId }
       delete nextCanExpand[tabId]
+      const nextLayouts = { ...s.terminalLayoutsByTabId }
+      delete nextLayouts[tabId]
       return {
         tabsByWorktree: next,
         activeTabId: s.activeTabId === tabId ? null : s.activeTabId,
         expandedPaneByTabId: nextExpanded,
-        canExpandPaneByTabId: nextCanExpand
+        canExpandPaneByTabId: nextCanExpand,
+        terminalLayoutsByTabId: nextLayouts
       }
     })
   },
@@ -142,5 +156,74 @@ export const createTerminalSlice: StateCreator<AppState, [], [], TerminalSlice> 
     set((s) => ({
       canExpandPaneByTabId: { ...s.canExpandPaneByTabId, [tabId]: canExpand }
     }))
+  },
+
+  setTabLayout: (tabId, layout) => {
+    set((s) => {
+      const next = { ...s.terminalLayoutsByTabId }
+      if (layout) next[tabId] = layout
+      else delete next[tabId]
+      return { terminalLayoutsByTabId: next }
+    })
+  },
+
+  hydrateWorkspaceSession: (session) => {
+    set((s) => {
+      const validWorktreeIds = new Set(
+        Object.values(s.worktreesByRepo)
+          .flat()
+          .map((worktree) => worktree.id)
+      )
+      const tabsByWorktree: Record<string, TerminalTab[]> = Object.fromEntries(
+        Object.entries(session.tabsByWorktree)
+          .filter(([worktreeId]) => validWorktreeIds.has(worktreeId))
+          .map(([worktreeId, tabs]) => [
+            worktreeId,
+            [...tabs]
+              .sort((a, b) => a.sortOrder - b.sortOrder || a.createdAt - b.createdAt)
+              .map((tab, index) => ({
+                ...tab,
+                ptyId: null,
+                sortOrder: index
+              }))
+          ])
+          .filter(([, tabs]) => tabs.length > 0)
+      )
+
+      const validTabIds = new Set(
+        Object.values(tabsByWorktree)
+          .flat()
+          .map((tab) => tab.id)
+      )
+      const activeWorktreeId =
+        session.activeWorktreeId && validWorktreeIds.has(session.activeWorktreeId)
+          ? session.activeWorktreeId
+          : null
+      const activeTabId =
+        session.activeTabId && validTabIds.has(session.activeTabId) ? session.activeTabId : null
+      const activeRepoId =
+        session.activeRepoId && s.repos.some((repo) => repo.id === session.activeRepoId)
+          ? session.activeRepoId
+          : null
+
+      return {
+        activeRepoId,
+        activeWorktreeId,
+        activeTabId,
+        tabsByWorktree,
+        terminalLayoutsByTabId: Object.fromEntries(
+          Object.entries(session.terminalLayoutsByTabId).filter(([tabId]) => validTabIds.has(tabId))
+        ),
+        workspaceSessionReady: true
+      }
+    })
   }
 })
+
+function emptyLayoutSnapshot(): TerminalLayoutSnapshot {
+  return {
+    root: null,
+    activeLeafId: null,
+    expandedLeafId: null
+  }
+}

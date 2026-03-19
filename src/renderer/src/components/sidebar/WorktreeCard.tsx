@@ -181,7 +181,7 @@ const WorktreeCard = React.memo(function WorktreeCard({
                 aria-label={worktree.isUnread ? 'Mark as read' : 'Mark as unread'}
               >
                 {worktree.isUnread ? (
-                  <FilledBellIcon className="size-3 text-yellow-400 drop-shadow-[0_0_4px_rgba(250,204,21,0.55)]" />
+                  <FilledBellIcon className="size-3 text-yellow-400" />
                 ) : (
                   <Bell className="size-3 text-muted-foreground/80 opacity-0 group-hover:opacity-100 group-hover/unread:opacity-100 transition-opacity" />
                 )}

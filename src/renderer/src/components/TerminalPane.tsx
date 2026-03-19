@@ -19,6 +19,11 @@ import {
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu'
 import { TOGGLE_TERMINAL_PANE_EXPAND_EVENT } from '@/constants/terminal'
+import type {
+  TerminalLayoutSnapshot,
+  TerminalPaneLayoutNode,
+  TerminalPaneSplitDirection
+} from '../../../shared/types'
 import { useAppStore } from '../store'
 
 type PtyTransport = {
@@ -47,6 +52,11 @@ type PtyTransport = {
 }
 
 const CLOSE_ALL_CONTEXT_MENUS_EVENT = 'orca-close-all-context-menus'
+const EMPTY_LAYOUT: TerminalLayoutSnapshot = {
+  root: null,
+  activeLeafId: null,
+  expandedLeafId: null
+}
 
 const OSC_TITLE_RE = /\x1b\]([012]);([^\x07\x1b]*?)(?:\x07|\x1b\\)/g
 
@@ -155,6 +165,102 @@ function createIpcPtyTransport(
   }
 }
 
+function paneLeafId(paneId: number): string {
+  return `pane:${paneId}`
+}
+
+function getLayoutChildNodes(split: HTMLElement): HTMLElement[] {
+  return Array.from(split.children).filter(
+    (child): child is HTMLElement =>
+      child instanceof HTMLElement &&
+      (child.classList.contains('pane') || child.classList.contains('pane-split'))
+  )
+}
+
+function serializePaneTree(node: HTMLElement | null): TerminalPaneLayoutNode | null {
+  if (!node) return null
+
+  if (node.classList.contains('pane')) {
+    const paneId = Number(node.dataset.paneId ?? '')
+    if (!Number.isFinite(paneId)) return null
+    return { type: 'leaf', leafId: paneLeafId(paneId) }
+  }
+
+  if (!node.classList.contains('pane-split')) return null
+  const [first, second] = getLayoutChildNodes(node)
+  const firstNode = serializePaneTree(first ?? null)
+  const secondNode = serializePaneTree(second ?? null)
+  if (!firstNode || !secondNode) return null
+
+  return {
+    type: 'split',
+    direction: node.classList.contains('is-horizontal') ? 'horizontal' : 'vertical',
+    first: firstNode,
+    second: secondNode
+  }
+}
+
+function serializeTerminalLayout(
+  root: HTMLDivElement | null,
+  activePaneId: number | null,
+  expandedPaneId: number | null
+): TerminalLayoutSnapshot {
+  const rootNode = serializePaneTree(
+    root?.firstElementChild instanceof HTMLElement ? root.firstElementChild : null
+  )
+  return {
+    root: rootNode,
+    activeLeafId: activePaneId === null ? null : paneLeafId(activePaneId),
+    expandedLeafId: expandedPaneId === null ? null : paneLeafId(expandedPaneId)
+  }
+}
+
+function replayTerminalLayout(
+  restty: Restty,
+  snapshot: TerminalLayoutSnapshot | null | undefined,
+  focusInitialPane: boolean
+): Map<string, number> {
+  const paneByLeafId = new Map<string, number>()
+
+  const initialPane = restty.createInitialPane({ focus: focusInitialPane })
+  if (!snapshot?.root) {
+    paneByLeafId.set(paneLeafId(initialPane.id), initialPane.id)
+    return paneByLeafId
+  }
+
+  const restoreNode = (node: TerminalPaneLayoutNode, paneId: number): void => {
+    if (node.type === 'leaf') {
+      paneByLeafId.set(node.leafId, paneId)
+      return
+    }
+
+    const createdPane = restty.splitPane(paneId, node.direction as TerminalPaneSplitDirection)
+    if (!createdPane) {
+      collectLeafIds(node, paneByLeafId, paneId)
+      return
+    }
+
+    restoreNode(node.first, paneId)
+    restoreNode(node.second, createdPane.id)
+  }
+
+  restoreNode(snapshot.root, initialPane.id)
+  return paneByLeafId
+}
+
+function collectLeafIds(
+  node: TerminalPaneLayoutNode,
+  paneByLeafId: Map<string, number>,
+  paneId: number
+): void {
+  if (node.type === 'leaf') {
+    paneByLeafId.set(node.leafId, paneId)
+    return
+  }
+  collectLeafIds(node.first, paneByLeafId, paneId)
+  collectLeafIds(node.second, paneByLeafId, paneId)
+}
+
 interface TerminalPaneProps {
   tabId: string
   cwd?: string
@@ -181,11 +287,23 @@ export default function TerminalPane({
   const [expandedPaneId, setExpandedPaneId] = useState<number | null>(null)
   const setTabPaneExpanded = useAppStore((s) => s.setTabPaneExpanded)
   const setTabCanExpandPane = useAppStore((s) => s.setTabCanExpandPane)
+  const savedLayout = useAppStore((s) => s.terminalLayoutsByTabId[tabId] ?? EMPTY_LAYOUT)
+  const setTabLayout = useAppStore((s) => s.setTabLayout)
+  const initialLayoutRef = useRef(savedLayout)
+
+  const persistLayoutSnapshot = (): void => {
+    const restty = resttyRef.current
+    const container = containerRef.current
+    if (!restty || !container) return
+    const activePaneId = restty.getActivePane()?.id ?? restty.getPanes()[0]?.id ?? null
+    setTabLayout(tabId, serializeTerminalLayout(container, activePaneId, expandedPaneIdRef.current))
+  }
 
   const setExpandedPane = (paneId: number | null): void => {
     expandedPaneIdRef.current = paneId
     setExpandedPaneId(paneId)
     setTabPaneExpanded(tabId, paneId !== null)
+    persistLayoutSnapshot()
   }
 
   const rememberPaneStyle = (
@@ -285,6 +403,7 @@ export default function TerminalPane({
       setExpandedPane(null)
       restoreExpandedLayout()
       refreshPaneSizes(true)
+      persistLayoutSnapshot()
       return
     }
 
@@ -292,10 +411,12 @@ export default function TerminalPane({
     if (!applyExpandedLayout(paneId)) {
       setExpandedPane(null)
       restoreExpandedLayout()
+      persistLayoutSnapshot()
       return
     }
     restty.setActivePane(paneId, { focus: true })
     refreshPaneSizes(true)
+    persistLayoutSnapshot()
   }
 
   useEffect(() => {
@@ -341,6 +462,8 @@ export default function TerminalPane({
     const onPtySpawn = (ptyId: string): void => {
       updateTabPtyId(tabId, ptyId)
     }
+
+    let shouldPersistLayout = false
 
     const restty = new Restty({
       root: container,
@@ -389,18 +512,42 @@ export default function TerminalPane({
         queueResizeAll(true)
       },
       onPaneClosed: () => {},
-      onActivePaneChange: () => {},
+      onActivePaneChange: () => {
+        if (shouldPersistLayout) persistLayoutSnapshot()
+      },
       onLayoutChanged: () => {
         syncExpandedLayout()
         syncCanExpandState()
         queueResizeAll(false)
+        if (shouldPersistLayout) persistLayoutSnapshot()
       }
     })
 
-    restty.createInitialPane({ focus: isActive })
     resttyRef.current = restty
+    const restoredPaneByLeafId = replayTerminalLayout(restty, initialLayoutRef.current, isActive)
+    const restoredActivePaneId =
+      (initialLayoutRef.current.activeLeafId
+        ? restoredPaneByLeafId.get(initialLayoutRef.current.activeLeafId)
+        : null) ??
+      restty.getActivePane()?.id ??
+      restty.getPanes()[0]?.id ??
+      null
+    if (restoredActivePaneId !== null) {
+      restty.setActivePane(restoredActivePaneId, { focus: isActive })
+    }
+    const restoredExpandedPaneId = initialLayoutRef.current.expandedLeafId
+      ? (restoredPaneByLeafId.get(initialLayoutRef.current.expandedLeafId) ?? null)
+      : null
+    if (restoredExpandedPaneId !== null && restty.getPanes().length > 1) {
+      setExpandedPane(restoredExpandedPaneId)
+      applyExpandedLayout(restoredExpandedPaneId)
+    } else {
+      setExpandedPane(null)
+    }
+    shouldPersistLayout = true
     syncCanExpandState()
     queueResizeAll(isActive)
+    persistLayoutSnapshot()
 
     return () => {
       if (resizeRaf !== null) cancelAnimationFrame(resizeRaf)

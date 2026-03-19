@@ -10,7 +10,7 @@ export interface RepoSlice {
   removeRepo: (repoId: string) => Promise<void>
   updateRepo: (
     repoId: string,
-    updates: Partial<Pick<Repo, 'displayName' | 'badgeColor'>>
+    updates: Partial<Pick<Repo, 'displayName' | 'badgeColor' | 'hookSettings'>>
   ) => Promise<void>
   setActiveRepo: (repoId: string | null) => void
 }
@@ -60,14 +60,19 @@ export const createRepoSlice: StateCreator<AppState, [], [], RepoSlice> = (set, 
         const nextWorktrees = { ...s.worktreesByRepo }
         delete nextWorktrees[repoId]
         const nextTabs = { ...s.tabsByWorktree }
+        const nextLayouts = { ...s.terminalLayoutsByTabId }
         for (const wId of worktreeIds) {
           delete nextTabs[wId]
+        }
+        for (const tabId of killedTabIds) {
+          delete nextLayouts[tabId]
         }
         return {
           repos: s.repos.filter((r) => r.id !== repoId),
           activeRepoId: s.activeRepoId === repoId ? null : s.activeRepoId,
           worktreesByRepo: nextWorktrees,
           tabsByWorktree: nextTabs,
+          terminalLayoutsByTabId: nextLayouts,
           activeTabId: s.activeTabId && killedTabIds.has(s.activeTabId) ? null : s.activeTabId
         }
       })

@@ -4,7 +4,7 @@ import type { Store } from '../persistence'
 import type { Worktree, WorktreeMeta } from '../../shared/types'
 import { listWorktrees, addWorktree, removeWorktree } from '../git/worktree'
 import { getGitUsername, getDefaultBranch } from '../git/repo'
-import { loadHooks, runHook, hasHooksFile } from '../hooks'
+import { getEffectiveHooks, loadHooks, runHook, hasHooksFile } from '../hooks'
 
 export function registerWorktreeHandlers(mainWindow: BrowserWindow, store: Store): void {
   ipcMain.handle('worktrees:listAll', async () => {
@@ -76,9 +76,9 @@ export function registerWorktreeHandlers(mainWindow: BrowserWindow, store: Store
       const worktree = mergeWorktree(repo.id, created, undefined)
 
       // Run setup hook asynchronously (don't block the UI)
-      const hooks = loadHooks(repo.path)
+      const hooks = getEffectiveHooks(repo)
       if (hooks?.scripts.setup) {
-        runHook('setup', worktreePath, repo.path).then((result) => {
+        runHook('setup', worktreePath, repo).then((result) => {
           if (!result.success) {
             console.error(`[hooks] setup hook failed for ${worktreePath}:`, result.output)
           }
@@ -98,9 +98,9 @@ export function registerWorktreeHandlers(mainWindow: BrowserWindow, store: Store
       if (!repo) throw new Error(`Repo not found: ${repoId}`)
 
       // Run archive hook before removal
-      const hooks = loadHooks(repo.path)
+      const hooks = getEffectiveHooks(repo)
       if (hooks?.scripts.archive) {
-        const result = await runHook('archive', worktreePath, repo.path)
+        const result = await runHook('archive', worktreePath, repo)
         if (!result.success) {
           console.error(`[hooks] archive hook failed for ${worktreePath}:`, result.output)
         }

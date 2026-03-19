@@ -5,6 +5,7 @@ export interface Repo {
   displayName: string
   badgeColor: string
   addedAt: number
+  hookSettings?: RepoHookSettings
 }
 
 // ─── Worktree (git-level) ────────────────────────────────────────────
@@ -51,6 +52,34 @@ export interface TerminalTab {
   createdAt: number
 }
 
+export type TerminalPaneSplitDirection = 'vertical' | 'horizontal'
+
+export type TerminalPaneLayoutNode =
+  | {
+      type: 'leaf'
+      leafId: string
+    }
+  | {
+      type: 'split'
+      direction: TerminalPaneSplitDirection
+      first: TerminalPaneLayoutNode
+      second: TerminalPaneLayoutNode
+    }
+
+export interface TerminalLayoutSnapshot {
+  root: TerminalPaneLayoutNode | null
+  activeLeafId: string | null
+  expandedLeafId: string | null
+}
+
+export interface WorkspaceSessionState {
+  activeRepoId: string | null
+  activeWorktreeId: string | null
+  activeTabId: string | null
+  tabsByWorktree: Record<string, TerminalTab[]>
+  terminalLayoutsByTabId: Record<string, TerminalLayoutSnapshot>
+}
+
 // ─── GitHub ──────────────────────────────────────────────────────────
 export type PRState = 'open' | 'closed' | 'merged' | 'draft'
 export type IssueState = 'open' | 'closed'
@@ -81,6 +110,14 @@ export interface OrcaHooks {
   }
 }
 
+export interface RepoHookSettings {
+  mode: 'auto' | 'override'
+  scripts: {
+    setup: string
+    archive: string
+  }
+}
+
 // ─── Settings ────────────────────────────────────────────────────────
 export interface GlobalSettings {
   workspaceDir: string
@@ -107,4 +144,5 @@ export interface PersistedState {
     pr: Record<string, { data: PRInfo | null; fetchedAt: number }>
     issue: Record<string, { data: IssueInfo | null; fetchedAt: number }>
   }
+  workspaceSession: WorkspaceSessionState
 }

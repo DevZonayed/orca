@@ -17,6 +17,7 @@ export default function Terminal(): React.JSX.Element | null {
   const setTabCustomTitle = useAppStore((s) => s.setTabCustomTitle)
   const setTabColor = useAppStore((s) => s.setTabColor)
   const expandedPaneByTabId = useAppStore((s) => s.expandedPaneByTabId)
+  const workspaceSessionReady = useAppStore((s) => s.workspaceSessionReady)
 
   const tabs = activeWorktreeId ? (tabsByWorktree[activeWorktreeId] ?? []) : []
   const prevTabCountRef = useRef(tabs.length)
@@ -34,6 +35,7 @@ export default function Terminal(): React.JSX.Element | null {
 
   // Auto-create first tab when worktree activates
   useEffect(() => {
+    if (!workspaceSessionReady) return
     if (!activeWorktreeId) {
       initialTabCreationGuardRef.current = null
       return
@@ -51,7 +53,7 @@ export default function Terminal(): React.JSX.Element | null {
     if (initialTabCreationGuardRef.current === activeWorktreeId) return
     initialTabCreationGuardRef.current = activeWorktreeId
     createTab(activeWorktreeId)
-  }, [activeWorktreeId, tabs.length, createTab])
+  }, [workspaceSessionReady, activeWorktreeId, tabs.length, createTab])
 
   // Ensure activeTabId is valid
   useEffect(() => {

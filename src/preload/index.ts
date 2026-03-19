@@ -108,6 +108,11 @@ const api = {
   cache: {
     getGitHub: () => ipcRenderer.invoke('cache:getGitHub'),
     setGitHub: (args: { cache: unknown }) => ipcRenderer.invoke('cache:setGitHub', args)
+  },
+
+  session: {
+    get: (): Promise<unknown> => ipcRenderer.invoke('session:get'),
+    set: (args: unknown): Promise<void> => ipcRenderer.invoke('session:set', args)
   }
 }
 

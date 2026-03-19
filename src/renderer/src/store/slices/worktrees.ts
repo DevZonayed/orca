@@ -67,9 +67,14 @@ export const createWorktreeSlice: StateCreator<AppState, [], [], WorktreeSlice> 
         }
         const nextTabs = { ...s.tabsByWorktree }
         delete nextTabs[worktreeId]
+        const nextLayouts = { ...s.terminalLayoutsByTabId }
+        for (const tabId of tabIds) {
+          delete nextLayouts[tabId]
+        }
         return {
           worktreesByRepo: next,
           tabsByWorktree: nextTabs,
+          terminalLayoutsByTabId: nextLayouts,
           activeWorktreeId: s.activeWorktreeId === worktreeId ? null : s.activeWorktreeId,
           activeTabId: s.activeTabId && tabIds.has(s.activeTabId) ? null : s.activeTabId
         }
