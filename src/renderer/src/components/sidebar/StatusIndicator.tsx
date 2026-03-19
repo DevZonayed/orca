@@ -77,7 +77,7 @@ const StatusIndicator = React.memo(function StatusIndicator({
     return (
       <span
         className={cn(
-          'inline-flex h-3 w-3 items-center justify-center shrink-0 text-[11px] leading-none text-foreground font-mono',
+          'inline-flex h-3 w-3 items-center justify-center shrink-0 text-[11px] leading-none text-emerald-500 font-mono',
           className
         )}
       >

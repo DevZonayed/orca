@@ -1,7 +1,19 @@
 import React, { useMemo, useCallback, useRef, useState } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
+import {
+  ChevronDown,
+  CircleCheckBig,
+  CircleDot,
+  CircleX,
+  FolderGit2,
+  GitPullRequest,
+  Plus
+} from 'lucide-react'
 import { useAppStore } from '@/store'
 import WorktreeCard from './WorktreeCard'
+import { Button } from '@/components/ui/button'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { cn } from '@/lib/utils'
 import type { Worktree, Repo } from '../../../../shared/types'
 
 function branchName(branch: string): string {
@@ -9,9 +21,72 @@ function branchName(branch: string): string {
 }
 
 // ── Row types for the virtualizer ───────────────────────────────
-type GroupHeaderRow = { type: 'header'; label: string; count: number }
+type GroupHeaderRow = {
+  type: 'header'
+  key: string
+  label: string
+  count: number
+  tone: string
+  icon: React.ComponentType<{ className?: string }>
+  repo?: Repo
+}
 type WorktreeRow = { type: 'item'; worktree: Worktree; repo: Repo | undefined }
 type Row = GroupHeaderRow | WorktreeRow
+
+type PRGroupKey = 'done' | 'in-review' | 'in-progress' | 'closed'
+
+const PR_GROUP_ORDER: PRGroupKey[] = ['done', 'in-review', 'in-progress', 'closed']
+
+const PR_GROUP_META: Record<
+  PRGroupKey,
+  {
+    label: string
+    icon: React.ComponentType<{ className?: string }>
+    tone: string
+  }
+> = {
+  done: {
+    label: 'Done',
+    icon: CircleCheckBig,
+    tone: 'border-emerald-500/20 bg-emerald-500/10 text-emerald-200'
+  },
+  'in-review': {
+    label: 'In review',
+    icon: GitPullRequest,
+    tone: 'border-sky-500/20 bg-sky-500/10 text-sky-200'
+  },
+  'in-progress': {
+    label: 'In progress',
+    icon: CircleDot,
+    tone: 'border-amber-500/20 bg-amber-500/10 text-amber-200'
+  },
+  closed: {
+    label: 'Closed',
+    icon: CircleX,
+    tone: 'border-zinc-500/20 bg-zinc-500/10 text-zinc-300'
+  }
+}
+
+function getPRGroupKey(
+  worktree: Worktree,
+  repoMap: Map<string, Repo>,
+  prCache: Record<string, unknown> | null
+): PRGroupKey {
+  const repo = repoMap.get(worktree.repoId)
+  const branch = branchName(worktree.branch)
+  const cacheKey = repo ? `${repo.path}::${branch}` : ''
+  const prEntry =
+    cacheKey && prCache
+      ? (prCache[cacheKey] as { data?: { state?: string } } | undefined)
+      : undefined
+  const pr = prEntry?.data
+
+  if (!pr) return 'in-progress'
+  if (pr.state === 'merged') return 'done'
+  if (pr.state === 'closed') return 'closed'
+  if (pr.state === 'draft') return 'in-progress'
+  return 'in-review'
+}
 
 const WorktreeList = React.memo(function WorktreeList() {
   // ── Granular selectors (each is a primitive or shallow-stable ref) ──
@@ -23,6 +98,7 @@ const WorktreeList = React.memo(function WorktreeList() {
   const sortBy = useAppStore((s) => s.sortBy)
   const showActiveOnly = useAppStore((s) => s.showActiveOnly)
   const filterRepoId = useAppStore((s) => s.filterRepoId)
+  const openModal = useAppStore((s) => s.openModal)
 
   // Only read tabsByWorktree when showActiveOnly is on (avoid subscription otherwise)
   const tabsByWorktree = useAppStore((s) => (showActiveOnly ? s.tabsByWorktree : null))
@@ -93,11 +169,11 @@ const WorktreeList = React.memo(function WorktreeList() {
   // Collapsed group state
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
 
-  const toggleGroup = useCallback((label: string) => {
+  const toggleGroup = useCallback((key: string) => {
     setCollapsedGroups((prev) => {
       const next = new Set(prev)
-      if (next.has(label)) next.delete(label)
-      else next.add(label)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
       return next
     })
   }, [])
@@ -114,29 +190,65 @@ const WorktreeList = React.memo(function WorktreeList() {
     }
 
     // Group items
-    const grouped = new Map<string, Worktree[]>()
+    const grouped = new Map<string, { label: string; items: Worktree[]; repo?: Repo }>()
     for (const w of worktrees) {
+      let key: string
       let label: string
+      let repo: Repo | undefined
       if (groupBy === 'repo') {
-        label = repoMap.get(w.repoId)?.displayName ?? 'Unknown'
+        repo = repoMap.get(w.repoId)
+        key = `repo:${w.repoId}`
+        label = repo?.displayName ?? 'Unknown'
       } else {
-        // pr-status
-        const repo = repoMap.get(w.repoId)
-        const branch = branchName(w.branch)
-        const cacheKey = repo ? `${repo.path}::${branch}` : ''
-        const prEntry = cacheKey && prCache ? prCache[cacheKey] : undefined
-        const pr = prEntry !== undefined ? prEntry.data : undefined
-        label = pr ? pr.state.charAt(0).toUpperCase() + pr.state.slice(1) : 'No PR'
+        const prGroup = getPRGroupKey(w, repoMap, prCache)
+        key = `pr:${prGroup}`
+        label = PR_GROUP_META[prGroup].label
       }
-      if (!grouped.has(label)) grouped.set(label, [])
-      grouped.get(label)!.push(w)
+      if (!grouped.has(key)) grouped.set(key, { label, items: [], repo })
+      grouped.get(key)!.items.push(w)
     }
 
-    for (const [label, items] of grouped) {
-      const isCollapsed = collapsedGroups.has(label)
-      result.push({ type: 'header', label, count: items.length })
+    const orderedGroups: Array<[string, { label: string; items: Worktree[]; repo?: Repo }]> = []
+    if (groupBy === 'pr-status') {
+      for (const prGroup of PR_GROUP_ORDER) {
+        const key = `pr:${prGroup}`
+        const group = grouped.get(key)
+        if (group) orderedGroups.push([key, group])
+      }
+    } else {
+      orderedGroups.push(...Array.from(grouped.entries()))
+    }
+
+    for (const [key, group] of orderedGroups) {
+      const isCollapsed = collapsedGroups.has(key)
+      const repo = group.repo
+      const header =
+        groupBy === 'repo'
+          ? {
+              type: 'header' as const,
+              key,
+              label: group.label,
+              count: group.items.length,
+              tone: 'border-border/70 bg-background/70 text-foreground',
+              icon: FolderGit2,
+              repo
+            }
+          : (() => {
+              const prGroup = key.replace(/^pr:/, '') as PRGroupKey
+              const meta = PR_GROUP_META[prGroup]
+              return {
+                type: 'header' as const,
+                key,
+                label: meta.label,
+                count: group.items.length,
+                tone: meta.tone,
+                icon: meta.icon
+              }
+            })()
+
+      result.push(header)
       if (!isCollapsed) {
-        for (const w of items) {
+        for (const w of group.items) {
           result.push({ type: 'item', worktree: w, repo: repoMap.get(w.repoId) })
         }
       }
@@ -149,13 +261,20 @@ const WorktreeList = React.memo(function WorktreeList() {
   const virtualizer = useVirtualizer({
     count: rows.length,
     getScrollElement: () => scrollRef.current,
-    estimateSize: (index) => (rows[index].type === 'header' ? 28 : 56),
+    estimateSize: (index) => (rows[index].type === 'header' ? 38 : 56),
     overscan: 10,
     getItemKey: (index) => {
       const row = rows[index]
-      return row.type === 'header' ? `hdr:${row.label}` : `wt:${row.worktree.id}`
+      return row.type === 'header' ? `hdr:${row.key}` : `wt:${row.worktree.id}`
     }
   })
+
+  const handleCreateForRepo = useCallback(
+    (repoId: string) => {
+      openModal('create-worktree', { preselectedRepoId: repoId })
+    },
+    [openModal]
+  )
 
   if (worktrees.length === 0) {
     return (
@@ -181,19 +300,74 @@ const WorktreeList = React.memo(function WorktreeList() {
                 style={{ transform: `translateY(${vItem.start}px)` }}
               >
                 <button
-                  className="flex items-center gap-1 px-2 pt-2 pb-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground w-full text-left hover:text-foreground transition-colors"
-                  onClick={() => toggleGroup(row.label)}
+                  className={cn(
+                    'group mx-1 mt-1.5 flex h-8 w-[calc(100%-0.5rem)] items-center gap-2 rounded-lg border px-2 py-1 text-left transition-all hover:brightness-110',
+                    row.tone,
+                    row.repo ? 'overflow-hidden' : ''
+                  )}
+                  onClick={() => toggleGroup(row.key)}
+                  style={
+                    row.repo
+                      ? {
+                          backgroundImage: `linear-gradient(135deg, ${row.repo.badgeColor}26 0%, ${row.repo.badgeColor}12 52%, rgba(0,0,0,0) 100%)`,
+                          borderColor: `${row.repo.badgeColor}44`
+                        }
+                      : undefined
+                  }
                 >
-                  <span
-                    className="inline-block transition-transform text-[8px]"
-                    style={{
-                      transform: collapsedGroups.has(row.label) ? 'rotate(-90deg)' : 'rotate(0deg)'
-                    }}
+                  <div
+                    className={cn(
+                      'flex size-5 shrink-0 items-center justify-center rounded-md border',
+                      row.repo ? 'bg-black/10 text-foreground border-white/10' : 'bg-black/10'
+                    )}
+                    style={row.repo ? { color: row.repo.badgeColor } : undefined}
                   >
-                    &#9660;
-                  </span>
-                  {row.label}
-                  <span className="ml-auto text-[9px] font-normal tabular-nums">{row.count}</span>
+                    <row.icon className="size-3" />
+                  </div>
+
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5">
+                      <div className="truncate text-[11px] font-semibold leading-none">
+                        {row.label}
+                      </div>
+                      <div className="rounded-full bg-black/12 px-1.5 py-0.5 text-[9px] font-medium leading-none text-muted-foreground/90">
+                        {row.count}
+                      </div>
+                    </div>
+                  </div>
+
+                  {row.repo ? (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-xs"
+                          className="mr-0.5 size-5 shrink-0 rounded-md border border-white/10 bg-black/10 text-foreground hover:bg-black/20"
+                          aria-label={`Create worktree for ${row.label}`}
+                          onClick={(event) => {
+                            event.preventDefault()
+                            event.stopPropagation()
+                            if (row.repo) handleCreateForRepo(row.repo.id)
+                          }}
+                        >
+                          <Plus className="size-3" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom" sideOffset={6}>
+                        Create worktree for {row.label}
+                      </TooltipContent>
+                    </Tooltip>
+                  ) : null}
+
+                  <div className="flex size-4 shrink-0 items-center justify-center text-muted-foreground/90">
+                    <ChevronDown
+                      className={cn(
+                        'size-3.5 transition-transform',
+                        collapsedGroups.has(row.key) && '-rotate-90'
+                      )}
+                    />
+                  </div>
                 </button>
               </div>
             )

@@ -22,6 +22,7 @@ import { parseGitHubIssueOrPRNumber } from '@/lib/github-links'
 
 const AddWorktreeDialog = React.memo(function AddWorktreeDialog() {
   const activeModal = useAppStore((s) => s.activeModal)
+  const modalData = useAppStore((s) => s.modalData)
   const closeModal = useAppStore((s) => s.closeModal)
   const repos = useAppStore((s) => s.repos)
   const createWorktree = useAppStore((s) => s.createWorktree)
@@ -34,6 +35,8 @@ const AddWorktreeDialog = React.memo(function AddWorktreeDialog() {
   const [creating, setCreating] = useState(false)
 
   const isOpen = activeModal === 'create-worktree'
+  const preselectedRepoId =
+    typeof modalData.preselectedRepoId === 'string' ? modalData.preselectedRepoId : ''
   const selectedRepo = repos.find((r) => r.id === repoId)
 
   const handleOpenChange = useCallback(
@@ -77,10 +80,17 @@ const AddWorktreeDialog = React.memo(function AddWorktreeDialog() {
 
   // Auto-select first repo when opening
   React.useEffect(() => {
-    if (isOpen && repos.length > 0 && !repoId) {
+    if (!isOpen || repos.length === 0) return
+
+    if (preselectedRepoId && repos.some((repo) => repo.id === preselectedRepoId)) {
+      setRepoId(preselectedRepoId)
+      return
+    }
+
+    if (!repoId) {
       setRepoId(repos[0].id)
     }
-  }, [isOpen, repos, repoId])
+  }, [isOpen, repos, repoId, preselectedRepoId])
 
   // Safety guard: creating a worktree requires at least one repo.
   React.useEffect(() => {
