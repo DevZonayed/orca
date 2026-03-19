@@ -614,6 +614,36 @@ function Settings(): React.JSX.Element {
     systemPrefersDark
   )
   const paneStyleOptions = resolvePaneStyleOptions(settings)
+  const contentClassName = 'w-full max-w-5xl px-8'
+  const pageHeader = showGeneralPane ? (
+    <div className="space-y-1">
+      <h1 className="text-2xl font-semibold">General</h1>
+      <p className="text-sm text-muted-foreground">Workspace, naming, and appearance defaults.</p>
+    </div>
+  ) : showTerminalPane ? (
+    <div className="space-y-1">
+      <h1 className="text-2xl font-semibold">Terminal</h1>
+      <p className="text-sm text-muted-foreground">
+        Terminal appearance, previews, and defaults for new panes.
+      </p>
+    </div>
+  ) : selectedRepo ? (
+    <div className="space-y-1">
+      <div className="flex items-center gap-3">
+        <span
+          className="size-3 rounded-full"
+          style={{ backgroundColor: selectedRepo.badgeColor }}
+        />
+        <h1 className="text-2xl font-semibold">{selectedRepo.displayName}</h1>
+      </div>
+      <p className="font-mono text-xs text-muted-foreground">{selectedRepo.path}</p>
+    </div>
+  ) : (
+    <div className="space-y-1">
+      <h1 className="text-2xl font-semibold">Repository Settings</h1>
+      <p className="text-sm text-muted-foreground">Select a repository to edit its settings.</p>
+    </div>
+  )
 
   return (
     <div className="settings-view-shell flex min-h-0 flex-1 overflow-hidden bg-background">
@@ -693,618 +723,603 @@ function Settings(): React.JSX.Element {
         </ScrollArea>
       </aside>
 
-      <ScrollArea className="min-h-0 flex-1">
-        <div className="mx-auto max-w-5xl px-8 py-8">
-          {showGeneralPane ? (
-            <div className="space-y-8">
-              <div className="space-y-1">
-                <h1 className="text-2xl font-semibold">General</h1>
-                <p className="text-sm text-muted-foreground">
-                  Workspace, naming, and appearance defaults.
-                </p>
-              </div>
+      <div className="flex min-h-0 flex-1 flex-col">
+        <div className="sticky top-0 z-10 border-b bg-background/95 py-6 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+          <div className={contentClassName}>{pageHeader}</div>
+        </div>
 
-              <section className="space-y-4">
-                <div className="space-y-1">
-                  <h2 className="text-sm font-semibold">Workspace</h2>
-                  <p className="text-xs text-muted-foreground">
-                    Configure where new worktrees are created.
-                  </p>
-                </div>
-
-                <div className="space-y-2">
-                  <Label className="text-sm">Workspace Directory</Label>
-                  <div className="flex gap-2">
-                    <Input
-                      value={settings.workspaceDir}
-                      onChange={(e) => updateSettings({ workspaceDir: e.target.value })}
-                      className="flex-1 font-mono text-xs"
-                    />
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={handleBrowseWorkspace}
-                      className="shrink-0 gap-1.5"
-                    >
-                      <FolderOpen className="size-3.5" />
-                      Browse
-                    </Button>
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    Root directory where worktree folders are created.
-                  </p>
-                </div>
-
-                <div className="flex items-center justify-between gap-4 px-1 py-2">
-                  <div className="space-y-0.5">
-                    <Label className="text-sm">Nest Workspaces</Label>
-                    <p className="text-xs text-muted-foreground">
-                      Create worktrees inside a repo-named subfolder.
-                    </p>
-                  </div>
-                  <button
-                    role="switch"
-                    aria-checked={settings.nestWorkspaces}
-                    onClick={() =>
-                      updateSettings({
-                        nestWorkspaces: !settings.nestWorkspaces
-                      })
-                    }
-                    className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border border-transparent transition-colors ${
-                      settings.nestWorkspaces ? 'bg-foreground' : 'bg-muted-foreground/30'
-                    }`}
-                  >
-                    <span
-                      className={`pointer-events-none block size-3.5 rounded-full bg-background shadow-sm transition-transform ${
-                        settings.nestWorkspaces ? 'translate-x-4' : 'translate-x-0.5'
-                      }`}
-                    />
-                  </button>
-                </div>
-              </section>
-
-              <Separator />
-
-              <section className="space-y-4">
-                <div className="space-y-1">
-                  <h2 className="text-sm font-semibold">Branch Naming</h2>
-                  <p className="text-xs text-muted-foreground">
-                    Prefix added to branch names when creating worktrees.
-                  </p>
-                </div>
-
-                <div className="flex w-fit gap-1 rounded-md border p-1">
-                  {(['git-username', 'custom', 'none'] as const).map((option) => (
-                    <button
-                      key={option}
-                      onClick={() => updateSettings({ branchPrefix: option })}
-                      className={`rounded-sm px-3 py-1 text-sm transition-colors ${
-                        settings.branchPrefix === option
-                          ? 'bg-accent font-medium text-accent-foreground'
-                          : 'text-muted-foreground hover:text-foreground'
-                      }`}
-                    >
-                      {option === 'git-username'
-                        ? 'Git Username'
-                        : option === 'custom'
-                          ? 'Custom'
-                          : 'None'}
-                    </button>
-                  ))}
-                </div>
-                {(settings.branchPrefix === 'custom' ||
-                  settings.branchPrefix === 'git-username') && (
-                  <Input
-                    value={
-                      settings.branchPrefix === 'git-username'
-                        ? displayedGitUsername
-                        : settings.branchPrefixCustom
-                    }
-                    onChange={(e) => updateSettings({ branchPrefixCustom: e.target.value })}
-                    placeholder={
-                      settings.branchPrefix === 'git-username'
-                        ? 'No git username configured'
-                        : 'e.g. feature'
-                    }
-                    className="max-w-xs"
-                    readOnly={settings.branchPrefix === 'git-username'}
-                  />
-                )}
-              </section>
-
-              <Separator />
-
-              <section className="space-y-4">
-                <div className="space-y-1">
-                  <h2 className="text-sm font-semibold">Appearance</h2>
-                  <p className="text-xs text-muted-foreground">
-                    Choose how Orca looks in the app window.
-                  </p>
-                </div>
-
-                <div className="flex w-fit gap-1 rounded-md border p-1">
-                  {(['system', 'dark', 'light'] as const).map((option) => (
-                    <button
-                      key={option}
-                      onClick={() => {
-                        updateSettings({ theme: option })
-                        applyTheme(option)
-                      }}
-                      className={`rounded-sm px-3 py-1 text-sm capitalize transition-colors ${
-                        settings.theme === option
-                          ? 'bg-accent font-medium text-accent-foreground'
-                          : 'text-muted-foreground hover:text-foreground'
-                      }`}
-                    >
-                      {option}
-                    </button>
-                  ))}
-                </div>
-              </section>
-            </div>
-          ) : showTerminalPane ? (
-            <div className="space-y-8">
-              <div className="space-y-1">
-                <h1 className="text-2xl font-semibold">Terminal</h1>
-                <p className="text-sm text-muted-foreground">
-                  Terminal appearance, previews, and defaults for new panes.
-                </p>
-              </div>
-
-              <section className="space-y-4">
-                <div className="space-y-1">
-                  <h2 className="text-sm font-semibold">Typography</h2>
-                  <p className="text-xs text-muted-foreground">
-                    Default terminal typography for new panes and live updates.
-                  </p>
-                </div>
-
-                <div className="space-y-2">
-                  <Label className="text-sm">Font Size</Label>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="outline"
-                      size="icon-sm"
-                      onClick={() => {
-                        const next = Math.max(10, settings.terminalFontSize - 1)
-                        updateSettings({ terminalFontSize: next })
-                      }}
-                      disabled={settings.terminalFontSize <= 10}
-                    >
-                      <Minus className="size-3" />
-                    </Button>
-                    <Input
-                      type="number"
-                      min={10}
-                      max={24}
-                      value={settings.terminalFontSize}
-                      onChange={(e) => {
-                        const value = parseInt(e.target.value, 10)
-                        if (!Number.isNaN(value) && value >= 10 && value <= 24) {
-                          updateSettings({ terminalFontSize: value })
-                        }
-                      }}
-                      className="w-16 text-center tabular-nums"
-                    />
-                    <Button
-                      variant="outline"
-                      size="icon-sm"
-                      onClick={() => {
-                        const next = Math.min(24, settings.terminalFontSize + 1)
-                        updateSettings({ terminalFontSize: next })
-                      }}
-                      disabled={settings.terminalFontSize >= 24}
-                    >
-                      <Plus className="size-3" />
-                    </Button>
-                    <span className="text-xs text-muted-foreground">px</span>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label className="text-sm">Font Family</Label>
-                  <FontAutocomplete
-                    value={settings.terminalFontFamily}
-                    suggestions={terminalFontSuggestions}
-                    onChange={(value) => updateSettings({ terminalFontFamily: value })}
-                  />
-                </div>
-              </section>
-
-              <Separator />
-
-              <section className="space-y-4">
-                <div className="space-y-1">
-                  <h2 className="text-sm font-semibold">Pane Styling</h2>
-                  <p className="text-xs text-muted-foreground">
-                    Control inactive pane dimming, divider thickness, and transition timing.
-                  </p>
-                </div>
-
-                <div className="grid gap-4 md:grid-cols-2">
-                  <NumberField
-                    label="Inactive Pane Opacity"
-                    description="Opacity applied to panes that are not currently active."
-                    value={paneStyleOptions.inactivePaneOpacity}
-                    defaultValue={0.8}
-                    min={0}
-                    max={1}
-                    step={0.05}
-                    suffix="0 to 1"
-                    onChange={(value) =>
-                      updateSettings({
-                        terminalInactivePaneOpacity: clampNumber(value, 0, 1)
-                      })
-                    }
-                  />
-                  <NumberField
-                    label="Divider Thickness"
-                    description="Thickness of the pane divider line."
-                    value={paneStyleOptions.dividerThicknessPx}
-                    defaultValue={1}
-                    min={1}
-                    max={32}
-                    step={1}
-                    suffix="px"
-                    onChange={(value) =>
-                      updateSettings({
-                        terminalDividerThicknessPx: clampNumber(value, 1, 32)
-                      })
-                    }
-                  />
-                </div>
-              </section>
-
-              <Separator />
-
-              <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
-                <div className="space-y-6">
-                  <ThemePicker
-                    label="Dark Theme"
-                    description="Choose the terminal theme used in dark mode."
-                    selectedTheme={settings.terminalThemeDark}
-                    query={themeSearchDark}
-                    onQueryChange={setThemeSearchDark}
-                    onSelectTheme={(theme) => updateSettings({ terminalThemeDark: theme })}
-                  />
-
-                  <ColorField
-                    label="Dark Divider Color"
-                    description="Controls the split divider line between panes in dark mode."
-                    value={settings.terminalDividerColorDark}
-                    fallback="#3f3f46"
-                    onChange={(value) => updateSettings({ terminalDividerColorDark: value })}
-                  />
-                </div>
-
-                <TerminalThemePreview
-                  title="Dark Mode Preview"
-                  description={
-                    settings.theme === 'system'
-                      ? `System mode is currently ${systemPrefersDark ? 'Dark' : 'Light'}.`
-                      : `Orca is currently in ${settings.theme} mode.`
-                  }
-                  appearance={darkPreviewAppearance}
-                  dividerThicknessPx={paneStyleOptions.dividerThicknessPx}
-                  inactivePaneOpacity={paneStyleOptions.inactivePaneOpacity}
-                  activePaneOpacity={paneStyleOptions.activePaneOpacity}
-                />
-              </section>
-
-              <Separator />
-
-              <section className="space-y-4">
-                <div className="flex items-center justify-between gap-4 px-1 py-2">
-                  <div className="space-y-0.5">
-                    <Label className="text-sm">Use Separate Theme In Light Mode</Label>
-                    <p className="text-xs text-muted-foreground">
-                      When disabled, light mode reuses the dark terminal theme.
-                    </p>
-                  </div>
-                  <button
-                    role="switch"
-                    aria-checked={settings.terminalUseSeparateLightTheme}
-                    onClick={() =>
-                      updateSettings({
-                        terminalUseSeparateLightTheme: !settings.terminalUseSeparateLightTheme
-                      })
-                    }
-                    className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border border-transparent transition-colors ${
-                      settings.terminalUseSeparateLightTheme
-                        ? 'bg-foreground'
-                        : 'bg-muted-foreground/30'
-                    }`}
-                  >
-                    <span
-                      className={`pointer-events-none block size-3.5 rounded-full bg-background shadow-sm transition-transform ${
-                        settings.terminalUseSeparateLightTheme ? 'translate-x-4' : 'translate-x-0.5'
-                      }`}
-                    />
-                  </button>
-                </div>
-
-                <div
-                  className={`grid overflow-hidden transition-all duration-300 ease-out ${
-                    settings.terminalUseSeparateLightTheme
-                      ? 'grid-rows-[1fr] opacity-100'
-                      : 'grid-rows-[0fr] opacity-0'
-                  }`}
-                >
-                  <div className="min-h-0">
-                    <div className="grid gap-6 pt-2 xl:grid-cols-[minmax(0,1fr)_360px]">
-                      <div className="space-y-6">
-                        <ThemePicker
-                          label="Light Theme"
-                          description="Choose the theme used when Orca is in light mode."
-                          selectedTheme={settings.terminalThemeLight}
-                          query={themeSearchLight}
-                          onQueryChange={setThemeSearchLight}
-                          onSelectTheme={(theme) => updateSettings({ terminalThemeLight: theme })}
-                        />
-
-                        <ColorField
-                          label="Light Divider Color"
-                          description="Controls the split divider line between panes in light mode."
-                          value={settings.terminalDividerColorLight}
-                          fallback="#d4d4d8"
-                          onChange={(value) => updateSettings({ terminalDividerColorLight: value })}
-                        />
-                      </div>
-
-                      <TerminalThemePreview
-                        title="Light Mode Preview"
-                        description="Updates live as you change the light theme or divider color."
-                        appearance={lightPreviewAppearance}
-                        dividerThicknessPx={paneStyleOptions.dividerThicknessPx}
-                        inactivePaneOpacity={paneStyleOptions.inactivePaneOpacity}
-                        activePaneOpacity={paneStyleOptions.activePaneOpacity}
-                      />
-                    </div>
-                  </div>
-                </div>
-              </section>
-            </div>
-          ) : selectedRepo ? (
-            <div className="space-y-8">
-              <div className="space-y-1">
-                <div className="flex items-center gap-3">
-                  <span
-                    className="size-3 rounded-full"
-                    style={{ backgroundColor: selectedRepo.badgeColor }}
-                  />
-                  <h1 className="text-2xl font-semibold">{selectedRepo.displayName}</h1>
-                </div>
-                <p className="font-mono text-xs text-muted-foreground">{selectedRepo.path}</p>
-              </div>
-
-              <section className="space-y-4">
-                <div className="flex items-start justify-between gap-4">
+        <ScrollArea className="min-h-0 flex-1">
+          <div className={`${contentClassName} py-8`}>
+            {showGeneralPane ? (
+              <div className="space-y-8">
+                <section className="space-y-4">
                   <div className="space-y-1">
-                    <h2 className="text-sm font-semibold">Identity</h2>
+                    <h2 className="text-sm font-semibold">Workspace</h2>
                     <p className="text-xs text-muted-foreground">
-                      Repo-specific display details for the sidebar and tabs.
+                      Configure where new worktrees are created.
                     </p>
                   </div>
 
-                  <Button
-                    variant={confirmingRemove === selectedRepo.id ? 'destructive' : 'outline'}
-                    size="sm"
-                    onClick={() => handleRemoveRepo(selectedRepo.id)}
-                    onBlur={() => setConfirmingRemove(null)}
-                    className="gap-2"
-                  >
-                    <Trash2 className="size-3.5" />
-                    {confirmingRemove === selectedRepo.id ? 'Confirm Remove' : 'Remove Repo'}
-                  </Button>
-                </div>
-
-                <div className="space-y-2">
-                  <Label className="text-sm">Display Name</Label>
-                  <Input
-                    value={selectedRepo.displayName}
-                    onChange={(e) =>
-                      updateRepo(selectedRepo.id, {
-                        displayName: e.target.value
-                      })
-                    }
-                    className="h-9 text-sm"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label className="text-sm">Badge Color</Label>
-                  <div className="flex flex-wrap gap-2">
-                    {REPO_COLORS.map((color) => (
-                      <button
-                        key={color}
-                        onClick={() => updateRepo(selectedRepo.id, { badgeColor: color })}
-                        className={`size-7 rounded-full transition-all ${
-                          selectedRepo.badgeColor === color
-                            ? 'ring-2 ring-foreground ring-offset-2 ring-offset-background'
-                            : 'hover:ring-1 hover:ring-muted-foreground hover:ring-offset-2 hover:ring-offset-background'
-                        }`}
-                        style={{ backgroundColor: color }}
-                        title={color}
+                  <div className="space-y-2">
+                    <Label className="text-sm">Workspace Directory</Label>
+                    <div className="flex gap-2">
+                      <Input
+                        value={settings.workspaceDir}
+                        onChange={(e) => updateSettings({ workspaceDir: e.target.value })}
+                        className="flex-1 font-mono text-xs"
                       />
-                    ))}
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label className="text-sm">Default Worktree Base</Label>
-                  <div className="rounded-xl border bg-background/80 p-4 shadow-sm">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div>
-                        <div className="text-sm font-medium text-foreground">
-                          {effectiveBaseRef}
-                        </div>
-                        <p className="text-xs text-muted-foreground">
-                          {selectedRepo.worktreeBaseRef
-                            ? 'Pinned for this repo'
-                            : `Following primary branch (${defaultBaseRef})`}
-                        </p>
-                      </div>
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => {
-                          setBaseRefQuery('')
-                          setBaseRefResults([])
-                          updateRepo(selectedRepo.id, {
-                            worktreeBaseRef: undefined
-                          })
-                        }}
-                        disabled={!selectedRepo.worktreeBaseRef}
+                        onClick={handleBrowseWorkspace}
+                        className="shrink-0 gap-1.5"
                       >
-                        Use Primary
+                        <FolderOpen className="size-3.5" />
+                        Browse
                       </Button>
                     </div>
-
-                    <div className="mt-4 space-y-2">
-                      <Input
-                        value={baseRefQuery}
-                        onChange={(e) => setBaseRefQuery(e.target.value)}
-                        placeholder="Search branches by name..."
-                        className="max-w-md"
-                      />
-                      <p className="text-xs text-muted-foreground">Type at least 2 characters.</p>
-                    </div>
-
-                    {isSearchingBaseRefs ? (
-                      <p className="mt-3 text-xs text-muted-foreground">Searching branches...</p>
-                    ) : null}
-
-                    {!isSearchingBaseRefs && baseRefQuery.trim().length >= 2 ? (
-                      baseRefResults.length > 0 ? (
-                        <ScrollArea className="mt-3 h-48 rounded-md border">
-                          <div className="p-1">
-                            {baseRefResults.map((ref) => (
-                              <button
-                                key={ref}
-                                onClick={() => {
-                                  setBaseRefQuery(ref)
-                                  setBaseRefResults([])
-                                  updateRepo(selectedRepo.id, {
-                                    worktreeBaseRef: ref
-                                  })
-                                }}
-                                className={`flex w-full items-center justify-between rounded-sm px-3 py-2 text-left text-sm transition-colors hover:bg-muted/60 ${
-                                  selectedRepo.worktreeBaseRef === ref
-                                    ? 'bg-accent text-accent-foreground'
-                                    : 'text-foreground'
-                                }`}
-                              >
-                                <span className="truncate">{ref}</span>
-                                {selectedRepo.worktreeBaseRef === ref ? (
-                                  <span className="text-[10px] uppercase tracking-[0.18em]">
-                                    Current
-                                  </span>
-                                ) : null}
-                              </button>
-                            ))}
-                          </div>
-                        </ScrollArea>
-                      ) : (
-                        <p className="mt-3 text-xs text-muted-foreground">
-                          No matching branches found.
-                        </p>
-                      )
-                    ) : null}
+                    <p className="text-xs text-muted-foreground">
+                      Root directory where worktree folders are created.
+                    </p>
                   </div>
-                  <p className="text-xs text-muted-foreground">
-                    New worktrees default to the repo primary branch unless you pin a different base
-                    here.
-                  </p>
-                </div>
-              </section>
 
-              <Separator />
-
-              <section className="space-y-4">
-                <div className="space-y-1">
-                  <h2 className="text-sm font-semibold">Hook Source</h2>
-                  <p className="text-xs text-muted-foreground">
-                    Auto prefers `orca.yaml` when present, then falls back to the UI script.
-                    Override ignores YAML and only uses the UI script.
-                  </p>
-                </div>
-
-                <div className="flex w-fit gap-1 rounded-xl border p-1">
-                  {(['auto', 'override'] as const).map((mode) => (
+                  <div className="flex items-center justify-between gap-4 px-1 py-2">
+                    <div className="space-y-0.5">
+                      <Label className="text-sm">Nest Workspaces</Label>
+                      <p className="text-xs text-muted-foreground">
+                        Create worktrees inside a repo-named subfolder.
+                      </p>
+                    </div>
                     <button
-                      key={mode}
-                      onClick={() => updateSelectedRepoHookSettings(selectedRepo, { mode })}
-                      className={`rounded-lg px-3 py-1.5 text-sm transition-colors ${
-                        selectedRepo.hookSettings?.mode === mode
-                          ? 'bg-accent font-medium text-accent-foreground'
-                          : 'text-muted-foreground hover:text-foreground'
+                      role="switch"
+                      aria-checked={settings.nestWorkspaces}
+                      onClick={() =>
+                        updateSettings({
+                          nestWorkspaces: !settings.nestWorkspaces
+                        })
+                      }
+                      className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border border-transparent transition-colors ${
+                        settings.nestWorkspaces ? 'bg-foreground' : 'bg-muted-foreground/30'
                       }`}
                     >
-                      {mode === 'auto' ? 'Use YAML First' : 'Override in UI'}
+                      <span
+                        className={`pointer-events-none block size-3.5 rounded-full bg-background shadow-sm transition-transform ${
+                          settings.nestWorkspaces ? 'translate-x-4' : 'translate-x-0.5'
+                        }`}
+                      />
                     </button>
-                  ))}
-                </div>
+                  </div>
+                </section>
 
-                <div className="rounded-xl border border-dashed bg-muted/30 p-3 text-xs text-muted-foreground">
-                  {selectedYamlHooks ? (
-                    <div className="space-y-2">
-                      <p className="font-medium text-foreground">
-                        YAML hooks detected in `orca.yaml`
-                      </p>
-                      <div className="flex flex-wrap gap-2">
-                        {(['setup', 'archive'] as HookName[]).map((hookName) =>
-                          selectedYamlHooks.scripts[hookName] ? (
-                            <span
-                              key={hookName}
-                              className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 text-[10px] font-medium uppercase tracking-[0.18em] text-emerald-700 dark:text-emerald-300"
-                            >
-                              {hookName}
-                            </span>
-                          ) : null
-                        )}
-                      </div>
-                    </div>
-                  ) : (
-                    <p>No YAML hooks detected for this repo.</p>
+                <Separator />
+
+                <section className="space-y-4">
+                  <div className="space-y-1">
+                    <h2 className="text-sm font-semibold">Branch Naming</h2>
+                    <p className="text-xs text-muted-foreground">
+                      Prefix added to branch names when creating worktrees.
+                    </p>
+                  </div>
+
+                  <div className="flex w-fit gap-1 rounded-md border p-1">
+                    {(['git-username', 'custom', 'none'] as const).map((option) => (
+                      <button
+                        key={option}
+                        onClick={() => updateSettings({ branchPrefix: option })}
+                        className={`rounded-sm px-3 py-1 text-sm transition-colors ${
+                          settings.branchPrefix === option
+                            ? 'bg-accent font-medium text-accent-foreground'
+                            : 'text-muted-foreground hover:text-foreground'
+                        }`}
+                      >
+                        {option === 'git-username'
+                          ? 'Git Username'
+                          : option === 'custom'
+                            ? 'Custom'
+                            : 'None'}
+                      </button>
+                    ))}
+                  </div>
+                  {(settings.branchPrefix === 'custom' ||
+                    settings.branchPrefix === 'git-username') && (
+                    <Input
+                      value={
+                        settings.branchPrefix === 'git-username'
+                          ? displayedGitUsername
+                          : settings.branchPrefixCustom
+                      }
+                      onChange={(e) => updateSettings({ branchPrefixCustom: e.target.value })}
+                      placeholder={
+                        settings.branchPrefix === 'git-username'
+                          ? 'No git username configured'
+                          : 'e.g. feature'
+                      }
+                      className="max-w-xs"
+                      readOnly={settings.branchPrefix === 'git-username'}
+                    />
                   )}
-                </div>
-              </section>
+                </section>
 
-              <Separator />
+                <Separator />
 
-              <section className="space-y-4">
-                <div className="space-y-1">
-                  <h2 className="text-sm font-semibold">Lifecycle Hooks</h2>
-                  <p className="text-xs text-muted-foreground">
-                    Write scripts directly in the UI. Each repo stores its own setup and archive
-                    hook script.
-                  </p>
-                </div>
+                <section className="space-y-4">
+                  <div className="space-y-1">
+                    <h2 className="text-sm font-semibold">Appearance</h2>
+                    <p className="text-xs text-muted-foreground">
+                      Choose how Orca looks in the app window.
+                    </p>
+                  </div>
 
-                <div className="space-y-4">
-                  {(['setup', 'archive'] as HookName[]).map((hookName) => (
-                    <HookEditor
-                      key={hookName}
-                      hookName={hookName}
-                      repo={selectedRepo}
-                      yamlHooks={selectedYamlHooks}
-                      onScriptChange={(script) =>
-                        updateSelectedRepoHookSettings(selectedRepo, {
-                          scripts: hookName === 'setup' ? { setup: script } : { archive: script }
+                  <div className="flex w-fit gap-1 rounded-md border p-1">
+                    {(['system', 'dark', 'light'] as const).map((option) => (
+                      <button
+                        key={option}
+                        onClick={() => {
+                          updateSettings({ theme: option })
+                          applyTheme(option)
+                        }}
+                        className={`rounded-sm px-3 py-1 text-sm capitalize transition-colors ${
+                          settings.theme === option
+                            ? 'bg-accent font-medium text-accent-foreground'
+                            : 'text-muted-foreground hover:text-foreground'
+                        }`}
+                      >
+                        {option}
+                      </button>
+                    ))}
+                  </div>
+                </section>
+              </div>
+            ) : showTerminalPane ? (
+              <div className="space-y-8">
+                <section className="space-y-4">
+                  <div className="space-y-1">
+                    <h2 className="text-sm font-semibold">Typography</h2>
+                    <p className="text-xs text-muted-foreground">
+                      Default terminal typography for new panes and live updates.
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label className="text-sm">Font Size</Label>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="icon-sm"
+                        onClick={() => {
+                          const next = Math.max(10, settings.terminalFontSize - 1)
+                          updateSettings({ terminalFontSize: next })
+                        }}
+                        disabled={settings.terminalFontSize <= 10}
+                      >
+                        <Minus className="size-3" />
+                      </Button>
+                      <Input
+                        type="number"
+                        min={10}
+                        max={24}
+                        value={settings.terminalFontSize}
+                        onChange={(e) => {
+                          const value = parseInt(e.target.value, 10)
+                          if (!Number.isNaN(value) && value >= 10 && value <= 24) {
+                            updateSettings({ terminalFontSize: value })
+                          }
+                        }}
+                        className="w-16 text-center tabular-nums"
+                      />
+                      <Button
+                        variant="outline"
+                        size="icon-sm"
+                        onClick={() => {
+                          const next = Math.min(24, settings.terminalFontSize + 1)
+                          updateSettings({ terminalFontSize: next })
+                        }}
+                        disabled={settings.terminalFontSize >= 24}
+                      >
+                        <Plus className="size-3" />
+                      </Button>
+                      <span className="text-xs text-muted-foreground">px</span>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label className="text-sm">Font Family</Label>
+                    <FontAutocomplete
+                      value={settings.terminalFontFamily}
+                      suggestions={terminalFontSuggestions}
+                      onChange={(value) => updateSettings({ terminalFontFamily: value })}
+                    />
+                  </div>
+                </section>
+
+                <Separator />
+
+                <section className="space-y-4">
+                  <div className="space-y-1">
+                    <h2 className="text-sm font-semibold">Pane Styling</h2>
+                    <p className="text-xs text-muted-foreground">
+                      Control inactive pane dimming, divider thickness, and transition timing.
+                    </p>
+                  </div>
+
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <NumberField
+                      label="Inactive Pane Opacity"
+                      description="Opacity applied to panes that are not currently active."
+                      value={paneStyleOptions.inactivePaneOpacity}
+                      defaultValue={0.8}
+                      min={0}
+                      max={1}
+                      step={0.05}
+                      suffix="0 to 1"
+                      onChange={(value) =>
+                        updateSettings({
+                          terminalInactivePaneOpacity: clampNumber(value, 0, 1)
                         })
                       }
                     />
-                  ))}
-                </div>
-              </section>
-            </div>
-          ) : (
-            <div className="flex min-h-[24rem] items-center justify-center text-sm text-muted-foreground">
-              Select a repository to edit its settings.
-            </div>
-          )}
-        </div>
-      </ScrollArea>
+                    <NumberField
+                      label="Divider Thickness"
+                      description="Thickness of the pane divider line."
+                      value={paneStyleOptions.dividerThicknessPx}
+                      defaultValue={1}
+                      min={1}
+                      max={32}
+                      step={1}
+                      suffix="px"
+                      onChange={(value) =>
+                        updateSettings({
+                          terminalDividerThicknessPx: clampNumber(value, 1, 32)
+                        })
+                      }
+                    />
+                  </div>
+                </section>
+
+                <Separator />
+
+                <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
+                  <div className="space-y-6">
+                    <ThemePicker
+                      label="Dark Theme"
+                      description="Choose the terminal theme used in dark mode."
+                      selectedTheme={settings.terminalThemeDark}
+                      query={themeSearchDark}
+                      onQueryChange={setThemeSearchDark}
+                      onSelectTheme={(theme) => updateSettings({ terminalThemeDark: theme })}
+                    />
+
+                    <ColorField
+                      label="Dark Divider Color"
+                      description="Controls the split divider line between panes in dark mode."
+                      value={settings.terminalDividerColorDark}
+                      fallback="#3f3f46"
+                      onChange={(value) => updateSettings({ terminalDividerColorDark: value })}
+                    />
+                  </div>
+
+                  <TerminalThemePreview
+                    title="Dark Mode Preview"
+                    description={
+                      settings.theme === 'system'
+                        ? `System mode is currently ${systemPrefersDark ? 'Dark' : 'Light'}.`
+                        : `Orca is currently in ${settings.theme} mode.`
+                    }
+                    appearance={darkPreviewAppearance}
+                    dividerThicknessPx={paneStyleOptions.dividerThicknessPx}
+                    inactivePaneOpacity={paneStyleOptions.inactivePaneOpacity}
+                    activePaneOpacity={paneStyleOptions.activePaneOpacity}
+                  />
+                </section>
+
+                <Separator />
+
+                <section className="space-y-4">
+                  <div className="flex items-center justify-between gap-4 px-1 py-2">
+                    <div className="space-y-0.5">
+                      <Label className="text-sm">Use Separate Theme In Light Mode</Label>
+                      <p className="text-xs text-muted-foreground">
+                        When disabled, light mode reuses the dark terminal theme.
+                      </p>
+                    </div>
+                    <button
+                      role="switch"
+                      aria-checked={settings.terminalUseSeparateLightTheme}
+                      onClick={() =>
+                        updateSettings({
+                          terminalUseSeparateLightTheme: !settings.terminalUseSeparateLightTheme
+                        })
+                      }
+                      className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border border-transparent transition-colors ${
+                        settings.terminalUseSeparateLightTheme
+                          ? 'bg-foreground'
+                          : 'bg-muted-foreground/30'
+                      }`}
+                    >
+                      <span
+                        className={`pointer-events-none block size-3.5 rounded-full bg-background shadow-sm transition-transform ${
+                          settings.terminalUseSeparateLightTheme
+                            ? 'translate-x-4'
+                            : 'translate-x-0.5'
+                        }`}
+                      />
+                    </button>
+                  </div>
+
+                  <div
+                    className={`grid overflow-hidden transition-all duration-300 ease-out ${
+                      settings.terminalUseSeparateLightTheme
+                        ? 'grid-rows-[1fr] opacity-100'
+                        : 'grid-rows-[0fr] opacity-0'
+                    }`}
+                  >
+                    <div className="min-h-0">
+                      <div className="grid gap-6 pt-2 xl:grid-cols-[minmax(0,1fr)_360px]">
+                        <div className="space-y-6">
+                          <ThemePicker
+                            label="Light Theme"
+                            description="Choose the theme used when Orca is in light mode."
+                            selectedTheme={settings.terminalThemeLight}
+                            query={themeSearchLight}
+                            onQueryChange={setThemeSearchLight}
+                            onSelectTheme={(theme) => updateSettings({ terminalThemeLight: theme })}
+                          />
+
+                          <ColorField
+                            label="Light Divider Color"
+                            description="Controls the split divider line between panes in light mode."
+                            value={settings.terminalDividerColorLight}
+                            fallback="#d4d4d8"
+                            onChange={(value) =>
+                              updateSettings({ terminalDividerColorLight: value })
+                            }
+                          />
+                        </div>
+
+                        <TerminalThemePreview
+                          title="Light Mode Preview"
+                          description="Updates live as you change the light theme or divider color."
+                          appearance={lightPreviewAppearance}
+                          dividerThicknessPx={paneStyleOptions.dividerThicknessPx}
+                          inactivePaneOpacity={paneStyleOptions.inactivePaneOpacity}
+                          activePaneOpacity={paneStyleOptions.activePaneOpacity}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </section>
+              </div>
+            ) : selectedRepo ? (
+              <div className="space-y-8">
+                <section className="space-y-4">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="space-y-1">
+                      <h2 className="text-sm font-semibold">Identity</h2>
+                      <p className="text-xs text-muted-foreground">
+                        Repo-specific display details for the sidebar and tabs.
+                      </p>
+                    </div>
+
+                    <Button
+                      variant={confirmingRemove === selectedRepo.id ? 'destructive' : 'outline'}
+                      size="sm"
+                      onClick={() => handleRemoveRepo(selectedRepo.id)}
+                      onBlur={() => setConfirmingRemove(null)}
+                      className="gap-2"
+                    >
+                      <Trash2 className="size-3.5" />
+                      {confirmingRemove === selectedRepo.id ? 'Confirm Remove' : 'Remove Repo'}
+                    </Button>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label className="text-sm">Display Name</Label>
+                    <Input
+                      value={selectedRepo.displayName}
+                      onChange={(e) =>
+                        updateRepo(selectedRepo.id, {
+                          displayName: e.target.value
+                        })
+                      }
+                      className="h-9 text-sm"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label className="text-sm">Badge Color</Label>
+                    <div className="flex flex-wrap gap-2">
+                      {REPO_COLORS.map((color) => (
+                        <button
+                          key={color}
+                          onClick={() => updateRepo(selectedRepo.id, { badgeColor: color })}
+                          className={`size-7 rounded-full transition-all ${
+                            selectedRepo.badgeColor === color
+                              ? 'ring-2 ring-foreground ring-offset-2 ring-offset-background'
+                              : 'hover:ring-1 hover:ring-muted-foreground hover:ring-offset-2 hover:ring-offset-background'
+                          }`}
+                          style={{ backgroundColor: color }}
+                          title={color}
+                        />
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label className="text-sm">Default Worktree Base</Label>
+                    <div className="rounded-xl border bg-background/80 p-4 shadow-sm">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                          <div className="text-sm font-medium text-foreground">
+                            {effectiveBaseRef}
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            {selectedRepo.worktreeBaseRef
+                              ? 'Pinned for this repo'
+                              : `Following primary branch (${defaultBaseRef})`}
+                          </p>
+                        </div>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setBaseRefQuery('')
+                            setBaseRefResults([])
+                            updateRepo(selectedRepo.id, {
+                              worktreeBaseRef: undefined
+                            })
+                          }}
+                          disabled={!selectedRepo.worktreeBaseRef}
+                        >
+                          Use Primary
+                        </Button>
+                      </div>
+
+                      <div className="mt-4 space-y-2">
+                        <Input
+                          value={baseRefQuery}
+                          onChange={(e) => setBaseRefQuery(e.target.value)}
+                          placeholder="Search branches by name..."
+                          className="max-w-md"
+                        />
+                        <p className="text-xs text-muted-foreground">Type at least 2 characters.</p>
+                      </div>
+
+                      {isSearchingBaseRefs ? (
+                        <p className="mt-3 text-xs text-muted-foreground">Searching branches...</p>
+                      ) : null}
+
+                      {!isSearchingBaseRefs && baseRefQuery.trim().length >= 2 ? (
+                        baseRefResults.length > 0 ? (
+                          <ScrollArea className="mt-3 h-48 rounded-md border">
+                            <div className="p-1">
+                              {baseRefResults.map((ref) => (
+                                <button
+                                  key={ref}
+                                  onClick={() => {
+                                    setBaseRefQuery(ref)
+                                    setBaseRefResults([])
+                                    updateRepo(selectedRepo.id, {
+                                      worktreeBaseRef: ref
+                                    })
+                                  }}
+                                  className={`flex w-full items-center justify-between rounded-sm px-3 py-2 text-left text-sm transition-colors hover:bg-muted/60 ${
+                                    selectedRepo.worktreeBaseRef === ref
+                                      ? 'bg-accent text-accent-foreground'
+                                      : 'text-foreground'
+                                  }`}
+                                >
+                                  <span className="truncate">{ref}</span>
+                                  {selectedRepo.worktreeBaseRef === ref ? (
+                                    <span className="text-[10px] uppercase tracking-[0.18em]">
+                                      Current
+                                    </span>
+                                  ) : null}
+                                </button>
+                              ))}
+                            </div>
+                          </ScrollArea>
+                        ) : (
+                          <p className="mt-3 text-xs text-muted-foreground">
+                            No matching branches found.
+                          </p>
+                        )
+                      ) : null}
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      New worktrees default to the repo primary branch unless you pin a different
+                      base here.
+                    </p>
+                  </div>
+                </section>
+
+                <Separator />
+
+                <section className="space-y-4">
+                  <div className="space-y-1">
+                    <h2 className="text-sm font-semibold">Hook Source</h2>
+                    <p className="text-xs text-muted-foreground">
+                      Auto prefers `orca.yaml` when present, then falls back to the UI script.
+                      Override ignores YAML and only uses the UI script.
+                    </p>
+                  </div>
+
+                  <div className="flex w-fit gap-1 rounded-xl border p-1">
+                    {(['auto', 'override'] as const).map((mode) => (
+                      <button
+                        key={mode}
+                        onClick={() => updateSelectedRepoHookSettings(selectedRepo, { mode })}
+                        className={`rounded-lg px-3 py-1.5 text-sm transition-colors ${
+                          selectedRepo.hookSettings?.mode === mode
+                            ? 'bg-accent font-medium text-accent-foreground'
+                            : 'text-muted-foreground hover:text-foreground'
+                        }`}
+                      >
+                        {mode === 'auto' ? 'Use YAML First' : 'Override in UI'}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="rounded-xl border border-dashed bg-muted/30 p-3 text-xs text-muted-foreground">
+                    {selectedYamlHooks ? (
+                      <div className="space-y-2">
+                        <p className="font-medium text-foreground">
+                          YAML hooks detected in `orca.yaml`
+                        </p>
+                        <div className="flex flex-wrap gap-2">
+                          {(['setup', 'archive'] as HookName[]).map((hookName) =>
+                            selectedYamlHooks.scripts[hookName] ? (
+                              <span
+                                key={hookName}
+                                className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 text-[10px] font-medium uppercase tracking-[0.18em] text-emerald-700 dark:text-emerald-300"
+                              >
+                                {hookName}
+                              </span>
+                            ) : null
+                          )}
+                        </div>
+                      </div>
+                    ) : (
+                      <p>No YAML hooks detected for this repo.</p>
+                    )}
+                  </div>
+                </section>
+
+                <Separator />
+
+                <section className="space-y-4">
+                  <div className="space-y-1">
+                    <h2 className="text-sm font-semibold">Lifecycle Hooks</h2>
+                    <p className="text-xs text-muted-foreground">
+                      Write scripts directly in the UI. Each repo stores its own setup and archive
+                      hook script.
+                    </p>
+                  </div>
+
+                  <div className="space-y-4">
+                    {(['setup', 'archive'] as HookName[]).map((hookName) => (
+                      <HookEditor
+                        key={hookName}
+                        hookName={hookName}
+                        repo={selectedRepo}
+                        yamlHooks={selectedYamlHooks}
+                        onScriptChange={(script) =>
+                          updateSelectedRepoHookSettings(selectedRepo, {
+                            scripts: hookName === 'setup' ? { setup: script } : { archive: script }
+                          })
+                        }
+                      />
+                    ))}
+                  </div>
+                </section>
+              </div>
+            ) : (
+              <div className="flex min-h-[24rem] items-center justify-center text-sm text-muted-foreground">
+                Select a repository to edit its settings.
+              </div>
+            )}
+          </div>
+        </ScrollArea>
+      </div>
     </div>
   )
 }
