@@ -19,6 +19,7 @@ interface ReposApi {
     updates: Partial<Pick<Repo, 'displayName' | 'badgeColor' | 'hookSettings'>>
   }) => Promise<Repo>
   pickFolder: () => Promise<string | null>
+  getGitUsername: (args: { repoId: string }) => Promise<string>
   onChanged: (callback: () => void) => () => void
 }
 

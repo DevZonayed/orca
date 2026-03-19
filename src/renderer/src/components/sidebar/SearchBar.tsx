@@ -1,5 +1,5 @@
 import React, { useCallback } from 'react'
-import { Search, X, Activity } from 'lucide-react'
+import { Search, X, Activity, FolderTree } from 'lucide-react'
 import { useAppStore } from '@/store'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -52,9 +52,15 @@ const SearchBar = React.memo(function SearchBar() {
                 variant="ghost"
                 size="icon-xs"
                 onClick={handleToggleActive}
-                className={cn('size-5', showActiveOnly && 'bg-accent text-accent-foreground')}
+                className={cn(
+                  'relative size-5',
+                  showActiveOnly && 'bg-accent text-accent-foreground'
+                )}
               >
                 <Activity className="size-3" />
+                {showActiveOnly ? (
+                  <span className="absolute top-0.5 right-0.5 size-1.5 rounded-full bg-green-500 ring-1 ring-background" />
+                ) : null}
               </Button>
             </TooltipTrigger>
             <TooltipContent side="bottom" sideOffset={4}>
@@ -78,7 +84,10 @@ const SearchBar = React.memo(function SearchBar() {
                       dotClassName="size-1"
                     />
                   ) : (
-                    'All repos'
+                    <span className="flex items-center gap-1">
+                      <FolderTree className="size-3 text-muted-foreground" />
+                      <span>All</span>
+                    </span>
                   )}
                 </SelectValue>
               </SelectTrigger>

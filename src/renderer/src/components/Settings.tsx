@@ -110,6 +110,7 @@ function Settings(): React.JSX.Element {
   const selectedRepo = repos.find((repo) => repo.id === selectedRepoId) ?? null
   const selectedYamlHooks = selectedRepo ? (repoHooksMap[selectedRepo.id]?.hooks ?? null) : null
   const showGeneralPane = selectedPane === 'general' || !selectedRepo
+  const displayedGitUsername = (selectedRepo ?? repos[0])?.gitUsername ?? ''
 
   const updateSelectedRepoHookSettings = (
     repo: Repo,
@@ -218,194 +219,202 @@ function Settings(): React.JSX.Element {
                 </p>
               </div>
 
-              <div className="overflow-hidden rounded-2xl border bg-card">
-                <section className="space-y-4 px-6 py-5">
-                  <div className="space-y-1">
-                    <h2 className="text-sm font-semibold">Workspace</h2>
+              <section className="space-y-4">
+                <div className="space-y-1">
+                  <h2 className="text-sm font-semibold">Workspace</h2>
+                  <p className="text-xs text-muted-foreground">
+                    Configure where new worktrees are created.
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-sm">Workspace Directory</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      value={settings.workspaceDir}
+                      onChange={(e) => updateSettings({ workspaceDir: e.target.value })}
+                      className="flex-1 font-mono text-xs"
+                    />
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleBrowseWorkspace}
+                      className="shrink-0 gap-1.5"
+                    >
+                      <FolderOpen className="size-3.5" />
+                      Browse
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Root directory where worktree folders are created.
+                  </p>
+                </div>
+
+                <div className="flex items-center justify-between gap-4 px-1 py-2">
+                  <div className="space-y-0.5">
+                    <Label className="text-sm">Nest Workspaces</Label>
                     <p className="text-xs text-muted-foreground">
-                      Configure where new worktrees are created.
+                      Create worktrees inside a repo-named subfolder.
                     </p>
                   </div>
+                  <button
+                    role="switch"
+                    aria-checked={settings.nestWorkspaces}
+                    onClick={() => updateSettings({ nestWorkspaces: !settings.nestWorkspaces })}
+                    className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border border-transparent transition-colors ${
+                      settings.nestWorkspaces ? 'bg-foreground' : 'bg-muted-foreground/30'
+                    }`}
+                  >
+                    <span
+                      className={`pointer-events-none block size-3.5 rounded-full bg-background shadow-sm transition-transform ${
+                        settings.nestWorkspaces ? 'translate-x-4' : 'translate-x-0.5'
+                      }`}
+                    />
+                  </button>
+                </div>
+              </section>
 
-                  <div className="space-y-2">
-                    <Label className="text-sm">Workspace Directory</Label>
-                    <div className="flex gap-2">
-                      <Input
-                        value={settings.workspaceDir}
-                        onChange={(e) => updateSettings({ workspaceDir: e.target.value })}
-                        className="flex-1 font-mono text-xs"
-                      />
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={handleBrowseWorkspace}
-                        className="shrink-0 gap-1.5"
-                      >
-                        <FolderOpen className="size-3.5" />
-                        Browse
-                      </Button>
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      Root directory where worktree folders are created.
-                    </p>
-                  </div>
+              <Separator />
 
-                  <div className="flex items-center justify-between gap-4 rounded-xl border bg-background/60 px-4 py-3">
-                    <div className="space-y-0.5">
-                      <Label className="text-sm">Nest Workspaces</Label>
-                      <p className="text-xs text-muted-foreground">
-                        Create worktrees inside a repo-named subfolder.
-                      </p>
-                    </div>
+              <section className="space-y-4">
+                <div className="space-y-1">
+                  <h2 className="text-sm font-semibold">Branch Naming</h2>
+                  <p className="text-xs text-muted-foreground">
+                    Prefix added to branch names when creating worktrees.
+                  </p>
+                </div>
+
+                <div className="flex w-fit gap-1 rounded-md border p-1">
+                  {(['git-username', 'custom', 'none'] as const).map((option) => (
                     <button
-                      role="switch"
-                      aria-checked={settings.nestWorkspaces}
-                      onClick={() => updateSettings({ nestWorkspaces: !settings.nestWorkspaces })}
-                      className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border border-transparent transition-colors ${
-                        settings.nestWorkspaces ? 'bg-foreground' : 'bg-muted-foreground/30'
+                      key={option}
+                      onClick={() => updateSettings({ branchPrefix: option })}
+                      className={`rounded-sm px-3 py-1 text-sm transition-colors ${
+                        settings.branchPrefix === option
+                          ? 'bg-accent font-medium text-accent-foreground'
+                          : 'text-muted-foreground hover:text-foreground'
                       }`}
                     >
-                      <span
-                        className={`pointer-events-none block size-3.5 rounded-full bg-background shadow-sm transition-transform ${
-                          settings.nestWorkspaces ? 'translate-x-4' : 'translate-x-0.5'
-                        }`}
-                      />
+                      {option === 'git-username'
+                        ? 'Git Username'
+                        : option === 'custom'
+                          ? 'Custom'
+                          : 'None'}
                     </button>
-                  </div>
-                </section>
+                  ))}
+                </div>
+                {(settings.branchPrefix === 'custom' ||
+                  settings.branchPrefix === 'git-username') && (
+                  <Input
+                    value={
+                      settings.branchPrefix === 'git-username'
+                        ? displayedGitUsername
+                        : settings.branchPrefixCustom
+                    }
+                    onChange={(e) => updateSettings({ branchPrefixCustom: e.target.value })}
+                    placeholder={
+                      settings.branchPrefix === 'git-username'
+                        ? 'No git username configured'
+                        : 'e.g. feature'
+                    }
+                    className="max-w-xs"
+                    readOnly={settings.branchPrefix === 'git-username'}
+                  />
+                )}
+              </section>
 
-                <Separator />
+              <Separator />
 
-                <section className="space-y-4 px-6 py-5">
-                  <div className="space-y-1">
-                    <h2 className="text-sm font-semibold">Branch Naming</h2>
-                    <p className="text-xs text-muted-foreground">
-                      Prefix added to branch names when creating worktrees.
-                    </p>
-                  </div>
+              <section className="space-y-4">
+                <div className="space-y-1">
+                  <h2 className="text-sm font-semibold">Appearance</h2>
+                  <p className="text-xs text-muted-foreground">
+                    Choose how Orca looks in the app window.
+                  </p>
+                </div>
 
-                  <div className="flex w-fit gap-1 rounded-md border p-1">
-                    {(['git-username', 'custom', 'none'] as const).map((option) => (
-                      <button
-                        key={option}
-                        onClick={() => updateSettings({ branchPrefix: option })}
-                        className={`rounded-sm px-3 py-1 text-sm transition-colors ${
-                          settings.branchPrefix === option
-                            ? 'bg-accent font-medium text-accent-foreground'
-                            : 'text-muted-foreground hover:text-foreground'
-                        }`}
-                      >
-                        {option === 'git-username'
-                          ? 'Git Username'
-                          : option === 'custom'
-                            ? 'Custom'
-                            : 'None'}
-                      </button>
-                    ))}
-                  </div>
-                  {settings.branchPrefix === 'custom' && (
+                <div className="flex w-fit gap-1 rounded-md border p-1">
+                  {(['system', 'dark', 'light'] as const).map((option) => (
+                    <button
+                      key={option}
+                      onClick={() => {
+                        updateSettings({ theme: option })
+                        applyTheme(option)
+                      }}
+                      className={`rounded-sm px-3 py-1 text-sm capitalize transition-colors ${
+                        settings.theme === option
+                          ? 'bg-accent font-medium text-accent-foreground'
+                          : 'text-muted-foreground hover:text-foreground'
+                      }`}
+                    >
+                      {option}
+                    </button>
+                  ))}
+                </div>
+              </section>
+
+              <Separator />
+
+              <section className="space-y-4">
+                <div className="space-y-1">
+                  <h2 className="text-sm font-semibold">Terminal</h2>
+                  <p className="text-xs text-muted-foreground">
+                    Default terminal typography for new panes.
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-sm">Font Size</Label>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="icon-sm"
+                      onClick={() => {
+                        const next = Math.max(10, settings.terminalFontSize - 1)
+                        updateSettings({ terminalFontSize: next })
+                      }}
+                      disabled={settings.terminalFontSize <= 10}
+                    >
+                      <Minus className="size-3" />
+                    </Button>
                     <Input
-                      value={settings.branchPrefixCustom}
-                      onChange={(e) => updateSettings({ branchPrefixCustom: e.target.value })}
-                      placeholder="e.g. feature"
-                      className="max-w-xs"
+                      type="number"
+                      min={10}
+                      max={24}
+                      value={settings.terminalFontSize}
+                      onChange={(e) => {
+                        const value = parseInt(e.target.value, 10)
+                        if (!Number.isNaN(value) && value >= 10 && value <= 24) {
+                          updateSettings({ terminalFontSize: value })
+                        }
+                      }}
+                      className="w-16 text-center tabular-nums"
                     />
-                  )}
-                </section>
-
-                <Separator />
-
-                <section className="space-y-4 px-6 py-5">
-                  <div className="space-y-1">
-                    <h2 className="text-sm font-semibold">Appearance</h2>
-                    <p className="text-xs text-muted-foreground">
-                      Choose how Orca looks in the app window.
-                    </p>
+                    <Button
+                      variant="outline"
+                      size="icon-sm"
+                      onClick={() => {
+                        const next = Math.min(24, settings.terminalFontSize + 1)
+                        updateSettings({ terminalFontSize: next })
+                      }}
+                      disabled={settings.terminalFontSize >= 24}
+                    >
+                      <Plus className="size-3" />
+                    </Button>
+                    <span className="text-xs text-muted-foreground">px</span>
                   </div>
+                </div>
 
-                  <div className="flex w-fit gap-1 rounded-md border p-1">
-                    {(['system', 'dark', 'light'] as const).map((option) => (
-                      <button
-                        key={option}
-                        onClick={() => {
-                          updateSettings({ theme: option })
-                          applyTheme(option)
-                        }}
-                        className={`rounded-sm px-3 py-1 text-sm capitalize transition-colors ${
-                          settings.theme === option
-                            ? 'bg-accent font-medium text-accent-foreground'
-                            : 'text-muted-foreground hover:text-foreground'
-                        }`}
-                      >
-                        {option}
-                      </button>
-                    ))}
-                  </div>
-                </section>
-
-                <Separator />
-
-                <section className="space-y-4 px-6 py-5">
-                  <div className="space-y-1">
-                    <h2 className="text-sm font-semibold">Terminal</h2>
-                    <p className="text-xs text-muted-foreground">
-                      Default terminal typography for new panes.
-                    </p>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label className="text-sm">Font Size</Label>
-                    <div className="flex items-center gap-2">
-                      <Button
-                        variant="outline"
-                        size="icon-sm"
-                        onClick={() => {
-                          const next = Math.max(10, settings.terminalFontSize - 1)
-                          updateSettings({ terminalFontSize: next })
-                        }}
-                        disabled={settings.terminalFontSize <= 10}
-                      >
-                        <Minus className="size-3" />
-                      </Button>
-                      <Input
-                        type="number"
-                        min={10}
-                        max={24}
-                        value={settings.terminalFontSize}
-                        onChange={(e) => {
-                          const value = parseInt(e.target.value, 10)
-                          if (!Number.isNaN(value) && value >= 10 && value <= 24) {
-                            updateSettings({ terminalFontSize: value })
-                          }
-                        }}
-                        className="w-16 text-center tabular-nums"
-                      />
-                      <Button
-                        variant="outline"
-                        size="icon-sm"
-                        onClick={() => {
-                          const next = Math.min(24, settings.terminalFontSize + 1)
-                          updateSettings({ terminalFontSize: next })
-                        }}
-                        disabled={settings.terminalFontSize >= 24}
-                      >
-                        <Plus className="size-3" />
-                      </Button>
-                      <span className="text-xs text-muted-foreground">px</span>
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label className="text-sm">Font Family</Label>
-                    <Input
-                      value={settings.terminalFontFamily}
-                      onChange={(e) => updateSettings({ terminalFontFamily: e.target.value })}
-                      placeholder="SF Mono"
-                      className="max-w-xs"
-                    />
-                  </div>
-                </section>
-              </div>
+                <div className="space-y-2">
+                  <Label className="text-sm">Font Family</Label>
+                  <Input
+                    value={settings.terminalFontFamily}
+                    onChange={(e) => updateSettings({ terminalFontFamily: e.target.value })}
+                    placeholder="SF Mono"
+                    className="max-w-xs"
+                  />
+                </div>
+              </section>
             </div>
           ) : selectedRepo ? (
             <div className="space-y-8">
@@ -420,137 +429,135 @@ function Settings(): React.JSX.Element {
                 <p className="font-mono text-xs text-muted-foreground">{selectedRepo.path}</p>
               </div>
 
-              <div className="grid gap-6 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
-                <div className="space-y-6">
-                  <section className="space-y-4 rounded-2xl border bg-card p-5">
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="space-y-1">
-                        <h2 className="text-sm font-semibold">Identity</h2>
-                        <p className="text-xs text-muted-foreground">
-                          Repo-specific display details for the sidebar and tabs.
-                        </p>
-                      </div>
-
-                      <Button
-                        variant={confirmingRemove === selectedRepo.id ? 'destructive' : 'outline'}
-                        size="sm"
-                        onClick={() => handleRemoveRepo(selectedRepo.id)}
-                        onBlur={() => setConfirmingRemove(null)}
-                        className="gap-2"
-                      >
-                        <Trash2 className="size-3.5" />
-                        {confirmingRemove === selectedRepo.id ? 'Confirm Remove' : 'Remove Repo'}
-                      </Button>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label className="text-sm">Display Name</Label>
-                      <Input
-                        value={selectedRepo.displayName}
-                        onChange={(e) =>
-                          updateRepo(selectedRepo.id, { displayName: e.target.value })
-                        }
-                        className="h-9 text-sm"
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label className="text-sm">Badge Color</Label>
-                      <div className="flex flex-wrap gap-2">
-                        {REPO_COLORS.map((color) => (
-                          <button
-                            key={color}
-                            onClick={() => updateRepo(selectedRepo.id, { badgeColor: color })}
-                            className={`size-7 rounded-full transition-all ${
-                              selectedRepo.badgeColor === color
-                                ? 'ring-2 ring-foreground ring-offset-2 ring-offset-card'
-                                : 'hover:ring-1 hover:ring-muted-foreground hover:ring-offset-2 hover:ring-offset-card'
-                            }`}
-                            style={{ backgroundColor: color }}
-                            title={color}
-                          />
-                        ))}
-                      </div>
-                    </div>
-                  </section>
-
-                  <section className="space-y-4 rounded-2xl border bg-card p-5">
-                    <div className="space-y-1">
-                      <h2 className="text-sm font-semibold">Hook Source</h2>
-                      <p className="text-xs text-muted-foreground">
-                        Auto prefers `orca.yaml` when present, then falls back to the UI script.
-                        Override ignores YAML and only uses the UI script.
-                      </p>
-                    </div>
-
-                    <div className="flex w-fit gap-1 rounded-xl border p-1">
-                      {(['auto', 'override'] as const).map((mode) => (
-                        <button
-                          key={mode}
-                          onClick={() => updateSelectedRepoHookSettings(selectedRepo, { mode })}
-                          className={`rounded-lg px-3 py-1.5 text-sm transition-colors ${
-                            selectedRepo.hookSettings?.mode === mode
-                              ? 'bg-accent font-medium text-accent-foreground'
-                              : 'text-muted-foreground hover:text-foreground'
-                          }`}
-                        >
-                          {mode === 'auto' ? 'Use YAML First' : 'Override in UI'}
-                        </button>
-                      ))}
-                    </div>
-
-                    <div className="rounded-xl border border-dashed bg-muted/30 p-3 text-xs text-muted-foreground">
-                      {selectedYamlHooks ? (
-                        <div className="space-y-2">
-                          <p className="font-medium text-foreground">
-                            YAML hooks detected in `orca.yaml`
-                          </p>
-                          <div className="flex flex-wrap gap-2">
-                            {(['setup', 'archive'] as HookName[]).map((hookName) =>
-                              selectedYamlHooks.scripts[hookName] ? (
-                                <span
-                                  key={hookName}
-                                  className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 text-[10px] font-medium uppercase tracking-[0.18em] text-emerald-700 dark:text-emerald-300"
-                                >
-                                  {hookName}
-                                </span>
-                              ) : null
-                            )}
-                          </div>
-                        </div>
-                      ) : (
-                        <p>No YAML hooks detected for this repo.</p>
-                      )}
-                    </div>
-                  </section>
-                </div>
-
-                <section className="space-y-4 rounded-2xl border bg-card p-5">
+              <section className="space-y-4">
+                <div className="flex items-start justify-between gap-4">
                   <div className="space-y-1">
-                    <h2 className="text-sm font-semibold">Lifecycle Hooks</h2>
+                    <h2 className="text-sm font-semibold">Identity</h2>
                     <p className="text-xs text-muted-foreground">
-                      Write scripts directly in the UI. Each repo stores its own setup and archive
-                      hook script.
+                      Repo-specific display details for the sidebar and tabs.
                     </p>
                   </div>
 
-                  <div className="space-y-4">
-                    {(['setup', 'archive'] as HookName[]).map((hookName) => (
-                      <HookEditor
-                        key={hookName}
-                        hookName={hookName}
-                        repo={selectedRepo}
-                        yamlHooks={selectedYamlHooks}
-                        onScriptChange={(script) =>
-                          updateSelectedRepoHookSettings(selectedRepo, {
-                            scripts: hookName === 'setup' ? { setup: script } : { archive: script }
-                          })
-                        }
+                  <Button
+                    variant={confirmingRemove === selectedRepo.id ? 'destructive' : 'outline'}
+                    size="sm"
+                    onClick={() => handleRemoveRepo(selectedRepo.id)}
+                    onBlur={() => setConfirmingRemove(null)}
+                    className="gap-2"
+                  >
+                    <Trash2 className="size-3.5" />
+                    {confirmingRemove === selectedRepo.id ? 'Confirm Remove' : 'Remove Repo'}
+                  </Button>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-sm">Display Name</Label>
+                  <Input
+                    value={selectedRepo.displayName}
+                    onChange={(e) => updateRepo(selectedRepo.id, { displayName: e.target.value })}
+                    className="h-9 text-sm"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-sm">Badge Color</Label>
+                  <div className="flex flex-wrap gap-2">
+                    {REPO_COLORS.map((color) => (
+                      <button
+                        key={color}
+                        onClick={() => updateRepo(selectedRepo.id, { badgeColor: color })}
+                        className={`size-7 rounded-full transition-all ${
+                          selectedRepo.badgeColor === color
+                            ? 'ring-2 ring-foreground ring-offset-2 ring-offset-background'
+                            : 'hover:ring-1 hover:ring-muted-foreground hover:ring-offset-2 hover:ring-offset-background'
+                        }`}
+                        style={{ backgroundColor: color }}
+                        title={color}
                       />
                     ))}
                   </div>
-                </section>
-              </div>
+                </div>
+              </section>
+
+              <Separator />
+
+              <section className="space-y-4">
+                <div className="space-y-1">
+                  <h2 className="text-sm font-semibold">Hook Source</h2>
+                  <p className="text-xs text-muted-foreground">
+                    Auto prefers `orca.yaml` when present, then falls back to the UI script.
+                    Override ignores YAML and only uses the UI script.
+                  </p>
+                </div>
+
+                <div className="flex w-fit gap-1 rounded-xl border p-1">
+                  {(['auto', 'override'] as const).map((mode) => (
+                    <button
+                      key={mode}
+                      onClick={() => updateSelectedRepoHookSettings(selectedRepo, { mode })}
+                      className={`rounded-lg px-3 py-1.5 text-sm transition-colors ${
+                        selectedRepo.hookSettings?.mode === mode
+                          ? 'bg-accent font-medium text-accent-foreground'
+                          : 'text-muted-foreground hover:text-foreground'
+                      }`}
+                    >
+                      {mode === 'auto' ? 'Use YAML First' : 'Override in UI'}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="rounded-xl border border-dashed bg-muted/30 p-3 text-xs text-muted-foreground">
+                  {selectedYamlHooks ? (
+                    <div className="space-y-2">
+                      <p className="font-medium text-foreground">
+                        YAML hooks detected in `orca.yaml`
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {(['setup', 'archive'] as HookName[]).map((hookName) =>
+                          selectedYamlHooks.scripts[hookName] ? (
+                            <span
+                              key={hookName}
+                              className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 text-[10px] font-medium uppercase tracking-[0.18em] text-emerald-700 dark:text-emerald-300"
+                            >
+                              {hookName}
+                            </span>
+                          ) : null
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <p>No YAML hooks detected for this repo.</p>
+                  )}
+                </div>
+              </section>
+
+              <Separator />
+
+              <section className="space-y-4">
+                <div className="space-y-1">
+                  <h2 className="text-sm font-semibold">Lifecycle Hooks</h2>
+                  <p className="text-xs text-muted-foreground">
+                    Write scripts directly in the UI. Each repo stores its own setup and archive
+                    hook script.
+                  </p>
+                </div>
+
+                <div className="space-y-4">
+                  {(['setup', 'archive'] as HookName[]).map((hookName) => (
+                    <HookEditor
+                      key={hookName}
+                      hookName={hookName}
+                      repo={selectedRepo}
+                      yamlHooks={selectedYamlHooks}
+                      onScriptChange={(script) =>
+                        updateSelectedRepoHookSettings(selectedRepo, {
+                          scripts: hookName === 'setup' ? { setup: script } : { archive: script }
+                        })
+                      }
+                    />
+                  ))}
+                </div>
+              </section>
             </div>
           ) : (
             <div className="flex min-h-[24rem] items-center justify-center text-sm text-muted-foreground">

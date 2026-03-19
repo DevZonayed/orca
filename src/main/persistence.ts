@@ -3,6 +3,7 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync, renameSync } from '
 import { join, dirname } from 'path'
 import { homedir } from 'os'
 import type { PersistedState, Repo, WorktreeMeta, GlobalSettings } from '../shared/types'
+import { getGitUsername } from './git/repo'
 import {
   getDefaultPersistedState,
   getDefaultRepoHookSettings,
@@ -14,6 +15,7 @@ const DATA_FILE = join(app.getPath('userData'), 'orca-data.json')
 export class Store {
   private state: PersistedState
   private writeTimer: ReturnType<typeof setTimeout> | null = null
+  private gitUsernameCache = new Map<string, string>()
 
   constructor() {
     this.state = this.load()
@@ -69,7 +71,7 @@ export class Store {
   }
 
   addRepo(repo: Repo): void {
-    this.state.repos.push(this.hydrateRepo(repo))
+    this.state.repos.push(repo)
     this.scheduleSave()
   }
 
@@ -97,8 +99,17 @@ export class Store {
   }
 
   private hydrateRepo(repo: Repo): Repo {
+    const gitUsername =
+      this.gitUsernameCache.get(repo.path) ??
+      (() => {
+        const username = getGitUsername(repo.path)
+        this.gitUsernameCache.set(repo.path, username)
+        return username
+      })()
+
     return {
       ...repo,
+      gitUsername,
       hookSettings: {
         ...getDefaultRepoHookSettings(),
         ...repo.hookSettings,

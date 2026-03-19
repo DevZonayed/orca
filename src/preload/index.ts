@@ -15,6 +15,9 @@ const api = {
 
     pickFolder: (): Promise<string | null> => ipcRenderer.invoke('repos:pickFolder'),
 
+    getGitUsername: (args: { repoId: string }): Promise<string> =>
+      ipcRenderer.invoke('repos:getGitUsername', args),
+
     onChanged: (callback: () => void): (() => void) => {
       const listener = (_event: Electron.IpcRendererEvent) => callback()
       ipcRenderer.on('repos:changed', listener)

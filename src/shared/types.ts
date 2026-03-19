@@ -5,6 +5,7 @@ export interface Repo {
   displayName: string
   badgeColor: string
   addedAt: number
+  gitUsername?: string
   hookSettings?: RepoHookSettings
 }
 

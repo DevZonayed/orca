@@ -56,12 +56,9 @@ export function getRemoteUrl(path: string): string | null {
   }
 }
 
-/**
- * Get git config user.name for the repo.
- */
-export function getGitUsername(path: string): string {
+function getGitConfigValue(path: string, key: string): string {
   try {
-    return execSync('git config user.name', {
+    return execSync(`git config --get ${key}`, {
       cwd: path,
       encoding: 'utf-8',
       stdio: ['pipe', 'pipe', 'pipe']
@@ -69,6 +66,57 @@ export function getGitUsername(path: string): string {
   } catch {
     return ''
   }
+}
+
+function normalizeUsername(value: string): string {
+  const trimmed = value.trim()
+  if (!trimmed) return ''
+
+  const localPart = trimmed.includes('@') ? trimmed.split('@')[0] : trimmed
+  return localPart.replace(/^\d+\+/, '')
+}
+
+function getGhLogin(): string {
+  try {
+    const apiLogin = execSync('gh api user -q .login', {
+      encoding: 'utf-8',
+      stdio: ['pipe', 'pipe', 'pipe']
+    }).trim()
+    if (apiLogin) return normalizeUsername(apiLogin)
+  } catch {
+    // Fall through to auth status parsing
+  }
+
+  try {
+    const output = execSync('gh auth status 2>&1', {
+      encoding: 'utf-8',
+      shell: '/bin/bash',
+      stdio: ['pipe', 'pipe', 'pipe']
+    })
+
+    const activeAccountMatch = output.match(
+      /Active account:\s+true[\s\S]*?account\s+([A-Za-z0-9-]+)/
+    )
+    if (activeAccountMatch?.[1]) return normalizeUsername(activeAccountMatch[1])
+
+    const accountMatch = output.match(/Logged in to github\.com account\s+([A-Za-z0-9-]+)/)
+    return normalizeUsername(accountMatch?.[1] ?? '')
+  } catch {
+    return ''
+  }
+}
+
+/**
+ * Get the best username-style branch prefix for the repo.
+ */
+export function getGitUsername(path: string): string {
+  return normalizeUsername(
+    getGitConfigValue(path, 'github.user') ||
+      getGitConfigValue(path, 'user.username') ||
+      getGhLogin() ||
+      getGitConfigValue(path, 'user.email').split('@')[0] ||
+      getGitConfigValue(path, 'user.name')
+  )
 }
 
 /**

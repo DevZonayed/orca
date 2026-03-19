@@ -3,7 +3,7 @@ import { randomUUID } from 'crypto'
 import type { Store } from '../persistence'
 import type { Repo } from '../../shared/types'
 import { REPO_COLORS } from '../../shared/constants'
-import { isGitRepo, getRepoName } from '../git/repo'
+import { isGitRepo, getGitUsername, getRepoName } from '../git/repo'
 
 export function registerRepoHandlers(mainWindow: BrowserWindow, store: Store): void {
   ipcMain.handle('repos:list', () => {
@@ -58,6 +58,12 @@ export function registerRepoHandlers(mainWindow: BrowserWindow, store: Store): v
     })
     if (result.canceled || result.filePaths.length === 0) return null
     return result.filePaths[0]
+  })
+
+  ipcMain.handle('repos:getGitUsername', (_event, args: { repoId: string }) => {
+    const repo = store.getRepo(args.repoId)
+    if (!repo) return ''
+    return getGitUsername(repo.path)
   })
 }
 
