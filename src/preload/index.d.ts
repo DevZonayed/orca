@@ -8,7 +8,8 @@ import type {
   GlobalSettings,
   OrcaHooks,
   PersistedUIState,
-  WorkspaceSessionState
+  WorkspaceSessionState,
+  UpdateStatus
 } from '../../shared/types'
 
 interface ReposApi {
@@ -83,6 +84,13 @@ interface SessionApi {
   set: (args: WorkspaceSessionState) => Promise<void>
 }
 
+interface UpdaterApi {
+  getStatus: () => Promise<UpdateStatus>
+  check: () => Promise<void>
+  quitAndInstall: () => Promise<void>
+  onStatus: (callback: (status: UpdateStatus) => void) => () => void
+}
+
 interface UIApi {
   get: () => Promise<PersistedUIState>
   set: (args: Partial<PersistedUIState>) => Promise<void>
@@ -102,6 +110,7 @@ interface Api {
   hooks: HooksApi
   cache: CacheApi
   session: SessionApi
+  updater: UpdaterApi
   ui: UIApi
 }
 

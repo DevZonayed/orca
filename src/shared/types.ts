@@ -120,6 +120,16 @@ export interface RepoHookSettings {
   }
 }
 
+// ─── Updater ─────────────────────────────────────────────────────────
+export type UpdateStatus =
+  | { state: 'idle' }
+  | { state: 'checking' }
+  | { state: 'available'; version: string }
+  | { state: 'not-available' }
+  | { state: 'downloading'; percent: number }
+  | { state: 'downloaded'; version: string }
+  | { state: 'error'; message: string }
+
 // ─── Settings ────────────────────────────────────────────────────────
 export interface GlobalSettings {
   workspaceDir: string
@@ -149,6 +159,7 @@ export interface PersistedUIState {
   sidebarWidth: number
   groupBy: 'none' | 'repo' | 'pr-status'
   sortBy: 'name' | 'recent' | 'repo'
+  uiZoomLevel: number
 }
 
 // ─── Persistence shape ──────────────────────────────────────────────

@@ -71,7 +71,8 @@ export function getDefaultUIState(): PersistedUIState {
     lastActiveWorktreeId: null,
     sidebarWidth: 280,
     groupBy: 'none',
-    sortBy: 'name'
+    sortBy: 'name',
+    uiZoomLevel: 0
   }
 }
 

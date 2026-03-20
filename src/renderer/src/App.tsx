@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { Minimize2, PanelLeft } from 'lucide-react'
 import { TOGGLE_TERMINAL_PANE_EXPAND_EVENT } from '@/constants/terminal'
+import { syncZoomCSSVar } from '@/lib/ui-zoom'
 import { useAppStore } from './store'
 import { useIpcEvents } from './hooks/useIpcEvents'
 import Sidebar from './components/Sidebar'
@@ -50,6 +51,7 @@ function App(): React.JSX.Element {
         if (!cancelled) {
           hydratePersistedUI(persistedUI)
           hydrateWorkspaceSession(session)
+          syncZoomCSSVar()
         }
       } catch (error) {
         console.error('Failed to hydrate workspace session:', error)
@@ -59,7 +61,8 @@ function App(): React.JSX.Element {
             lastActiveWorktreeId: null,
             sidebarWidth: 280,
             groupBy: 'none',
-            sortBy: 'name'
+            sortBy: 'name',
+            uiZoomLevel: 0
           })
           hydrateWorkspaceSession({
             activeRepoId: null,

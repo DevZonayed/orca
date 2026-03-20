@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
-import type { OrcaHooks, Repo, RepoHookSettings } from '../../../shared/types'
+import type { OrcaHooks, Repo, RepoHookSettings, UpdateStatus } from '../../../shared/types'
 import { REPO_COLORS, getDefaultRepoHookSettings } from '../../../shared/constants'
 import { useAppStore } from '../store'
 import { ScrollArea } from './ui/scroll-area'
@@ -9,6 +9,7 @@ import { Label } from './ui/label'
 import { Separator } from './ui/separator'
 import { ToggleGroup, ToggleGroupItem } from './ui/toggle-group'
 import { TerminalThemePreview } from './settings/TerminalThemePreview'
+import { applyUIZoom } from '@/lib/ui-zoom'
 import {
   BUILTIN_TERMINAL_THEME_NAMES,
   clampNumber,
@@ -22,9 +23,13 @@ import {
   Check,
   ChevronsUpDown,
   CircleX,
+  Download,
   FolderOpen,
+  Loader2,
   Minus,
+  Palette,
   Plus,
+  RefreshCw,
   SlidersHorizontal,
   RotateCcw,
   SquareTerminal,
@@ -48,17 +53,17 @@ function UIZoomControl(): React.JSX.Element {
   const [zoomLevel, setZoomLevel] = useState(() => window.api.ui.getZoomLevel())
 
   useEffect(() => {
-    return window.api.ui.onTerminalZoom((direction) => {
+    return window.api.ui.onTerminalZoom(() => {
       setZoomLevel(window.api.ui.getZoomLevel())
-      // Small delay to read after the level is actually applied
       setTimeout(() => setZoomLevel(window.api.ui.getZoomLevel()), 50)
     })
   }, [])
 
   const applyZoom = useCallback((level: number) => {
     const clamped = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, level))
-    window.api.ui.setZoomLevel(clamped)
+    applyUIZoom(clamped)
     setZoomLevel(clamped)
+    window.api.ui.set({ uiZoomLevel: clamped })
   }, [])
 
   const percent = zoomLevelToPercent(zoomLevel)
@@ -422,7 +427,9 @@ function Settings(): React.JSX.Element {
   const removeRepo = useAppStore((s) => s.removeRepo)
 
   const [confirmingRemove, setConfirmingRemove] = useState<string | null>(null)
-  const [selectedPane, setSelectedPane] = useState<'general' | 'terminal' | 'repo'>('general')
+  const [selectedPane, setSelectedPane] = useState<'general' | 'appearance' | 'terminal' | 'repo'>(
+    'general'
+  )
   const [selectedRepoId, setSelectedRepoId] = useState<string | null>(null)
   const [repoHooksMap, setRepoHooksMap] = useState<
     Record<string, { hasHooks: boolean; hooks: OrcaHooks | null }>
@@ -439,10 +446,16 @@ function Settings(): React.JSX.Element {
     getFallbackTerminalFonts()
   )
   const terminalFontsLoadedRef = useRef(false)
+  const [updateStatus, setUpdateStatus] = useState<UpdateStatus>({ state: 'idle' })
 
   useEffect(() => {
     fetchSettings()
   }, [fetchSettings])
+
+  useEffect(() => {
+    window.api.updater.getStatus().then(setUpdateStatus)
+    return window.api.updater.onStatus(setUpdateStatus)
+  }, [])
 
   useEffect(() => {
     const media = window.matchMedia('(prefers-color-scheme: dark)')
@@ -593,7 +606,7 @@ function Settings(): React.JSX.Element {
   useEffect(() => {
     if (repos.length === 0) {
       setSelectedRepoId(null)
-      setSelectedPane('general')
+      if (selectedPane === 'repo') setSelectedPane('general')
       return
     }
 
@@ -638,6 +651,7 @@ function Settings(): React.JSX.Element {
   const selectedRepo = repos.find((repo) => repo.id === selectedRepoId) ?? null
   const selectedYamlHooks = selectedRepo ? (repoHooksMap[selectedRepo.id]?.hooks ?? null) : null
   const showGeneralPane = selectedPane === 'general'
+  const showAppearancePane = selectedPane === 'appearance'
   const showTerminalPane = selectedPane === 'terminal'
   const showRepoPane = selectedPane === 'repo' && !!selectedRepo
   const displayedGitUsername = (selectedRepo ?? repos[0])?.gitUsername ?? ''
@@ -699,7 +713,12 @@ function Settings(): React.JSX.Element {
   const pageHeader = showGeneralPane ? (
     <div className="space-y-1">
       <h1 className="text-2xl font-semibold">General</h1>
-      <p className="text-sm text-muted-foreground">Workspace, naming, and appearance defaults.</p>
+      <p className="text-sm text-muted-foreground">Workspace, naming, and updates.</p>
+    </div>
+  ) : showAppearancePane ? (
+    <div className="space-y-1">
+      <h1 className="text-2xl font-semibold">Appearance</h1>
+      <p className="text-sm text-muted-foreground">Theme and UI scaling.</p>
     </div>
   ) : showTerminalPane ? (
     <div className="space-y-1">
@@ -754,6 +773,17 @@ function Settings(): React.JSX.Element {
               >
                 <SlidersHorizontal className="mr-2 size-4" />
                 General
+              </button>
+              <button
+                onClick={() => setSelectedPane('appearance')}
+                className={`flex w-full items-center rounded-lg px-3 py-2 text-left text-sm transition-colors ${
+                  showAppearancePane
+                    ? 'bg-accent font-medium text-accent-foreground'
+                    : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
+                }`}
+              >
+                <Palette className="mr-2 size-4" />
+                Appearance
               </button>
               <button
                 onClick={() => setSelectedPane('terminal')}
@@ -925,7 +955,61 @@ function Settings(): React.JSX.Element {
 
                 <section className="space-y-4">
                   <div className="space-y-1">
-                    <h2 className="text-sm font-semibold">Appearance</h2>
+                    <h2 className="text-sm font-semibold">Updates</h2>
+                    <p className="text-xs text-muted-foreground">Check for new versions of Orca.</p>
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => window.api.updater.check()}
+                      disabled={
+                        updateStatus.state === 'checking' || updateStatus.state === 'downloading'
+                      }
+                      className="gap-2"
+                    >
+                      {updateStatus.state === 'checking' ? (
+                        <Loader2 className="size-3.5 animate-spin" />
+                      ) : (
+                        <RefreshCw className="size-3.5" />
+                      )}
+                      Check for Updates
+                    </Button>
+
+                    {updateStatus.state === 'downloaded' ? (
+                      <Button
+                        variant="default"
+                        size="sm"
+                        onClick={() => window.api.updater.quitAndInstall()}
+                        className="gap-2"
+                      >
+                        <Download className="size-3.5" />
+                        Restart to Update ({updateStatus.version})
+                      </Button>
+                    ) : null}
+                  </div>
+
+                  <p className="text-xs text-muted-foreground">
+                    {updateStatus.state === 'idle' &&
+                      'Updates are checked automatically on launch.'}
+                    {updateStatus.state === 'checking' && 'Checking for updates...'}
+                    {updateStatus.state === 'available' &&
+                      `Version ${updateStatus.version} is available. Downloading...`}
+                    {updateStatus.state === 'not-available' && 'You\u2019re on the latest version.'}
+                    {updateStatus.state === 'downloading' &&
+                      `Downloading update... ${updateStatus.percent}%`}
+                    {updateStatus.state === 'downloaded' &&
+                      `Version ${updateStatus.version} is ready to install.`}
+                    {updateStatus.state === 'error' && `Update error: ${updateStatus.message}`}
+                  </p>
+                </section>
+              </div>
+            ) : showAppearancePane ? (
+              <div className="space-y-8">
+                <section className="space-y-4">
+                  <div className="space-y-1">
+                    <h2 className="text-sm font-semibold">Theme</h2>
                     <p className="text-xs text-muted-foreground">
                       Choose how Orca looks in the app window.
                     </p>

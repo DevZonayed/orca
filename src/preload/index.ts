@@ -126,6 +126,17 @@ const api = {
     set: (args: unknown): Promise<void> => ipcRenderer.invoke('session:set', args)
   },
 
+  updater: {
+    getStatus: (): Promise<unknown> => ipcRenderer.invoke('updater:getStatus'),
+    check: (): Promise<void> => ipcRenderer.invoke('updater:check'),
+    quitAndInstall: (): Promise<void> => ipcRenderer.invoke('updater:quitAndInstall'),
+    onStatus: (callback: (status: unknown) => void): (() => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, status: unknown) => callback(status)
+      ipcRenderer.on('updater:status', listener)
+      return () => ipcRenderer.removeListener('updater:status', listener)
+    }
+  },
+
   ui: {
     get: (): Promise<unknown> => ipcRenderer.invoke('ui:get'),
     set: (args: Record<string, unknown>): Promise<void> => ipcRenderer.invoke('ui:set', args),

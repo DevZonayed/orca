@@ -1,4 +1,4 @@
-import { app, shell, BrowserWindow, Menu, nativeImage } from 'electron'
+import { app, shell, BrowserWindow, Menu, nativeImage, ipcMain } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
@@ -14,7 +14,7 @@ import { registerShellHandlers } from './ipc/shell'
 import { registerSessionHandlers } from './ipc/session'
 import { registerUIHandlers } from './ipc/ui'
 import { warmSystemFontFamilies } from './system-fonts'
-import { setupAutoUpdater } from './updater'
+import { setupAutoUpdater, checkForUpdates, getUpdateStatus, quitAndInstall } from './updater'
 
 let mainWindow: BrowserWindow | null = null
 let store: Store | null = null
@@ -41,6 +41,13 @@ function createWindow(): BrowserWindow {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false
     }
+  })
+
+  // Restore persisted zoom before the window is shown. dom-ready fires
+  // before ready-to-show, so the user never sees the wrong zoom level.
+  // Always set explicitly to override Chromium's own zoom cache.
+  mainWindow.webContents.on('dom-ready', () => {
+    mainWindow.webContents.setZoomLevel(store?.getUI().uiZoomLevel ?? 0)
   })
 
   mainWindow.on('ready-to-show', () => {
@@ -104,6 +111,10 @@ app.whenReady().then(() => {
       label: app.name,
       submenu: [
         { role: 'about' },
+        {
+          label: 'Check for Updates...',
+          click: () => checkForUpdates()
+        },
         {
           label: 'Settings',
           accelerator: 'CmdOrCtrl+,',
@@ -183,6 +194,11 @@ app.whenReady().then(() => {
   registerUIHandlers(store)
   warmSystemFontFamilies()
   setupAutoUpdater(mainWindow)
+
+  // Updater IPC
+  ipcMain.handle('updater:getStatus', () => getUpdateStatus())
+  ipcMain.handle('updater:check', () => checkForUpdates())
+  ipcMain.handle('updater:quitAndInstall', () => quitAndInstall())
 
   // macOS re-activate
   app.on('activate', function () {
