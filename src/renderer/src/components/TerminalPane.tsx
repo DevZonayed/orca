@@ -920,6 +920,21 @@ export default function TerminalPane({
       pane?.app.sendKeyInput('\x17')
     }
 
+    // Alt+Backspace → send ESC + DEL (\x1b\x7f, backward-kill-word) to PTY.
+    // Standard macOS terminal behaviour; Restty does not map this by default.
+    const onAltBackspace = (e: KeyboardEvent): void => {
+      if (!e.altKey || e.metaKey || e.ctrlKey || e.shiftKey) return
+      if (e.key !== 'Backspace') return
+
+      const restty = resttyRef.current
+      if (!restty) return
+
+      e.preventDefault()
+      e.stopPropagation()
+      const pane = restty.getActivePane() ?? restty.getPanes()[0]
+      pane?.app.sendKeyInput('\x1b\x7f')
+    }
+
     // Shift+Enter → insert a literal newline into the shell command line.
     // Sends Ctrl+V (\x16, quoted-insert) followed by LF (\x0a) so that
     // both bash (readline) and zsh (zle) insert a newline character instead
@@ -939,10 +954,12 @@ export default function TerminalPane({
 
     window.addEventListener('keydown', onKeyDown, { capture: true })
     window.addEventListener('keydown', onCtrlBackspace, { capture: true })
+    window.addEventListener('keydown', onAltBackspace, { capture: true })
     window.addEventListener('keydown', onShiftEnter, { capture: true })
     return () => {
       window.removeEventListener('keydown', onKeyDown, { capture: true })
       window.removeEventListener('keydown', onCtrlBackspace, { capture: true })
+      window.removeEventListener('keydown', onAltBackspace, { capture: true })
       window.removeEventListener('keydown', onShiftEnter, { capture: true })
     }
   }, [isActive])
