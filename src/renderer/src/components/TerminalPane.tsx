@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { Restty, getBuiltinTheme } from 'restty'
 import type { CSSProperties } from 'react'
+import type { ITheme } from '@xterm/xterm'
 import {
   Clipboard,
   Copy,
@@ -28,13 +28,14 @@ import type {
 import { useAppStore } from '../store'
 import {
   DEFAULT_TERMINAL_DIVIDER_DARK,
-  buildTerminalFontMatchers,
-  colorToCss,
   getCursorStyleSequence,
+  getBuiltinTheme,
   normalizeColor,
   resolvePaneStyleOptions,
   resolveEffectiveTerminalAppearance
 } from '@/lib/terminal-theme'
+import { PaneManager, type ManagedPane } from '@/lib/pane-manager'
+import TerminalSearch from '@/components/TerminalSearch'
 
 type PtyTransport = {
   connect: (options: {
@@ -259,25 +260,15 @@ function paneLeafId(paneId: number): string {
   return `pane:${paneId}`
 }
 
-function buildTerminalFontSources(fontFamily: string) {
-  return [
-    {
-      type: 'local' as const,
-      label: fontFamily || 'Preferred terminal font',
-      matchers: buildTerminalFontMatchers(fontFamily),
-      required: true
-    },
-    {
-      type: 'local' as const,
-      label: 'Menlo',
-      matchers: ['menlo', 'menlo regular']
-    },
-    {
-      type: 'local' as const,
-      label: 'Monospace fallback',
-      matchers: ['dejavu sans mono', 'liberation mono', 'ubuntu mono', 'monospace']
-    }
-  ]
+function buildFontFamily(fontFamily: string): string {
+  const trimmed = fontFamily.trim()
+  const parts = trimmed ? [`"${trimmed}"`] : []
+  // Always include fallbacks
+  if (!parts.some((p) => p.toLowerCase().includes('sf mono'))) {
+    parts.push('"SF Mono"')
+  }
+  parts.push('Menlo', 'monospace')
+  return parts.join(', ')
 }
 
 function getLayoutChildNodes(split: HTMLElement): HTMLElement[] {
@@ -327,13 +318,13 @@ function serializeTerminalLayout(
 }
 
 function replayTerminalLayout(
-  restty: Restty,
+  manager: PaneManager,
   snapshot: TerminalLayoutSnapshot | null | undefined,
   focusInitialPane: boolean
 ): Map<string, number> {
   const paneByLeafId = new Map<string, number>()
 
-  const initialPane = restty.createInitialPane({ focus: focusInitialPane })
+  const initialPane = manager.createInitialPane({ focus: focusInitialPane })
   if (!snapshot?.root) {
     paneByLeafId.set(paneLeafId(initialPane.id), initialPane.id)
     return paneByLeafId
@@ -345,7 +336,7 @@ function replayTerminalLayout(
       return
     }
 
-    const createdPane = restty.splitPane(paneId, node.direction as TerminalPaneSplitDirection)
+    const createdPane = manager.splitPane(paneId, node.direction as TerminalPaneSplitDirection)
     if (!createdPane) {
       collectLeafIds(node, paneByLeafId, paneId)
       return
@@ -388,7 +379,7 @@ export default function TerminalPane({
   onPtyExit
 }: TerminalPaneProps): React.JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null)
-  const resttyRef = useRef<Restty | null>(null)
+  const managerRef = useRef<PaneManager | null>(null)
   const contextPaneIdRef = useRef<number | null>(null)
   const wasActiveRef = useRef(false)
   const paneFontSizesRef = useRef<Map<number, number>>(new Map())
@@ -396,9 +387,12 @@ export default function TerminalPane({
   const expandedStyleSnapshotRef = useRef<Map<HTMLElement, { display: string; flex: string }>>(
     new Map()
   )
+  // Track transports per pane for PTY communication
+  const paneTransportsRef = useRef<Map<number, PtyTransport>>(new Map())
   const [terminalMenuOpen, setTerminalMenuOpen] = useState(false)
   const [terminalMenuPoint, setTerminalMenuPoint] = useState({ x: 0, y: 0 })
   const [expandedPaneId, setExpandedPaneId] = useState<number | null>(null)
+  const [searchOpen, setSearchOpen] = useState(false)
   const setTabPaneExpanded = useAppStore((s) => s.setTabPaneExpanded)
   const setTabCanExpandPane = useAppStore((s) => s.setTabCanExpandPane)
   const savedLayout = useAppStore((s) => s.terminalLayoutsByTabId[tabId] ?? EMPTY_LAYOUT)
@@ -406,10 +400,10 @@ export default function TerminalPane({
   const initialLayoutRef = useRef(savedLayout)
 
   const persistLayoutSnapshot = (): void => {
-    const restty = resttyRef.current
+    const manager = managerRef.current
     const container = containerRef.current
-    if (!restty || !container) return
-    const activePaneId = restty.getActivePane()?.id ?? restty.getPanes()[0]?.id ?? null
+    if (!manager || !container) return
+    const activePaneId = manager.getActivePane()?.id ?? manager.getPanes()[0]?.id ?? null
     setTabLayout(tabId, serializeTerminalLayout(container, activePaneId, expandedPaneIdRef.current))
   }
 
@@ -438,11 +432,11 @@ export default function TerminalPane({
   }
 
   const applyExpandedLayout = (paneId: number): boolean => {
-    const restty = resttyRef.current
+    const manager = managerRef.current
     const root = containerRef.current
-    if (!restty || !root) return false
+    if (!manager || !root) return false
 
-    const panes = restty.getPanes()
+    const panes = manager.getPanes()
     if (panes.length <= 1) return false
     const targetPane = panes.find((pane) => pane.id === paneId)
     if (!targetPane) return false
@@ -470,15 +464,19 @@ export default function TerminalPane({
 
   const refreshPaneSizes = (focusActive: boolean): void => {
     requestAnimationFrame(() => {
-      const restty = resttyRef.current
-      if (!restty) return
-      const panes = restty.getPanes()
+      const manager = managerRef.current
+      if (!manager) return
+      const panes = manager.getPanes()
       for (const p of panes) {
-        p.app.updateSize(true)
+        try {
+          p.fitAddon.fit()
+        } catch {
+          /* container may not have dimensions */
+        }
       }
       if (focusActive) {
-        const active = restty.getActivePane() ?? panes[0]
-        active?.canvas.focus({ preventScroll: true })
+        const active = manager.getActivePane() ?? panes[0]
+        active?.terminal.focus()
       }
     })
   }
@@ -490,9 +488,9 @@ export default function TerminalPane({
       return
     }
 
-    const restty = resttyRef.current
-    if (!restty) return
-    const panes = restty.getPanes()
+    const manager = managerRef.current
+    if (!manager) return
+    const panes = manager.getPanes()
     if (panes.length <= 1 || !panes.some((pane) => pane.id === paneId)) {
       setExpandedPane(null)
       restoreExpandedLayout()
@@ -502,14 +500,14 @@ export default function TerminalPane({
   }
 
   const syncCanExpandState = (): void => {
-    const paneCount = resttyRef.current?.getPanes().length ?? 1
+    const paneCount = managerRef.current?.getPanes().length ?? 1
     setTabCanExpandPane(tabId, paneCount > 1)
   }
 
   const toggleExpandPane = (paneId: number): void => {
-    const restty = resttyRef.current
-    if (!restty) return
-    const panes = restty.getPanes()
+    const manager = managerRef.current
+    if (!manager) return
+    const panes = manager.getPanes()
     if (panes.length <= 1) return
 
     const isAlreadyExpanded = expandedPaneIdRef.current === paneId
@@ -528,7 +526,7 @@ export default function TerminalPane({
       persistLayoutSnapshot()
       return
     }
-    restty.setActivePane(paneId, { focus: true })
+    manager.setActivePane(paneId, { focus: true })
     refreshPaneSizes(true)
     persistLayoutSnapshot()
   }
@@ -552,7 +550,7 @@ export default function TerminalPane({
   const settingsRef = useRef(settings)
   settingsRef.current = settings
 
-  // Use a ref so the Restty closure always calls the latest onPtyExit
+  // Use a ref so the PaneManager closure always calls the latest onPtyExit
   const onPtyExitRef = useRef(onPtyExit)
   onPtyExitRef.current = onPtyExit
 
@@ -566,7 +564,7 @@ export default function TerminalPane({
     return () => media.removeEventListener('change', handleChange)
   }, [])
 
-  const applyTerminalAppearance = (restty: Restty): void => {
+  const applyTerminalAppearance = (manager: PaneManager): void => {
     const currentSettings = settingsRef.current
     if (!currentSettings) return
 
@@ -576,18 +574,28 @@ export default function TerminalPane({
       currentSettings.terminalCursorStyle,
       currentSettings.terminalCursorBlink
     )
-    const theme = appearance.theme ?? getBuiltinTheme(appearance.themeName)
-    const paneBackground = colorToCss(theme?.colors.background, '#000000')
-    for (const pane of restty.getPanes()) {
+    const theme: ITheme | null = appearance.theme ?? getBuiltinTheme(appearance.themeName)
+    const paneBackground = theme?.background ?? '#000000'
+
+    for (const pane of manager.getPanes()) {
       if (theme) {
-        pane.app.applyTheme(theme, appearance.themeName)
+        pane.terminal.options.theme = theme
       }
+      pane.terminal.options.cursorStyle = currentSettings.terminalCursorStyle
+      pane.terminal.options.cursorBlink = currentSettings.terminalCursorBlink
       const paneSize = paneFontSizesRef.current.get(pane.id)
-      pane.app.setFontSize(paneSize ?? currentSettings.terminalFontSize)
-      pane.app.sendInput(cursorSequence, 'pty')
+      pane.terminal.options.fontSize = paneSize ?? currentSettings.terminalFontSize
+      try {
+        pane.fitAddon.fit()
+      } catch {
+        /* ignore */
+      }
+      // Send cursor style sequence to PTY
+      const transport = paneTransportsRef.current.get(pane.id)
+      transport?.sendInput(cursorSequence)
     }
 
-    restty.setPaneStyleOptions({
+    manager.setPaneStyleOptions({
       splitBackground: paneBackground,
       paneBackground,
       inactivePaneOpacity: paneStyles.inactivePaneOpacity,
@@ -597,27 +605,16 @@ export default function TerminalPane({
     })
   }
 
-  // Initialize Restty instance once
-  useEffect(() => {
-    const container = containerRef.current
-    if (!container) return
-    let resizeRaf: number | null = null
-
-    const queueResizeAll = (focusActive: boolean): void => {
-      if (resizeRaf !== null) cancelAnimationFrame(resizeRaf)
-      resizeRaf = requestAnimationFrame(() => {
-        resizeRaf = null
-        const restty = resttyRef.current
-        if (!restty) return
-        const panes = restty.getPanes()
-        for (const p of panes) {
-          p.app.updateSize(true)
-        }
-        if (focusActive) {
-          const active = restty.getActivePane() ?? panes[0]
-          active?.canvas.focus({ preventScroll: true })
-        }
-      })
+  // Connect a pane's terminal to a PTY via IPC transport
+  const connectPanePty = (pane: ManagedPane, manager: PaneManager): void => {
+    const onExit = (ptyId: string): void => {
+      const panes = manager.getPanes()
+      if (panes.length <= 1) {
+        clearTabPtyId(tabId, ptyId)
+        onPtyExitRef.current(ptyId)
+        return
+      }
+      manager.closePane(pane.id)
     }
 
     const onTitleChange = (title: string): void => {
@@ -627,54 +624,80 @@ export default function TerminalPane({
     const onPtySpawn = (ptyId: string): void => updateTabPtyId(tabId, ptyId)
     const onBell = (): void => markWorktreeUnreadFromBell(worktreeId)
 
+    const transport = createIpcPtyTransport(cwd, onExit, onTitleChange, onPtySpawn, onBell)
+    paneTransportsRef.current.set(pane.id, transport)
+
+    // Wire terminal → PTY
+    pane.terminal.onData((data) => {
+      transport.sendInput(data)
+    })
+
+    // Wire terminal resize → PTY resize
+    pane.terminal.onResize(({ cols, rows }) => {
+      transport.resize(cols, rows)
+    })
+
+    // Connect PTY and wire PTY → terminal
+    const cols = pane.terminal.cols
+    const rows = pane.terminal.rows
+    transport.connect({
+      url: '',
+      cols,
+      rows,
+      callbacks: {
+        onData: (data) => {
+          pane.terminal.write(data)
+        }
+      }
+    })
+  }
+
+  // Initialize PaneManager instance once
+  useEffect(() => {
+    const container = containerRef.current
+    if (!container) return
+    let resizeRaf: number | null = null
+
+    const queueResizeAll = (focusActive: boolean): void => {
+      if (resizeRaf !== null) cancelAnimationFrame(resizeRaf)
+      resizeRaf = requestAnimationFrame(() => {
+        resizeRaf = null
+        const manager = managerRef.current
+        if (!manager) return
+        const panes = manager.getPanes()
+        for (const p of panes) {
+          try {
+            p.fitAddon.fit()
+          } catch {
+            /* ignore */
+          }
+        }
+        if (focusActive) {
+          const active = manager.getActivePane() ?? panes[0]
+          active?.terminal.focus()
+        }
+      })
+    }
+
     let shouldPersistLayout = false
 
-    const restty = new Restty({
-      root: container,
-      createInitialPane: false,
-      autoInit: false,
-      shortcuts: { enabled: false },
-      defaultContextMenu: false,
-      appOptions: ({ id }) => {
-        const currentSettings = settingsRef.current
-        const onExit = (ptyId: string): void => {
-          // Schedule close via parent
-          const panes = restty.getPanes()
-          if (panes.length <= 1) {
-            clearTabPtyId(tabId, ptyId)
-            onPtyExitRef.current(ptyId)
-            return
-          }
-          restty.closePane(id)
-        }
-        return {
-          renderer: 'auto',
-          fontSize: currentSettings?.terminalFontSize ?? 14,
-          fontSizeMode: 'em',
-          fontHinting: true,
-          fontHintTarget: 'normal',
-          fontThicken: true,
-          alphaBlending: 'linear-corrected',
-          maxScrollbackBytes: currentSettings?.terminalScrollbackBytes ?? 10_000_000,
-          ptyTransport: createIpcPtyTransport(
-            cwd,
-            onExit,
-            onTitleChange,
-            onPtySpawn,
-            onBell
-          ) as never,
-          fontSources: buildTerminalFontSources(currentSettings?.terminalFontFamily ?? 'SF Mono')
-        }
-      },
-      onPaneCreated: async (pane) => {
-        await pane.app.init()
-        applyTerminalAppearance(restty)
-        pane.app.updateSize(true)
-        pane.app.connectPty('')
-        pane.canvas.focus({ preventScroll: true })
+    const manager = new PaneManager(container, {
+      onPaneCreated: (pane) => {
+        // Apply appearance before connecting PTY
+        applyTerminalAppearance(manager)
+        // Connect PTY
+        connectPanePty(pane, manager)
         queueResizeAll(true)
       },
-      onPaneClosed: () => {},
+      onPaneClosed: (paneId) => {
+        // Clean up transport for closed pane
+        const transport = paneTransportsRef.current.get(paneId)
+        if (transport) {
+          transport.destroy?.()
+          paneTransportsRef.current.delete(paneId)
+        }
+        paneFontSizesRef.current.delete(paneId)
+      },
       onActivePaneChange: () => {
         if (shouldPersistLayout) persistLayoutSnapshot()
       },
@@ -683,25 +706,41 @@ export default function TerminalPane({
         syncCanExpandState()
         queueResizeAll(false)
         if (shouldPersistLayout) persistLayoutSnapshot()
+      },
+      terminalOptions: () => {
+        const currentSettings = settingsRef.current
+        return {
+          fontSize: currentSettings?.terminalFontSize ?? 14,
+          fontFamily: buildFontFamily(currentSettings?.terminalFontFamily ?? 'SF Mono'),
+          scrollback: Math.max(
+            1000,
+            Math.round((currentSettings?.terminalScrollbackBytes ?? 10_000_000) / 100)
+          ),
+          cursorStyle: currentSettings?.terminalCursorStyle ?? 'bar',
+          cursorBlink: currentSettings?.terminalCursorBlink ?? true
+        }
+      },
+      onLinkClick: (url) => {
+        window.api.shell.openExternal(url)
       }
     })
 
-    resttyRef.current = restty
-    const restoredPaneByLeafId = replayTerminalLayout(restty, initialLayoutRef.current, isActive)
+    managerRef.current = manager
+    const restoredPaneByLeafId = replayTerminalLayout(manager, initialLayoutRef.current, isActive)
     const restoredActivePaneId =
       (initialLayoutRef.current.activeLeafId
         ? restoredPaneByLeafId.get(initialLayoutRef.current.activeLeafId)
         : null) ??
-      restty.getActivePane()?.id ??
-      restty.getPanes()[0]?.id ??
+      manager.getActivePane()?.id ??
+      manager.getPanes()[0]?.id ??
       null
     if (restoredActivePaneId !== null) {
-      restty.setActivePane(restoredActivePaneId, { focus: isActive })
+      manager.setActivePane(restoredActivePaneId, { focus: isActive })
     }
     const restoredExpandedPaneId = initialLayoutRef.current.expandedLeafId
       ? (restoredPaneByLeafId.get(initialLayoutRef.current.expandedLeafId) ?? null)
       : null
-    if (restoredExpandedPaneId !== null && restty.getPanes().length > 1) {
+    if (restoredExpandedPaneId !== null && manager.getPanes().length > 1) {
       setExpandedPane(restoredExpandedPaneId)
       applyExpandedLayout(restoredExpandedPaneId)
     } else {
@@ -709,15 +748,20 @@ export default function TerminalPane({
     }
     shouldPersistLayout = true
     syncCanExpandState()
-    applyTerminalAppearance(restty)
+    applyTerminalAppearance(manager)
     queueResizeAll(isActive)
     persistLayoutSnapshot()
 
     return () => {
       if (resizeRaf !== null) cancelAnimationFrame(resizeRaf)
       restoreExpandedLayout()
-      restty.destroy()
-      resttyRef.current = null
+      // Destroy all transports
+      for (const transport of paneTransportsRef.current.values()) {
+        transport.destroy?.()
+      }
+      paneTransportsRef.current.clear()
+      manager.destroy()
+      managerRef.current = null
       setTabPaneExpanded(tabId, false)
       setTabCanExpandPane(tabId, false)
     }
@@ -725,16 +769,19 @@ export default function TerminalPane({
   }, [tabId, cwd])
 
   useEffect(() => {
-    const restty = resttyRef.current
-    if (!restty || !settings) return
-    applyTerminalAppearance(restty)
-    void Promise.all(
-      restty
-        .getPanes()
-        .map((pane) =>
-          pane.app.setFontSources(buildTerminalFontSources(settings.terminalFontFamily))
-        )
-    )
+    const manager = managerRef.current
+    if (!manager || !settings) return
+    applyTerminalAppearance(manager)
+    // Update font family on all panes
+    const fontFamily = buildFontFamily(settings.terminalFontFamily)
+    for (const pane of manager.getPanes()) {
+      pane.terminal.options.fontFamily = fontFamily
+      try {
+        pane.fitAddon.fit()
+      } catch {
+        /* ignore */
+      }
+    }
   }, [settings, systemPrefersDark])
 
   // Per-pane font zoom via Cmd+Plus/Minus/0
@@ -745,9 +792,9 @@ export default function TerminalPane({
     const FONT_SIZE_STEP = 1
 
     return window.api.ui.onTerminalZoom((direction) => {
-      const restty = resttyRef.current
-      if (!restty) return
-      const pane = restty.getActivePane()
+      const manager = managerRef.current
+      if (!manager) return
+      const pane = manager.getActivePane()
       if (!pane) return
 
       const globalSize = settingsRef.current?.terminalFontSize ?? 14
@@ -765,25 +812,34 @@ export default function TerminalPane({
         paneFontSizesRef.current.set(pane.id, nextSize)
       }
 
-      pane.app.setFontSize(nextSize)
+      pane.terminal.options.fontSize = nextSize
+      try {
+        pane.fitAddon.fit()
+      } catch {
+        /* ignore */
+      }
     })
   }, [isActive])
 
   // Handle focus and resize when tab becomes active
   useEffect(() => {
-    const restty = resttyRef.current
-    if (!restty) return
+    const manager = managerRef.current
+    if (!manager) return
 
     if (isActive) {
       // Ensure size/focus is correct both on initial mount and tab activation.
       requestAnimationFrame(() => {
-        const panes = restty.getPanes()
+        const panes = manager.getPanes()
         for (const p of panes) {
-          p.app.updateSize(true)
+          try {
+            p.fitAddon.fit()
+          } catch {
+            /* ignore */
+          }
         }
-        const active = restty.getActivePane() ?? panes[0]
+        const active = manager.getActivePane() ?? panes[0]
         if (active) {
-          active.canvas.focus({ preventScroll: true })
+          active.terminal.focus()
         }
       })
     }
@@ -794,11 +850,11 @@ export default function TerminalPane({
     const onToggleExpand = (event: Event): void => {
       const detail = (event as CustomEvent<{ tabId?: string }>).detail
       if (!detail?.tabId || detail.tabId !== tabId) return
-      const restty = resttyRef.current
-      if (!restty) return
-      const panes = restty.getPanes()
+      const manager = managerRef.current
+      if (!manager) return
+      const panes = manager.getPanes()
       if (panes.length < 2) return
-      const pane = restty.getActivePane() ?? panes[0]
+      const pane = manager.getActivePane() ?? panes[0]
       if (!pane) return
       toggleExpandPane(pane.id)
     }
@@ -815,11 +871,15 @@ export default function TerminalPane({
     if (!container) return
 
     const ro = new ResizeObserver(() => {
-      const restty = resttyRef.current
-      if (!restty) return
-      const panes = restty.getPanes()
+      const manager = managerRef.current
+      if (!manager) return
+      const panes = manager.getPanes()
       for (const p of panes) {
-        p.app.updateSize(true)
+        try {
+          p.fitAddon.fit()
+        } catch {
+          /* ignore */
+        }
       }
     })
     ro.observe(container)
@@ -835,47 +895,52 @@ export default function TerminalPane({
       if (e.repeat) return
       if (!e.metaKey || e.altKey || e.ctrlKey) return
 
-      const restty = resttyRef.current
-      if (!restty) return
+      const manager = managerRef.current
+      if (!manager) return
+
+      // Cmd+F opens search
+      if (!e.shiftKey && e.key.toLowerCase() === 'f') {
+        e.preventDefault()
+        e.stopPropagation()
+        setSearchOpen((prev) => !prev)
+        return
+      }
 
       // Cmd+K clears active pane screen + scrollback.
       if (!e.shiftKey && e.key.toLowerCase() === 'k') {
         e.preventDefault()
         e.stopPropagation()
-        const activePane = restty.activePane?.()
-        if (activePane) {
-          activePane.clearScreen()
-          return
+        const pane = manager.getActivePane() ?? manager.getPanes()[0]
+        if (pane) {
+          pane.terminal.clear()
         }
-        const pane = restty.getActivePane() ?? restty.getPanes()[0]
-        pane?.app.clearScreen()
         return
       }
 
       // Cmd+[ / Cmd+] cycles active split pane focus.
       if (!e.shiftKey && (e.code === 'BracketLeft' || e.code === 'BracketRight')) {
-        const panes = restty.getPanes()
+        const panes = manager.getPanes()
         if (panes.length < 2) return
         e.preventDefault()
         e.stopPropagation()
 
-        const activeId = restty.getActivePane()?.id ?? panes[0].id
+        const activeId = manager.getActivePane()?.id ?? panes[0].id
         const currentIdx = panes.findIndex((p) => p.id === activeId)
         if (currentIdx === -1) return
 
         const dir = e.code === 'BracketRight' ? 1 : -1
         const nextPane = panes[(currentIdx + dir + panes.length) % panes.length]
-        restty.setActivePane(nextPane.id, { focus: true })
+        manager.setActivePane(nextPane.id, { focus: true })
         return
       }
 
       // Cmd+Shift+Enter expands/collapses the active pane to full terminal area.
       if (e.shiftKey && e.key === 'Enter' && (e.code === 'Enter' || e.code === 'NumpadEnter')) {
-        const panes = restty.getPanes()
+        const panes = manager.getPanes()
         if (panes.length < 2) return
         e.preventDefault()
         e.stopPropagation()
-        const pane = restty.getActivePane() ?? panes[0]
+        const pane = manager.getActivePane() ?? panes[0]
         if (!pane) return
         toggleExpandPane(pane.id)
         return
@@ -884,13 +949,13 @@ export default function TerminalPane({
       // Cmd+W closes only the active split pane and prevents the tab-level
       // handler from closing the entire terminal tab.
       if (!e.shiftKey && e.key.toLowerCase() === 'w') {
-        const panes = restty.getPanes()
+        const panes = manager.getPanes()
         if (panes.length < 2) return
         e.preventDefault()
         e.stopPropagation()
-        const pane = restty.getActivePane() ?? panes[0]
+        const pane = manager.getActivePane() ?? panes[0]
         if (!pane) return
-        restty.closePane(pane.id)
+        manager.closePane(pane.id)
         return
       }
 
@@ -898,58 +963,58 @@ export default function TerminalPane({
       if (e.key.toLowerCase() === 'd') {
         e.preventDefault()
         e.stopPropagation()
-        const pane = restty.getActivePane() ?? restty.getPanes()[0]
+        const pane = manager.getActivePane() ?? manager.getPanes()[0]
         if (!pane) return
-        restty.splitPane(pane.id, e.shiftKey ? 'horizontal' : 'vertical')
+        manager.splitPane(pane.id, e.shiftKey ? 'horizontal' : 'vertical')
       }
     }
 
     // Ctrl+Backspace → send \x17 (backward-kill-word) to PTY.
-    // Most terminal emulators map this shortcut but xterm.js/Restty does not
-    // by default, so we intercept at the capture phase and forward manually.
     const onCtrlBackspace = (e: KeyboardEvent): void => {
       if (!e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return
       if (e.key !== 'Backspace') return
 
-      const restty = resttyRef.current
-      if (!restty) return
+      const manager = managerRef.current
+      if (!manager) return
 
       e.preventDefault()
       e.stopPropagation()
-      const pane = restty.getActivePane() ?? restty.getPanes()[0]
-      pane?.app.sendKeyInput('\x17')
+      const pane = manager.getActivePane() ?? manager.getPanes()[0]
+      if (!pane) return
+      const transport = paneTransportsRef.current.get(pane.id)
+      transport?.sendInput('\x17')
     }
 
     // Alt+Backspace → send ESC + DEL (\x1b\x7f, backward-kill-word) to PTY.
-    // Standard macOS terminal behaviour; Restty does not map this by default.
     const onAltBackspace = (e: KeyboardEvent): void => {
       if (!e.altKey || e.metaKey || e.ctrlKey || e.shiftKey) return
       if (e.key !== 'Backspace') return
 
-      const restty = resttyRef.current
-      if (!restty) return
+      const manager = managerRef.current
+      if (!manager) return
 
       e.preventDefault()
       e.stopPropagation()
-      const pane = restty.getActivePane() ?? restty.getPanes()[0]
-      pane?.app.sendKeyInput('\x1b\x7f')
+      const pane = manager.getActivePane() ?? manager.getPanes()[0]
+      if (!pane) return
+      const transport = paneTransportsRef.current.get(pane.id)
+      transport?.sendInput('\x1b\x7f')
     }
 
     // Shift+Enter → insert a literal newline into the shell command line.
-    // Sends Ctrl+V (\x16, quoted-insert) followed by LF (\x0a) so that
-    // both bash (readline) and zsh (zle) insert a newline character instead
-    // of executing the command.
     const onShiftEnter = (e: KeyboardEvent): void => {
       if (!e.shiftKey || e.metaKey || e.altKey || e.ctrlKey) return
       if (e.key !== 'Enter') return
 
-      const restty = resttyRef.current
-      if (!restty) return
+      const manager = managerRef.current
+      if (!manager) return
 
       e.preventDefault()
       e.stopPropagation()
-      const pane = restty.getActivePane() ?? restty.getPanes()[0]
-      pane?.app.sendKeyInput('\x16\x0a')
+      const pane = manager.getActivePane() ?? manager.getPanes()[0]
+      if (!pane) return
+      const transport = paneTransportsRef.current.get(pane.id)
+      transport?.sendInput('\x16\x0a')
     }
 
     window.addEventListener('keydown', onKeyDown, { capture: true })
@@ -965,53 +1030,60 @@ export default function TerminalPane({
   }, [isActive])
 
   const resolveMenuPane = () => {
-    const restty = resttyRef.current
-    if (!restty) return null
-    const panes = restty.getPanes()
+    const manager = managerRef.current
+    if (!manager) return null
+    const panes = manager.getPanes()
 
     if (contextPaneIdRef.current !== null) {
       const clickedPane = panes.find((p) => p.id === contextPaneIdRef.current) ?? null
       if (clickedPane) return clickedPane
     }
-    return restty.getActivePane() ?? panes[0] ?? null
+    return manager.getActivePane() ?? panes[0] ?? null
   }
 
   const handleCopy = async (): Promise<void> => {
     const pane = resolveMenuPane()
     if (!pane) return
-    await pane.app.copySelectionToClipboard()
+    const selection = pane.terminal.getSelection()
+    if (selection) {
+      await navigator.clipboard.writeText(selection)
+    }
   }
 
   const handlePaste = async (): Promise<void> => {
     const pane = resolveMenuPane()
     if (!pane) return
-    await pane.app.pasteFromClipboard()
+    const text = await navigator.clipboard.readText()
+    if (text) {
+      const transport = paneTransportsRef.current.get(pane.id)
+      transport?.sendInput(text)
+    }
   }
 
   const handleSplitRight = (): void => {
     const pane = resolveMenuPane()
     if (!pane) return
-    resttyRef.current?.splitPane(pane.id, 'vertical')
+    managerRef.current?.splitPane(pane.id, 'vertical')
   }
 
   const handleSplitDown = (): void => {
     const pane = resolveMenuPane()
     if (!pane) return
-    resttyRef.current?.splitPane(pane.id, 'horizontal')
+    managerRef.current?.splitPane(pane.id, 'horizontal')
   }
 
   const handleClosePane = (): void => {
     const pane = resolveMenuPane()
     if (!pane) return
-    const panes = resttyRef.current?.getPanes() ?? []
+    const panes = managerRef.current?.getPanes() ?? []
     if (panes.length <= 1) return
-    resttyRef.current?.closePane(pane.id)
+    managerRef.current?.closePane(pane.id)
   }
 
   const handleClearScreen = (): void => {
     const pane = resolveMenuPane()
     if (!pane) return
-    pane.app.clearScreen()
+    pane.terminal.clear()
   }
 
   const handleToggleExpand = (): void => {
@@ -1020,7 +1092,7 @@ export default function TerminalPane({
     toggleExpandPane(pane.id)
   }
 
-  const paneCount = resttyRef.current?.getPanes().length ?? 1
+  const paneCount = managerRef.current?.getPanes().length ?? 1
   const canClosePane = paneCount > 1
   const canExpandPane = paneCount > 1
   const menuPaneId = resolveMenuPane()?.id ?? null
@@ -1038,6 +1110,10 @@ export default function TerminalPane({
     )
   }
 
+  // Get the search addon for the active pane
+  const activePane = managerRef.current?.getActivePane()
+  const activeSearchAddon = activePane?.searchAddon ?? null
+
   return (
     <>
       <div
@@ -1048,8 +1124,8 @@ export default function TerminalPane({
           event.preventDefault()
           window.dispatchEvent(new Event(CLOSE_ALL_CONTEXT_MENUS_EVENT))
 
-          const restty = resttyRef.current
-          if (!restty) {
+          const manager = managerRef.current
+          if (!manager) {
             contextPaneIdRef.current = null
             return
           }
@@ -1060,13 +1136,18 @@ export default function TerminalPane({
             return
           }
           const clickedPane =
-            restty.getPanes().find((pane) => pane.container.contains(target)) ?? null
+            manager.getPanes().find((pane) => pane.container.contains(target)) ?? null
           contextPaneIdRef.current = clickedPane?.id ?? null
 
           const bounds = event.currentTarget.getBoundingClientRect()
           setTerminalMenuPoint({ x: event.clientX - bounds.left, y: event.clientY - bounds.top })
           setTerminalMenuOpen(true)
         }}
+      />
+      <TerminalSearch
+        isOpen={searchOpen}
+        onClose={() => setSearchOpen(false)}
+        searchAddon={activeSearchAddon}
       />
       <DropdownMenu open={terminalMenuOpen} onOpenChange={setTerminalMenuOpen} modal={false}>
         <DropdownMenuTrigger asChild>

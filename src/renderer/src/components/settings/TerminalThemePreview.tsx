@@ -1,9 +1,5 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import {
-  colorToCss,
-  terminalPalettePreview,
-  type EffectiveTerminalAppearance
-} from '@/lib/terminal-theme'
+import { terminalPalettePreview, type EffectiveTerminalAppearance } from '@/lib/terminal-theme'
 
 type TerminalThemePreviewProps = {
   title: string
@@ -22,19 +18,14 @@ export function TerminalThemePreview({
   inactivePaneOpacity = 0.9,
   activePaneOpacity = 1
 }: TerminalThemePreviewProps): React.JSX.Element {
-  const background = colorToCss(
-    appearance.theme?.colors.background,
-    appearance.mode === 'light' ? '#f8fafc' : '#09090b'
-  )
-  const foreground = colorToCss(
-    appearance.theme?.colors.foreground,
-    appearance.mode === 'light' ? '#111827' : '#f4f4f5'
-  )
-  const cursor = colorToCss(appearance.theme?.colors.cursor, foreground)
-  const selection = colorToCss(
-    appearance.theme?.colors.selectionBackground,
-    appearance.mode === 'light' ? 'rgba(59, 130, 246, 0.18)' : 'rgba(148, 163, 184, 0.22)'
-  )
+  const background =
+    appearance.theme?.background ?? (appearance.mode === 'light' ? '#f8fafc' : '#09090b')
+  const foreground =
+    appearance.theme?.foreground ?? (appearance.mode === 'light' ? '#111827' : '#f4f4f5')
+  const cursor = appearance.theme?.cursor ?? foreground
+  const selection =
+    appearance.theme?.selectionBackground ??
+    (appearance.mode === 'light' ? 'rgba(59, 130, 246, 0.18)' : 'rgba(148, 163, 184, 0.22)')
   const palette = terminalPalettePreview(appearance.theme)
 
   return (

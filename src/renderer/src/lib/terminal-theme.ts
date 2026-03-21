@@ -1,7 +1,8 @@
-import { getBuiltinTheme, listBuiltinThemeNames, type GhosttyTheme } from 'restty'
+import type { ITheme } from '@xterm/xterm'
+import { getTheme, getThemeNames } from './terminal-themes-data'
 import type { GlobalSettings } from '../../../shared/types'
 
-export const BUILTIN_TERMINAL_THEME_NAMES = listBuiltinThemeNames()
+export const BUILTIN_TERMINAL_THEME_NAMES = getThemeNames()
 
 export const DEFAULT_TERMINAL_THEME_DARK = 'Ghostty Default Style Dark'
 export const DEFAULT_TERMINAL_THEME_LIGHT = 'Builtin Tango Light'
@@ -13,7 +14,7 @@ export type EffectiveTerminalAppearance = {
   sourceTheme: 'system' | 'dark' | 'light'
   themeName: string
   dividerColor: string
-  theme: GhosttyTheme | null
+  theme: ITheme | null
   systemPrefersDark: boolean
 }
 
@@ -22,10 +23,14 @@ export function getSystemPrefersDark(): boolean {
   return window.matchMedia('(prefers-color-scheme: dark)').matches
 }
 
-export function getTerminalThemePreview(name: string): GhosttyTheme | null {
-  const theme = getBuiltinTheme(name)
+export function getBuiltinTheme(name: string): ITheme | null {
+  return getTheme(name)
+}
+
+export function getTerminalThemePreview(name: string): ITheme | null {
+  const theme = getTheme(name)
   if (theme) return theme
-  return getBuiltinTheme(DEFAULT_TERMINAL_THEME_DARK)
+  return getTheme(DEFAULT_TERMINAL_THEME_DARK)
 }
 
 export function resolveEffectiveTerminalAppearance(
@@ -73,12 +78,10 @@ export function buildTerminalFontMatchers(fontFamily: string): string[] {
   return Array.from(
     new Set([
       ...matchers,
-      // macOS
       'sf mono',
       'sfmono-regular',
       'menlo',
       'menlo regular',
-      // Linux
       'dejavu sans mono',
       'liberation mono',
       'ubuntu mono',
@@ -132,19 +135,37 @@ export function colorToCss(
   color: { r: number; g: number; b: number; a?: number } | string | undefined,
   fallback: string
 ): string {
-  if (!color || typeof color === 'string') return fallback
+  if (!color) return fallback
+  if (typeof color === 'string') return color
   const alpha = typeof color.a === 'number' ? color.a / 255 : 1
   return `rgba(${color.r}, ${color.g}, ${color.b}, ${alpha})`
 }
 
-export function terminalPalettePreview(theme: GhosttyTheme | null): string[] {
+const PALETTE_KEYS = [
+  'black',
+  'red',
+  'green',
+  'yellow',
+  'blue',
+  'magenta',
+  'cyan',
+  'white',
+  'brightBlack',
+  'brightRed',
+  'brightGreen',
+  'brightYellow',
+  'brightBlue',
+  'brightMagenta',
+  'brightCyan',
+  'brightWhite'
+] as const
+
+export function terminalPalettePreview(theme: ITheme | null): string[] {
   if (!theme) return []
-  const colors = theme.colors.palette
   const swatches: string[] = []
-  for (let i = 0; i < 16; i += 1) {
-    const color = colors[i]
-    if (!color) continue
-    swatches.push(colorToCss(color, '#000000'))
+  for (const key of PALETTE_KEYS) {
+    const color = theme[key]
+    if (color) swatches.push(color)
   }
   return swatches
 }

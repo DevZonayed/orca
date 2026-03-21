@@ -1,5 +1,6 @@
 @import 'tailwindcss';
 @import 'tw-animate-css';
+@import '@xterm/xterm/css/xterm.css';
 
 @custom-variant dark (&:is(.dark *));
 
@@ -397,21 +398,38 @@
   position: relative;
 }
 
-/* Ensure Restty pane root fills its absolutely-positioned container */
-.restty-pane-root {
+/* Ensure pane manager root fills its absolutely-positioned container */
+.pane-manager-root {
   width: 100% !important;
   height: 100% !important;
 }
 
-.restty-pane-root .pane-divider.is-vertical,
-.restty-pane-root .pane-divider.is-horizontal {
+/* Reset the global border/outline base rule inside terminal panes */
+.pane-manager-root *,
+.pane-manager-root *::before,
+.pane-manager-root *::after {
+  border-color: transparent;
+  outline: none;
+}
+
+.pane-manager-root .xterm {
+  height: 100%;
+  width: 100%;
+}
+
+.pane-manager-root .xterm-viewport {
+  overflow-y: auto;
+}
+
+.pane-divider.is-vertical,
+.pane-divider.is-horizontal {
   background: var(--orca-terminal-divider-color, transparent) !important;
 }
 
-.restty-pane-root .pane-divider.is-vertical:hover,
-.restty-pane-root .pane-divider.is-vertical.is-dragging,
-.restty-pane-root .pane-divider.is-horizontal:hover,
-.restty-pane-root .pane-divider.is-horizontal.is-dragging {
+.pane-divider.is-vertical:hover,
+.pane-divider.is-vertical.is-dragging,
+.pane-divider.is-horizontal:hover,
+.pane-divider.is-horizontal.is-dragging {
   background: var(
     --orca-terminal-divider-color-strong,
     var(--orca-terminal-divider-color, transparent)
