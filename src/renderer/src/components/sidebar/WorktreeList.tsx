@@ -48,22 +48,22 @@ const PR_GROUP_META: Record<
   done: {
     label: 'Done',
     icon: CircleCheckBig,
-    tone: 'border-emerald-500/20 bg-emerald-500/10 text-emerald-200'
+    tone: 'border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-200'
   },
   'in-review': {
     label: 'In review',
     icon: GitPullRequest,
-    tone: 'border-sky-500/20 bg-sky-500/10 text-sky-200'
+    tone: 'border-sky-500/20 bg-sky-500/10 text-sky-700 dark:text-sky-200'
   },
   'in-progress': {
     label: 'In progress',
     icon: CircleDot,
-    tone: 'border-amber-500/20 bg-amber-500/10 text-amber-200'
+    tone: 'border-amber-500/20 bg-amber-500/10 text-amber-700 dark:text-amber-200'
   },
   closed: {
     label: 'Closed',
     icon: CircleX,
-    tone: 'border-zinc-500/20 bg-zinc-500/10 text-zinc-300'
+    tone: 'border-zinc-500/20 bg-zinc-500/10 text-zinc-600 dark:text-zinc-300'
   }
 }
 

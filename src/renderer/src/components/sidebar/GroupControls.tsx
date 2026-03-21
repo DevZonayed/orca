@@ -46,13 +46,22 @@ const GroupControls = React.memo(function GroupControls() {
         size="sm"
         className="h-6"
       >
-        <ToggleGroupItem value="none" className="h-6 px-2 text-[10px]">
+        <ToggleGroupItem
+          value="none"
+          className="h-6 px-2 text-[10px] data-[state=on]:bg-foreground/10 data-[state=on]:font-semibold data-[state=on]:text-foreground"
+        >
           All
         </ToggleGroupItem>
-        <ToggleGroupItem value="pr-status" className="h-6 px-2 text-[10px]">
+        <ToggleGroupItem
+          value="pr-status"
+          className="h-6 px-2 text-[10px] data-[state=on]:bg-foreground/10 data-[state=on]:font-semibold data-[state=on]:text-foreground"
+        >
           PR Status
         </ToggleGroupItem>
-        <ToggleGroupItem value="repo" className="h-6 px-2 text-[10px]">
+        <ToggleGroupItem
+          value="repo"
+          className="h-6 px-2 text-[10px] data-[state=on]:bg-foreground/10 data-[state=on]:font-semibold data-[state=on]:text-foreground"
+        >
           Repo
         </ToggleGroupItem>
       </ToggleGroup>

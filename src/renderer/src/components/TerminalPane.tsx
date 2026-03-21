@@ -1257,7 +1257,7 @@ export default function TerminalPane({
           />
         </DropdownMenuTrigger>
         <DropdownMenuContent
-          className="w-56"
+          className="w-48"
           sideOffset={0}
           align="start"
           onCloseAutoFocus={(e) => {
@@ -1299,14 +1299,12 @@ export default function TerminalPane({
               <DropdownMenuShortcut>⌘⇧↩</DropdownMenuShortcut>
             </DropdownMenuItem>
           )}
-          <DropdownMenuItem
-            variant="destructive"
-            disabled={!canClosePane}
-            onSelect={handleClosePane}
-          >
-            <X />
-            Close Pane
-          </DropdownMenuItem>
+          {canClosePane && (
+            <DropdownMenuItem variant="destructive" onSelect={handleClosePane}>
+              <X />
+              Close Pane
+            </DropdownMenuItem>
+          )}
           <DropdownMenuSeparator />
           <DropdownMenuItem onSelect={handleClearScreen}>
             <Eraser />

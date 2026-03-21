@@ -205,7 +205,7 @@ function SortableTab({
             style={{ left: menuPoint.x, top: menuPoint.y }}
           />
         </DropdownMenuTrigger>
-        <DropdownMenuContent className="w-56" sideOffset={0} align="start">
+        <DropdownMenuContent className="w-48" sideOffset={0} align="start">
           <DropdownMenuItem onSelect={() => onClose(tab.id)}>Close</DropdownMenuItem>
           <DropdownMenuItem onSelect={() => onCloseOthers(tab.id)} disabled={tabCount <= 1}>
             Close Others
