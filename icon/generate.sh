@@ -38,13 +38,13 @@ echo "  -> build/icon.png (1024x1024)"
 sips -s format png --resampleWidth 256 "$BUILD_DIR/icon.icns" --out "$RESOURCES_DIR/icon.png" >/dev/null 2>&1
 echo "  -> resources/icon.png (256x256)"
 
-# Generate .ico for Windows (256x256 PNG, works as ico input for electron-builder)
-sips -s format png --resampleWidth 256 "$BUILD_DIR/icon.icns" --out "$TMP_DIR/icon-256.png" >/dev/null 2>&1
-
-# Use iconutil-like approach: electron-builder accepts a 256x256 PNG as icon.ico source,
-# but for a proper .ico we can use sips to create the png and let electron-builder handle conversion
-# For now, copy the 256px PNG as the ico source - electron-builder will convert it
-cp "$TMP_DIR/icon-256.png" "$BUILD_DIR/icon.ico"
-echo "  -> build/icon.ico (256x256 PNG for electron-builder)"
+# Generate .ico for Windows (proper ICO format with multiple sizes)
+if command -v magick &>/dev/null; then
+  magick "$BUILD_DIR/icon.png" -define icon:auto-resize=256,128,64,48,32,16 "$BUILD_DIR/icon.ico"
+  echo "  -> build/icon.ico (multi-size ICO via ImageMagick)"
+else
+  echo "Warning: ImageMagick not found, skipping icon.ico generation" >&2
+  echo "Install with: brew install imagemagick" >&2
+fi
 
 echo "Done! Icons generated in build/ and resources/"
