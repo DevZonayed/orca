@@ -974,6 +974,14 @@ export default function TerminalPane({
         e.preventDefault()
         e.stopPropagation()
 
+        // Collapse expanded pane before switching
+        if (expandedPaneIdRef.current !== null) {
+          setExpandedPane(null)
+          restoreExpandedLayout()
+          refreshPaneSizes(true)
+          persistLayoutSnapshot()
+        }
+
         const activeId = manager.getActivePane()?.id ?? panes[0].id
         const currentIdx = panes.findIndex((p) => p.id === activeId)
         if (currentIdx === -1) return

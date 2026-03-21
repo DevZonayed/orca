@@ -24,15 +24,14 @@ export default function Landing(): React.JSX.Element {
 
   const canCreateWorktree = repos.length > 0
 
-  const shortcuts = useMemo<ShortcutItem[]>(() => {
-    const items: ShortcutItem[] = []
-    if (canCreateWorktree) {
-      items.push({ id: 'create', keys: ['⌘', 'N'], action: 'Create worktree' })
-      items.push({ id: 'up', keys: ['⌘', '⇧', '↑'], action: 'Move up worktree' })
-      items.push({ id: 'down', keys: ['⌘', '⇧', '↓'], action: 'Move down worktree' })
-    }
-    return items
-  }, [canCreateWorktree])
+  const shortcuts = useMemo<ShortcutItem[]>(
+    () => [
+      { id: 'create', keys: ['⌘', 'N'], action: 'Create worktree' },
+      { id: 'up', keys: ['⌘', '⇧', '↑'], action: 'Move up worktree' },
+      { id: 'down', keys: ['⌘', '⇧', '↓'], action: 'Move down worktree' }
+    ],
+    []
+  )
 
   return (
     <div className="flex-1 flex items-center justify-center bg-background">
@@ -61,31 +60,29 @@ export default function Landing(): React.JSX.Element {
               Add Repo
             </button>
 
-            {canCreateWorktree && (
-              <button
-                className="inline-flex items-center gap-1.5 bg-secondary/70 border border-border/80 text-foreground font-medium text-sm px-4 py-2 rounded-md cursor-pointer hover:bg-accent transition-colors"
-                onClick={() => openModal('create-worktree')}
-              >
-                <GitBranchPlus className="size-3.5" />
-                Create Worktree
-              </button>
-            )}
+            <button
+              className="inline-flex items-center gap-1.5 bg-secondary/70 border border-border/80 text-foreground font-medium text-sm px-4 py-2 rounded-md transition-colors disabled:opacity-40 disabled:cursor-not-allowed enabled:cursor-pointer enabled:hover:bg-accent"
+              disabled={!canCreateWorktree}
+              title={!canCreateWorktree ? 'Add a repo first' : undefined}
+              onClick={() => openModal('create-worktree')}
+            >
+              <GitBranchPlus className="size-3.5" />
+              Create Worktree
+            </button>
           </div>
 
-          {shortcuts.length > 0 && (
-            <div className="mt-6 w-full max-w-xs space-y-2">
-              {shortcuts.map((shortcut) => (
-                <div key={shortcut.id} className="grid grid-cols-[1fr_auto] items-center gap-3">
-                  <span className="text-sm text-muted-foreground">{shortcut.action}</span>
-                  <div className="flex items-center gap-1">
-                    {shortcut.keys.map((key) => (
-                      <KeyCap key={`${shortcut.id}-${key}`} label={key} />
-                    ))}
-                  </div>
+          <div className="mt-6 w-full max-w-xs space-y-2">
+            {shortcuts.map((shortcut) => (
+              <div key={shortcut.id} className="grid grid-cols-[1fr_auto] items-center gap-3">
+                <span className="text-sm text-muted-foreground">{shortcut.action}</span>
+                <div className="flex items-center gap-1">
+                  {shortcut.keys.map((key) => (
+                    <KeyCap key={`${shortcut.id}-${key}`} label={key} />
+                  ))}
                 </div>
-              ))}
-            </div>
-          )}
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     </div>

@@ -354,6 +354,8 @@ export class PaneManager {
       cursorStyle: 'bar',
       fontSize: 14,
       fontFamily: '"SF Mono", Menlo, monospace',
+      fontWeight: '300',
+      fontWeightBold: '500',
       scrollback: 10000,
       allowTransparency: false,
       macOptionIsMeta: true,
