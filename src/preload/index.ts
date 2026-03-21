@@ -1,5 +1,41 @@
-import { contextBridge, ipcRenderer, webFrame } from 'electron'
+import { contextBridge, ipcRenderer, webFrame, webUtils } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
+
+// ---------------------------------------------------------------------------
+// File drag-and-drop: handled here in the preload because webUtils (which
+// resolves File objects to filesystem paths) is only available in Electron's
+// preload/main worlds, not the renderer's isolated main world.
+// ---------------------------------------------------------------------------
+document.addEventListener(
+  'dragover',
+  (e) => {
+    e.preventDefault()
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy'
+  },
+  true
+)
+
+document.addEventListener(
+  'drop',
+  (e) => {
+    e.preventDefault()
+    e.stopPropagation()
+    const files = e.dataTransfer?.files
+    if (!files || files.length === 0) return
+
+    const paths: string[] = []
+    for (let i = 0; i < files.length; i++) {
+      // webUtils.getPathForFile is the Electron 28+ replacement for File.path
+      const filePath = webUtils.getPathForFile(files[i])
+      if (filePath) paths.push(filePath)
+    }
+
+    if (paths.length > 0) {
+      ipcRenderer.send('terminal:file-dropped-from-preload', { paths })
+    }
+  },
+  true
+)
 
 // Custom APIs for renderer
 const api = {
@@ -150,6 +186,11 @@ const api = {
         callback(direction)
       ipcRenderer.on('terminal:zoom', listener)
       return () => ipcRenderer.removeListener('terminal:zoom', listener)
+    },
+    onFileDrop: (callback: (data: { path: string }) => void): (() => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, data: { path: string }) => callback(data)
+      ipcRenderer.on('terminal:file-drop', listener)
+      return () => ipcRenderer.removeListener('terminal:file-drop', listener)
     },
     getZoomLevel: (): number => webFrame.getZoomLevel(),
     setZoomLevel: (level: number): void => webFrame.setZoomLevel(level)

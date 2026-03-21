@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { FolderPlus, GitBranchPlus } from 'lucide-react'
 import { useAppStore } from '../store'
-import logo from '../../../../resources/icon.png'
+import logo from '../../../../resources/logo.svg'
 
 type ShortcutItem = {
   id: string
@@ -38,11 +38,12 @@ export default function Landing(): React.JSX.Element {
     <div className="flex-1 flex items-center justify-center bg-background">
       <div className="w-full max-w-lg px-6">
         <div className="flex flex-col items-center gap-4 py-8">
-          <img
-            src={logo}
-            alt="Orca logo"
-            className="size-16 rounded-xl shadow-lg shadow-black/40"
-          />
+          <div
+            className="flex items-center justify-center size-20 rounded-2xl border border-border/80 shadow-lg shadow-black/40"
+            style={{ backgroundColor: '#12181e' }}
+          >
+            <img src={logo} alt="Orca logo" className="size-12" />
+          </div>
           <h1 className="text-4xl font-bold text-foreground tracking-tight">ORCA</h1>
 
           <p className="text-sm text-muted-foreground text-center">

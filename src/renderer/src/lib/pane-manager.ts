@@ -366,8 +366,28 @@ export class PaneManager {
     const fitAddon = new FitAddon()
     const searchAddon = new SearchAddon()
     const unicode11Addon = new Unicode11Addon()
+    // URL tooltip element — Ghostty-style bottom-left hint on hover
+    const linkTooltip = document.createElement('div')
+    linkTooltip.className = 'pane-link-tooltip'
+    linkTooltip.style.cssText =
+      'display:none;position:absolute;bottom:4px;left:8px;z-index:40;' +
+      'padding:2px 8px;border-radius:4px;font-size:11px;font-family:inherit;' +
+      'color:#a1a1aa;background:rgba(24,24,27,0.85);border:1px solid rgba(63,63,70,0.6);' +
+      'pointer-events:none;max-width:80%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'
+    container.appendChild(linkTooltip)
+
     const webLinksAddon = new WebLinksAddon(
-      this.options.onLinkClick ? (_event, uri) => this.options.onLinkClick!(uri) : undefined
+      this.options.onLinkClick ? (_event, uri) => this.options.onLinkClick!(uri) : undefined,
+      {
+        hover: (event, uri) => {
+          if (event.type === 'mouseover' && uri) {
+            linkTooltip.textContent = uri
+            linkTooltip.style.display = ''
+          } else {
+            linkTooltip.style.display = 'none'
+          }
+        }
+      }
     )
 
     const pane: ManagedPaneInternal = {

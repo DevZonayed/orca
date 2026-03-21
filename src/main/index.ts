@@ -66,6 +66,23 @@ function createWindow(): BrowserWindow {
     return { action: 'deny' }
   })
 
+  // File drag-and-drop: the preload script handles the drop event (because
+  // File.path is only available there), sends paths here, and we relay to renderer.
+  ipcMain.on('terminal:file-dropped-from-preload', (_event, args: { paths: string[] }) => {
+    if (!mainWindow.isDestroyed()) {
+      for (const p of args.paths) {
+        mainWindow.webContents.send('terminal:file-drop', { path: p })
+      }
+    }
+  })
+
+  // Safety net: block any file:// navigation that might slip through
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    if (url.startsWith('file://')) {
+      event.preventDefault()
+    }
+  })
+
   // Handle zoom shortcuts reliably via before-input-event
   mainWindow.webContents.on('before-input-event', (_event, input) => {
     if (input.type !== 'keyDown') return
@@ -101,8 +118,8 @@ app.whenReady().then(() => {
   electronApp.setAppUserModelId('com.stablyai.orca')
   app.setName('Orca')
 
-  if (process.platform === 'darwin') {
-    const dockIcon = nativeImage.createFromPath(is.dev ? devIcon : icon)
+  if (process.platform === 'darwin' && is.dev) {
+    const dockIcon = nativeImage.createFromPath(devIcon)
     app.dock?.setIcon(dockIcon)
   }
 

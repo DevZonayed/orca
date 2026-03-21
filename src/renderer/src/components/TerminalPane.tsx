@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import type { CSSProperties } from 'react'
 import type { ITheme } from '@xterm/xterm'
 import {
@@ -1159,9 +1160,32 @@ export default function TerminalPane({
     )
   }
 
-  // Get the search addon for the active pane
+  // Get the search addon for the active pane and its container for portal
   const activePane = managerRef.current?.getActivePane()
   const activeSearchAddon = activePane?.searchAddon ?? null
+  const activePaneContainer = activePane?.container ?? null
+
+  // Drag & drop file paths into terminal.
+  // The preload script handles dragover/drop (File.path is only available there),
+  // sends paths to main process, which relays them here via IPC.
+  useEffect(() => {
+    if (!isActive) return
+
+    const shellEscape = (p: string): string => {
+      if (/^[a-zA-Z0-9_./@:-]+$/.test(p)) return p
+      return "'" + p.replace(/'/g, "'\\''") + "'"
+    }
+
+    return window.api.ui.onFileDrop(({ path: filePath }) => {
+      const manager = managerRef.current
+      if (!manager) return
+      const pane = manager.getActivePane() ?? manager.getPanes()[0]
+      if (!pane) return
+      const transport = paneTransportsRef.current.get(pane.id)
+      if (!transport) return
+      transport.sendInput(shellEscape(filePath))
+    })
+  }, [isActive])
 
   return (
     <>
@@ -1193,11 +1217,15 @@ export default function TerminalPane({
           setTerminalMenuOpen(true)
         }}
       />
-      <TerminalSearch
-        isOpen={searchOpen}
-        onClose={() => setSearchOpen(false)}
-        searchAddon={activeSearchAddon}
-      />
+      {activePaneContainer &&
+        createPortal(
+          <TerminalSearch
+            isOpen={searchOpen}
+            onClose={() => setSearchOpen(false)}
+            searchAddon={activeSearchAddon}
+          />,
+          activePaneContainer
+        )}
       <DropdownMenu open={terminalMenuOpen} onOpenChange={setTerminalMenuOpen} modal={false}>
         <DropdownMenuTrigger asChild>
           <button

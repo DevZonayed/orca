@@ -96,6 +96,7 @@ interface UIApi {
   set: (args: Partial<PersistedUIState>) => Promise<void>
   onOpenSettings: (callback: () => void) => () => void
   onTerminalZoom: (callback: (direction: 'in' | 'out' | 'reset') => void) => () => void
+  onFileDrop: (callback: (data: { path: string }) => void) => () => void
   getZoomLevel: () => number
   setZoomLevel: (level: number) => void
 }
