@@ -397,6 +397,7 @@ export default function TerminalPane({
   isActiveRef.current = isActive
   const [terminalMenuOpen, setTerminalMenuOpen] = useState(false)
   const [terminalMenuPoint, setTerminalMenuPoint] = useState({ x: 0, y: 0 })
+  const menuOpenedAtRef = useRef(0)
   const [expandedPaneId, setExpandedPaneId] = useState<number | null>(null)
   const [searchOpen, setSearchOpen] = useState(false)
   const setTabPaneExpanded = useAppStore((s) => s.setTabPaneExpanded)
@@ -538,7 +539,11 @@ export default function TerminalPane({
   }
 
   useEffect(() => {
-    const closeMenu = (): void => setTerminalMenuOpen(false)
+    const closeMenu = (): void => {
+      // Skip if we just opened (same frame / same event cycle)
+      if (Date.now() - menuOpenedAtRef.current < 100) return
+      setTerminalMenuOpen(false)
+    }
     window.addEventListener(CLOSE_ALL_CONTEXT_MENUS_EVENT, closeMenu)
     return () => window.removeEventListener(CLOSE_ALL_CONTEXT_MENUS_EVENT, closeMenu)
   }, [])
@@ -1203,6 +1208,7 @@ export default function TerminalPane({
         style={terminalContainerStyle}
         onContextMenuCapture={(event) => {
           event.preventDefault()
+          menuOpenedAtRef.current = Date.now()
           window.dispatchEvent(new Event(CLOSE_ALL_CONTEXT_MENUS_EVENT))
 
           const manager = managerRef.current
@@ -1234,7 +1240,14 @@ export default function TerminalPane({
           />,
           activePaneContainer
         )}
-      <DropdownMenu open={terminalMenuOpen} onOpenChange={setTerminalMenuOpen} modal={false}>
+      <DropdownMenu
+        open={terminalMenuOpen}
+        onOpenChange={(open) => {
+          if (!open && Date.now() - menuOpenedAtRef.current < 100) return
+          setTerminalMenuOpen(open)
+        }}
+        modal={false}
+      >
         <DropdownMenuTrigger asChild>
           <button
             aria-hidden
@@ -1243,7 +1256,21 @@ export default function TerminalPane({
             style={{ left: terminalMenuPoint.x, top: terminalMenuPoint.y }}
           />
         </DropdownMenuTrigger>
-        <DropdownMenuContent className="w-56" sideOffset={0} align="start">
+        <DropdownMenuContent
+          className="w-56"
+          sideOffset={0}
+          align="start"
+          onCloseAutoFocus={(e) => {
+            // Prevent Radix from moving focus back to the hidden trigger;
+            // let xterm keep focus naturally.
+            e.preventDefault()
+          }}
+          onFocusOutside={(e) => {
+            // xterm reclaims focus after the contextmenu event; don't let
+            // Radix treat that as a dismiss signal.
+            e.preventDefault()
+          }}
+        >
           <DropdownMenuItem onSelect={() => void handleCopy()}>
             <Copy />
             Copy
