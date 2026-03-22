@@ -491,6 +491,72 @@
   );
 }
 
+/* ── Pane drag handle ─────────────────────────────────── */
+
+.pane-drag-handle {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 12px;
+  z-index: 10;
+  cursor: grab;
+  opacity: 0;
+  transition: opacity 150ms ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.15);
+}
+
+/* Three-dot ellipsis indicator */
+.pane-drag-handle::after {
+  content: '···';
+  font-size: 10px;
+  letter-spacing: 1px;
+  line-height: 1;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+/* Only show when hovering the handle itself, and only with multiple panes */
+.has-multiple-panes .pane-drag-handle {
+  pointer-events: auto;
+}
+
+.has-multiple-panes .pane-drag-handle:hover {
+  opacity: 1;
+}
+
+.pane-drag-handle:active {
+  cursor: grabbing;
+}
+
+/* Dim the source pane while dragging */
+.pane.is-drag-source {
+  opacity: 0.4 !important;
+}
+
+/* Suppress pointer events on terminals during pane drag so overlay works */
+.is-pane-dragging .pane {
+  pointer-events: none;
+}
+
+/* ── Drop overlay ─────────────────────────────────────── */
+
+.pane-drop-overlay {
+  position: absolute;
+  z-index: 9999;
+  background: rgba(59, 130, 246, 0.2);
+  border: 2px solid rgba(59, 130, 246, 0.5);
+  border-radius: 4px;
+  pointer-events: none;
+  transition:
+    left 80ms ease,
+    top 80ms ease,
+    width 80ms ease,
+    height 80ms ease;
+}
+
 .number-input-clean {
   appearance: textfield;
 }
