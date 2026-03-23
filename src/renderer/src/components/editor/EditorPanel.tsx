@@ -1,16 +1,17 @@
 import React, { useCallback, useEffect, useState, lazy, Suspense } from 'react'
 import { useAppStore } from '@/store'
+import { detectLanguage } from '@/lib/language-detect'
 
 const MonacoEditor = lazy(() => import('./MonacoEditor'))
 const DiffViewer = lazy(() => import('./DiffViewer'))
 const CombinedDiffViewer = lazy(() => import('./CombinedDiffViewer'))
 
-interface FileContent {
+type FileContent = {
   content: string
   isBinary: boolean
 }
 
-interface DiffContent {
+type DiffContent = {
   originalContent: string
   modifiedContent: string
 }
@@ -28,12 +29,18 @@ export default function EditorPanel(): React.JSX.Element {
 
   // Load file content when active file changes
   useEffect(() => {
-    if (!activeFile) return
+    if (!activeFile) {
+      return
+    }
     if (activeFile.mode === 'edit') {
-      if (fileContents[activeFile.id]) return
+      if (fileContents[activeFile.id]) {
+        return
+      }
       void loadFileContent(activeFile.filePath, activeFile.id)
     } else if (activeFile.mode === 'diff' && activeFile.diffStaged !== undefined) {
-      if (diffContents[activeFile.id]) return
+      if (diffContents[activeFile.id]) {
+        return
+      }
       void loadDiffContent(activeFile)
     }
   }, [activeFile?.id]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -51,7 +58,9 @@ export default function EditorPanel(): React.JSX.Element {
   }
 
   const loadDiffContent = async (file: typeof activeFile): Promise<void> => {
-    if (!file) return
+    if (!file) {
+      return
+    }
     try {
       // Extract worktree path from absolute file path and relative path
       const worktreePath = file.filePath.slice(
@@ -74,7 +83,9 @@ export default function EditorPanel(): React.JSX.Element {
 
   const handleContentChange = useCallback(
     (content: string) => {
-      if (!activeFile) return
+      if (!activeFile) {
+        return
+      }
       setEditBuffers((prev) => ({ ...prev, [activeFile.id]: content }))
       // Compare against saved content to determine dirty state
       const saved = fileContents[activeFile.id]?.content ?? ''
@@ -85,7 +96,9 @@ export default function EditorPanel(): React.JSX.Element {
 
   const handleSave = useCallback(
     async (content: string) => {
-      if (!activeFile) return
+      if (!activeFile) {
+        return
+      }
       try {
         await window.api.fs.writeFile({ filePath: activeFile.filePath, content })
         markFileDirty(activeFile.id, false)
@@ -105,7 +118,9 @@ export default function EditorPanel(): React.JSX.Element {
     const handler = async (e: Event): Promise<void> => {
       const { fileId } = (e as CustomEvent).detail as { fileId: string }
       const file = useAppStore.getState().openFiles.find((f) => f.id === fileId)
-      if (!file) return
+      if (!file) {
+        return
+      }
       const buffer = editBuffers[fileId]
       if (buffer !== undefined) {
         try {
@@ -132,29 +147,41 @@ export default function EditorPanel(): React.JSX.Element {
     setFileContents((prev) => {
       const next: Record<string, FileContent> = {}
       for (const [k, v] of Object.entries(prev)) {
-        if (openIds.has(k)) next[k] = v
+        if (openIds.has(k)) {
+          next[k] = v
+        }
       }
       return next
     })
     setDiffContents((prev) => {
       const next: Record<string, DiffContent> = {}
       for (const [k, v] of Object.entries(prev)) {
-        if (openIds.has(k)) next[k] = v
+        if (openIds.has(k)) {
+          next[k] = v
+        }
       }
       return next
     })
     setEditBuffers((prev) => {
       const next: Record<string, string> = {}
       for (const [k, v] of Object.entries(prev)) {
-        if (openIds.has(k)) next[k] = v
+        if (openIds.has(k)) {
+          next[k] = v
+        }
       }
       return next
     })
   }, [openFiles])
 
-  if (!activeFile) return <></>
+  if (!activeFile) {
+    return null
+  }
 
   const isCombinedDiff = activeFile.mode === 'diff' && activeFile.diffStaged === undefined
+  const resolvedLanguage =
+    activeFile.mode === 'diff'
+      ? detectLanguage(activeFile.relativePath)
+      : detectLanguage(activeFile.filePath)
 
   const loadingFallback = (
     <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
@@ -188,7 +215,7 @@ export default function EditorPanel(): React.JSX.Element {
               <MonacoEditor
                 filePath={activeFile.filePath}
                 content={editBuffers[activeFile.id] ?? fc.content}
-                language={activeFile.language}
+                language={resolvedLanguage}
                 onContentChange={handleContentChange}
                 onSave={handleSave}
               />
@@ -208,7 +235,7 @@ export default function EditorPanel(): React.JSX.Element {
               <DiffViewer
                 originalContent={dc.originalContent}
                 modifiedContent={dc.modifiedContent}
-                language={activeFile.language}
+                language={resolvedLanguage}
                 filePath={activeFile.relativePath}
               />
             )

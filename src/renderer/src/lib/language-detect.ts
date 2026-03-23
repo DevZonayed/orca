@@ -1,15 +1,17 @@
 function extname(filePath: string): string {
   const lastDot = filePath.lastIndexOf('.')
   const lastSep = Math.max(filePath.lastIndexOf('/'), filePath.lastIndexOf('\\'))
-  if (lastDot <= lastSep) return ''
+  if (lastDot <= lastSep) {
+    return ''
+  }
   return filePath.slice(lastDot)
 }
 
 const EXT_TO_LANGUAGE: Record<string, string> = {
   '.ts': 'typescript',
-  '.tsx': 'typescript',
+  '.tsx': 'typescriptreact',
   '.js': 'javascript',
-  '.jsx': 'javascript',
+  '.jsx': 'javascriptreact',
   '.mjs': 'javascript',
   '.cjs': 'javascript',
   '.json': 'json',
@@ -89,7 +91,7 @@ const FILENAME_TO_LANGUAGE: Record<string, string> = {
 export function detectLanguage(filePath: string): string {
   // Check exact filename first
   const parts = filePath.split('/')
-  const filename = parts[parts.length - 1]
+  const filename = parts.at(-1)!
   if (FILENAME_TO_LANGUAGE[filename]) {
     return FILENAME_TO_LANGUAGE[filename]
   }
