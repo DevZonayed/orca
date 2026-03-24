@@ -166,7 +166,7 @@ function App(): React.JSX.Element {
       mq.addEventListener('change', handler)
       return () => mq.removeEventListener('change', handler)
     }
-  }, [settings?.theme])
+  }, [settings])
 
   // Refresh GitHub data (PR/issue status) when window regains focus
   useEffect(() => {
