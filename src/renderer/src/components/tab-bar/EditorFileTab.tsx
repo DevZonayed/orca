@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { X, FileCode, GitCompareArrows, Copy } from 'lucide-react'
+import { X, FileCode, GitCompareArrows, Copy, MapPin } from 'lucide-react'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -7,6 +7,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu'
+import { useAppStore } from '@/store'
 import type { OpenFile } from '../../store/slices/editor'
 import { CLOSE_ALL_CONTEXT_MENUS_EVENT } from './SortableTab'
 
@@ -29,6 +30,7 @@ export default function EditorFileTab({
 }): React.JSX.Element {
   const fileName = file.relativePath.split('/').pop() ?? file.relativePath
   const isDiff = file.mode === 'diff'
+  const cursorLine = useAppStore((s) => s.editorCursorLine[file.filePath])
   const [menuOpen, setMenuOpen] = useState(false)
   const [menuPoint, setMenuPoint] = useState({ x: 0, y: 0 })
 
@@ -119,6 +121,35 @@ export default function EditorFileTab({
             <Copy className="w-3.5 h-3.5 mr-1.5" />
             Copy Path
           </DropdownMenuItem>
+          <DropdownMenuItem
+            onSelect={() => {
+              navigator.clipboard.writeText(file.relativePath)
+            }}
+          >
+            <Copy className="w-3.5 h-3.5 mr-1.5" />
+            Copy Relative Path
+          </DropdownMenuItem>
+          {cursorLine != null && !isDiff && (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onSelect={() => {
+                  navigator.clipboard.writeText(`${file.filePath}#L${cursorLine}`)
+                }}
+              >
+                <MapPin className="w-3.5 h-3.5 mr-1.5" />
+                Copy Path to Line
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onSelect={() => {
+                  navigator.clipboard.writeText(`${file.relativePath}#L${cursorLine}`)
+                }}
+              >
+                <MapPin className="w-3.5 h-3.5 mr-1.5" />
+                Copy Relative Path to Line
+              </DropdownMenuItem>
+            </>
+          )}
         </DropdownMenuContent>
       </DropdownMenu>
     </>

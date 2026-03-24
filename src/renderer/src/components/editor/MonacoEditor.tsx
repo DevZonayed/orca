@@ -1,11 +1,19 @@
-import React, { useRef, useCallback, useEffect } from 'react'
+import React, { useRef, useCallback, useEffect, useState } from 'react'
 import Editor, { type OnMount } from '@monaco-editor/react'
 import type { editor } from 'monaco-editor'
+import { Copy } from 'lucide-react'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger
+} from '@/components/ui/dropdown-menu'
 import { useAppStore } from '@/store'
 import '@/lib/monaco-setup'
 
 type MonacoEditorProps = {
   filePath: string
+  relativePath: string
   content: string
   language: string
   onContentChange: (content: string) => void
@@ -17,6 +25,7 @@ type MonacoEditorProps = {
 
 export default function MonacoEditor({
   filePath,
+  relativePath,
   content,
   language,
   onContentChange,
@@ -28,6 +37,12 @@ export default function MonacoEditor({
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null)
   const settings = useAppStore((s) => s.settings)
   const setPendingEditorReveal = useAppStore((s) => s.setPendingEditorReveal)
+  const setEditorCursorLine = useAppStore((s) => s.setEditorCursorLine)
+
+  // Gutter context menu state
+  const [gutterMenuOpen, setGutterMenuOpen] = useState(false)
+  const [gutterMenuPoint, setGutterMenuPoint] = useState({ x: 0, y: 0 })
+  const [gutterMenuLine, setGutterMenuLine] = useState(1)
   const isDark =
     settings?.theme === 'dark' ||
     (settings?.theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)
@@ -42,6 +57,32 @@ export default function MonacoEditor({
         onSave(value)
       })
 
+      // Track cursor line for "copy path to line" feature
+      const pos = editorInstance.getPosition()
+      if (pos) {
+        setEditorCursorLine(filePath, pos.lineNumber)
+      }
+      editorInstance.onDidChangeCursorPosition((e) => {
+        setEditorCursorLine(filePath, e.position.lineNumber)
+      })
+
+      // Intercept right-click on line number gutter to show Radix context menu
+      // (same approach as VSCode: custom menu instead of Monaco's built-in one)
+      editorInstance.onMouseDown((e) => {
+        if (
+          e.event.rightButton &&
+          e.target.type === monaco.editor.MouseTargetType.GUTTER_LINE_NUMBERS
+        ) {
+          e.event.preventDefault()
+          e.event.stopPropagation()
+          const line = e.target.position?.lineNumber ?? 1
+          editorInstance.setPosition({ lineNumber: line, column: 1 })
+          setGutterMenuLine(line)
+          setGutterMenuPoint({ x: e.event.posx, y: e.event.posy })
+          setGutterMenuOpen(true)
+        }
+      })
+
       // If there's a pending reveal at mount time, execute it now
       const reveal = useAppStore.getState().pendingEditorReveal
       if (reveal) {
@@ -51,7 +92,7 @@ export default function MonacoEditor({
         editorInstance.focus()
       }
     },
-    [onSave]
+    [onSave, filePath, relativePath, setEditorCursorLine]
   )
 
   const handleChange = useCallback(
@@ -108,29 +149,61 @@ export default function MonacoEditor({
   }, [revealLine, revealColumn, revealMatchLength, setPendingEditorReveal])
 
   return (
-    <Editor
-      height="100%"
-      language={language}
-      value={content}
-      theme={isDark ? 'vs-dark' : 'vs'}
-      onChange={handleChange}
-      onMount={handleMount}
-      options={{
-        minimap: { enabled: true },
-        scrollBeyondLastLine: false,
-        wordWrap: 'on',
-        fontSize: settings?.terminalFontSize ?? 13,
-        fontFamily: settings?.terminalFontFamily || 'monospace',
-        lineNumbers: 'on',
-        renderLineHighlight: 'line',
-        automaticLayout: true,
-        tabSize: 2,
-        smoothScrolling: true,
-        cursorSmoothCaretAnimation: 'off',
-        padding: { top: 8 }
-      }}
-      path={filePath}
-    />
+    <>
+      <Editor
+        height="100%"
+        language={language}
+        value={content}
+        theme={isDark ? 'vs-dark' : 'vs'}
+        onChange={handleChange}
+        onMount={handleMount}
+        options={{
+          minimap: { enabled: true },
+          scrollBeyondLastLine: false,
+          wordWrap: 'on',
+          fontSize: settings?.terminalFontSize ?? 13,
+          fontFamily: settings?.terminalFontFamily || 'monospace',
+          lineNumbers: 'on',
+          renderLineHighlight: 'line',
+          automaticLayout: true,
+          tabSize: 2,
+          smoothScrolling: true,
+          cursorSmoothCaretAnimation: 'off',
+          padding: { top: 8 }
+        }}
+        path={filePath}
+      />
+
+      {/* Radix context menu for line number gutter right-click */}
+      <DropdownMenu open={gutterMenuOpen} onOpenChange={setGutterMenuOpen} modal={false}>
+        <DropdownMenuTrigger asChild>
+          <button
+            aria-hidden
+            tabIndex={-1}
+            className="pointer-events-none fixed size-px opacity-0"
+            style={{ left: gutterMenuPoint.x, top: gutterMenuPoint.y }}
+          />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent sideOffset={0} align="start">
+          <DropdownMenuItem
+            onSelect={() => {
+              navigator.clipboard.writeText(`${filePath}#L${gutterMenuLine}`)
+            }}
+          >
+            <Copy className="w-3.5 h-3.5 mr-1.5" />
+            Copy Path to Line
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onSelect={() => {
+              navigator.clipboard.writeText(`${relativePath}#L${gutterMenuLine}`)
+            }}
+          >
+            <Copy className="w-3.5 h-3.5 mr-1.5" />
+            Copy Rel. Path to Line
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </>
   )
 }
 

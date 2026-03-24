@@ -53,6 +53,10 @@ export type EditorSlice = {
   ) => void
   openAllDiffs: (worktreeId: string, worktreePath: string) => void
 
+  // Cursor line tracking per file
+  editorCursorLine: Record<string, number>
+  setEditorCursorLine: (fileId: string, line: number) => void
+
   // Git status cache
   gitStatusByWorktree: Record<string, GitStatusEntry[]>
   setGitStatus: (worktreeId: string, entries: GitStatusEntry[]) => void
@@ -314,6 +318,13 @@ export const createEditorSlice: StateCreator<AppState, [], [], EditorSlice> = (s
         activeTabTypeByWorktree: { ...s.activeTabTypeByWorktree, [worktreeId]: 'editor' }
       }
     }),
+
+  // Cursor line tracking
+  editorCursorLine: {},
+  setEditorCursorLine: (fileId, line) =>
+    set((s) => ({
+      editorCursorLine: { ...s.editorCursorLine, [fileId]: line }
+    })),
 
   // Git status
   gitStatusByWorktree: {},
