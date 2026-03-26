@@ -11,7 +11,7 @@ type HookName = keyof OrcaHooks['scripts']
  * Parse a simple orca.yaml file. Handles only the `scripts:` block with
  * multiline string values (YAML block scalar `|`).
  */
-function parseOrcaYaml(content: string): OrcaHooks | null {
+export function parseOrcaYaml(content: string): OrcaHooks | null {
   const hooks: OrcaHooks = { scripts: {} }
 
   // Match top-level "scripts:" block

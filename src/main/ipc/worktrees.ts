@@ -1,12 +1,21 @@
 import type { BrowserWindow } from 'electron'
 import { ipcMain } from 'electron'
 import { execFileSync } from 'child_process'
-import { join, basename, resolve, relative, isAbsolute } from 'path'
 import type { Store } from '../persistence'
 import type { Worktree, WorktreeMeta } from '../../shared/types'
 import { listWorktrees, addWorktree, removeWorktree } from '../git/worktree'
 import { getGitUsername, getDefaultBaseRef, getAvailableBranchName } from '../git/repo'
 import { getEffectiveHooks, loadHooks, runHook, hasHooksFile } from '../hooks'
+import {
+  sanitizeWorktreeName,
+  computeBranchName,
+  computeWorktreePath,
+  ensurePathWithinWorkspace,
+  shouldSetDisplayName,
+  mergeWorktree,
+  parseWorktreeId,
+  formatWorktreeRemovalError
+} from './worktree-logic'
 
 export function registerWorktreeHandlers(mainWindow: BrowserWindow, store: Store): void {
   // Remove any previously registered handlers so we can re-register them
@@ -62,26 +71,12 @@ export function registerWorktreeHandlers(mainWindow: BrowserWindow, store: Store
       const sanitizedName = sanitizeWorktreeName(args.name)
 
       // Compute branch name with prefix
-      let branchName = sanitizedName
-      if (settings.branchPrefix === 'git-username') {
-        const username = getGitUsername(repo.path)
-        if (username) {
-          branchName = `${username}/${sanitizedName}`
-        }
-      } else if (settings.branchPrefix === 'custom' && settings.branchPrefixCustom) {
-        branchName = `${settings.branchPrefixCustom}/${sanitizedName}`
-      }
-
+      const username = getGitUsername(repo.path)
+      let branchName = computeBranchName(sanitizedName, settings, username)
       branchName = await getAvailableBranchName(repo.path, branchName)
 
       // Compute worktree path
-      let worktreePath: string
-      if (settings.nestWorkspaces) {
-        const repoName = basename(repo.path).replace(/\.git$/, '')
-        worktreePath = join(settings.workspaceDir, repoName, sanitizedName)
-      } else {
-        worktreePath = join(settings.workspaceDir, sanitizedName)
-      }
+      let worktreePath = computeWorktreePath(sanitizedName, repo.path, settings)
       worktreePath = ensurePathWithinWorkspace(worktreePath, settings.workspaceDir)
 
       // Determine base branch
@@ -109,10 +104,13 @@ export function registerWorktreeHandlers(mainWindow: BrowserWindow, store: Store
       }
 
       const worktreeId = `${repo.id}::${worktreePath}`
-      const metaUpdates: Partial<WorktreeMeta> =
-        branchName === requestedName && sanitizedName === requestedName
-          ? {}
-          : { displayName: requestedName }
+      const metaUpdates: Partial<WorktreeMeta> = shouldSetDisplayName(
+        requestedName,
+        branchName,
+        sanitizedName
+      )
+        ? { displayName: requestedName }
+        : {}
       const meta = store.setWorktreeMeta(worktreeId, metaUpdates)
       const worktree = mergeWorktree(repo.id, created, meta)
 
@@ -185,87 +183,8 @@ export function registerWorktreeHandlers(mainWindow: BrowserWindow, store: Store
   })
 }
 
-function mergeWorktree(
-  repoId: string,
-  git: { path: string; head: string; branch: string; isBare: boolean },
-  meta: WorktreeMeta | undefined
-): Worktree {
-  const branchShort = git.branch.replace(/^refs\/heads\//, '')
-  return {
-    id: `${repoId}::${git.path}`,
-    repoId,
-    path: git.path,
-    head: git.head,
-    branch: git.branch,
-    isBare: git.isBare,
-    displayName: meta?.displayName || branchShort || basename(git.path),
-    comment: meta?.comment || '',
-    linkedIssue: meta?.linkedIssue ?? null,
-    linkedPR: meta?.linkedPR ?? null,
-    isArchived: meta?.isArchived ?? false,
-    isUnread: meta?.isUnread ?? false,
-    sortOrder: meta?.sortOrder ?? 0
-  }
-}
-
-function sanitizeWorktreeName(input: string): string {
-  const sanitized = input
-    .trim()
-    .replace(/[\\/]+/g, '-')
-    .replace(/\s+/g, '-')
-    .replace(/[^A-Za-z0-9._-]+/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^[.-]+|[.-]+$/g, '')
-
-  if (!sanitized || sanitized === '.' || sanitized === '..') {
-    throw new Error('Invalid worktree name')
-  }
-
-  return sanitized
-}
-
-function ensurePathWithinWorkspace(targetPath: string, workspaceDir: string): string {
-  const resolvedWorkspaceDir = resolve(workspaceDir)
-  const resolvedTargetPath = resolve(targetPath)
-  const rel = relative(resolvedWorkspaceDir, resolvedTargetPath)
-
-  if (isAbsolute(rel) || rel.startsWith('..')) {
-    throw new Error('Invalid worktree path')
-  }
-
-  return resolvedTargetPath
-}
-
-function parseWorktreeId(worktreeId: string): { repoId: string; worktreePath: string } {
-  const sepIdx = worktreeId.indexOf('::')
-  if (sepIdx === -1) {
-    throw new Error(`Invalid worktreeId: ${worktreeId}`)
-  }
-  return {
-    repoId: worktreeId.slice(0, sepIdx),
-    worktreePath: worktreeId.slice(sepIdx + 2)
-  }
-}
-
 function notifyWorktreesChanged(mainWindow: BrowserWindow, repoId: string): void {
   if (!mainWindow.isDestroyed()) {
     mainWindow.webContents.send('worktrees:changed', { repoId })
   }
-}
-
-function formatWorktreeRemovalError(error: unknown, worktreePath: string, force: boolean): string {
-  const fallback = force
-    ? `Failed to force delete worktree at ${worktreePath}.`
-    : `Failed to delete worktree at ${worktreePath}.`
-
-  if (!(error instanceof Error)) {
-    return fallback
-  }
-
-  const errorWithStreams = error as Error & { stderr?: string; stdout?: string }
-  const details = [errorWithStreams.stderr, errorWithStreams.stdout, error.message]
-    .map((value) => value?.trim())
-    .find(Boolean)
-
-  return details ? `${fallback} ${details}` : fallback
 }

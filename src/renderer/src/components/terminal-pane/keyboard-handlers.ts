@@ -11,7 +11,9 @@ function isEditableTarget(target: EventTarget | null): boolean {
     return true
   }
 
-  const editableAncestor = target.closest('input, textarea, select, [contenteditable=""], [contenteditable="true"]')
+  const editableAncestor = target.closest(
+    'input, textarea, select, [contenteditable=""], [contenteditable="true"]'
+  )
   return editableAncestor !== null
 }
 
