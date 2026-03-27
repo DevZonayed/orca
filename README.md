@@ -15,8 +15,16 @@ Learn more at <a align="center" href="https://www.orcabuild.ai">www.OrcaBuild.ai
   <img src="screenshot.png" alt="Orca Screenshot" width="800" />
 </p>
 
+## Features
+  * Manage multiple worktrees
+  * Multiple terminals, tabs and panes
+  * Get worktree notifications (plus ability to manually mark threads as unread -- similar to Gmail ⭐)
+  * See which worktrees have working agents
+  * GitHub integrations for GH PRs (automatic), ability to link GH issues (via `gh` cli), and a GH checks viewer
+  * File editor, search, source control tab (see worktree changes, make edits, easily commit)
+
 ## Install
-Grab a release (easiest from https://www.orcabuild.ai/)
+Grab a release from https://www.orcabuild.ai/ or download from the GH release page
 
 ## Developing
 
