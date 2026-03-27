@@ -180,7 +180,7 @@ export type PersistedUIState = {
   sidebarWidth: number
   rightSidebarWidth: number
   groupBy: 'none' | 'repo' | 'pr-status'
-  sortBy: 'name' | 'recent' | 'smart' | 'repo'
+  sortBy: 'name' | 'recent' | 'repo'
   filterRepoIds: string[]
   uiZoomLevel: number
 }

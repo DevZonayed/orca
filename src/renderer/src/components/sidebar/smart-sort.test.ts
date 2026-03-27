@@ -30,7 +30,7 @@ function makeWorktree(overrides: Partial<Worktree> = {}): Worktree {
     isArchived: overrides.isArchived ?? false,
     comment: overrides.comment ?? '',
     isUnread: overrides.isUnread ?? false,
-    displayName: overrides.displayName ?? (overrides.id ?? 'wt-1'),
+    displayName: overrides.displayName ?? overrides.id ?? 'wt-1',
     sortOrder: overrides.sortOrder ?? 0,
     lastActivityAt: overrides.lastActivityAt ?? 0
   }
@@ -54,10 +54,14 @@ describe('computeSmartScore', () => {
     vi.restoreAllMocks()
   })
 
-  it('prioritizes the active worktree over a merely linked worktree', () => {
+  it('prioritizes recent activity over a merely linked worktree', () => {
     vi.spyOn(Date, 'now').mockReturnValue(NOW)
 
-    const active = makeWorktree({ id: 'active', displayName: 'Active' })
+    const active = makeWorktree({
+      id: 'active',
+      displayName: 'Active',
+      lastActivityAt: NOW - 10 * 60 * 1000
+    })
     const linked = makeWorktree({
       id: 'linked',
       displayName: 'Linked',
@@ -65,7 +69,7 @@ describe('computeSmartScore', () => {
       linkedIssue: 42
     })
 
-    expect(computeSmartScore(active, null, active.id)).toBeGreaterThan(computeSmartScore(linked, null, active.id))
+    expect(computeSmartScore(active, null)).toBeGreaterThan(computeSmartScore(linked, null))
   })
 
   it('keeps recent activity relevant beyond a one-hour window', () => {
@@ -103,10 +107,12 @@ describe('buildWorktreeComparator', () => {
     vi.restoreAllMocks()
   })
 
-  it('sorts smart mode by ongoing work signals before alphabetical order', () => {
-    vi.spyOn(Date, 'now').mockReturnValue(NOW)
-
-    const active = makeWorktree({ id: 'active', displayName: 'z-active' })
+  it('sorts recent mode by ongoing work signals before alphabetical order', () => {
+    const active = makeWorktree({
+      id: 'active',
+      displayName: 'z-active',
+      lastActivityAt: NOW - 10 * 60 * 1000
+    })
     const recent = makeWorktree({
       id: 'recent',
       displayName: 'a-recent',
@@ -120,8 +126,50 @@ describe('buildWorktreeComparator', () => {
 
     const worktrees = [recent, stale, active]
 
-    worktrees.sort(buildWorktreeComparator('smart', null, repoMap, active.id))
+    worktrees.sort(buildWorktreeComparator('recent', null, repoMap, NOW))
 
     expect(worktrees.map((worktree) => worktree.id)).toEqual(['active', 'recent', 'stale'])
+  })
+
+  it('does not treat selection changes as recent activity', () => {
+    const first = makeWorktree({
+      id: 'first',
+      displayName: 'First',
+      sortOrder: NOW,
+      lastActivityAt: NOW - 60_000
+    })
+    const second = makeWorktree({
+      id: 'second',
+      displayName: 'Second',
+      sortOrder: NOW + 10_000,
+      lastActivityAt: NOW - 120_000
+    })
+
+    const worktrees = [second, first]
+
+    worktrees.sort(buildWorktreeComparator('recent', null, repoMap, NOW))
+
+    expect(worktrees.map((worktree) => worktree.id)).toEqual(['first', 'second'])
+  })
+
+  it('ignores stale sortOrder metadata when recent activity is identical', () => {
+    const alpha = makeWorktree({
+      id: 'alpha',
+      displayName: 'Alpha',
+      sortOrder: NOW + 50_000,
+      lastActivityAt: NOW - 60_000
+    })
+    const beta = makeWorktree({
+      id: 'beta',
+      displayName: 'Beta',
+      sortOrder: NOW - 50_000,
+      lastActivityAt: NOW - 60_000
+    })
+
+    const worktrees = [beta, alpha]
+
+    worktrees.sort(buildWorktreeComparator('recent', null, repoMap, NOW))
+
+    expect(worktrees.map((worktree) => worktree.id)).toEqual(['alpha', 'beta'])
   })
 })

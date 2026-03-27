@@ -204,7 +204,6 @@ export const createWorktreeSlice: StateCreator<AppState, [], [], WorktreeSlice> 
 
   setActiveWorktree: (worktreeId) => {
     let shouldClearUnread = false
-    const now = Date.now()
     set((s) => {
       if (!worktreeId) {
         return { activeWorktreeId: null }
@@ -237,10 +236,11 @@ export const createWorktreeSlice: StateCreator<AppState, [], [], WorktreeSlice> 
         activeWorktreeId: worktreeId,
         activeFileId,
         activeTabType,
-        worktreesByRepo: applyWorktreeUpdates(s.worktreesByRepo, worktreeId, {
-          ...(shouldClearUnread ? { isUnread: false } : {}),
-          sortOrder: now
-        })
+        worktreesByRepo: applyWorktreeUpdates(
+          s.worktreesByRepo,
+          worktreeId,
+          shouldClearUnread ? { isUnread: false } : {}
+        )
       }
     })
 
@@ -272,11 +272,13 @@ export const createWorktreeSlice: StateCreator<AppState, [], [], WorktreeSlice> 
       return
     }
 
-    const updates: Parameters<typeof window.api.worktrees.updateMeta>[0]['updates'] = {
-      sortOrder: now
-    }
+    const updates: Parameters<typeof window.api.worktrees.updateMeta>[0]['updates'] = {}
     if (shouldClearUnread) {
       updates.isUnread = false
+    }
+
+    if (Object.keys(updates).length === 0) {
+      return
     }
 
     void window.api.worktrees.updateMeta({ worktreeId, updates }).catch((err) => {

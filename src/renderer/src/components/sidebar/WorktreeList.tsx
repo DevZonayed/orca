@@ -34,7 +34,7 @@ const WorktreeList = React.memo(function WorktreeList() {
   const clearPendingRevealWorktreeId = useAppStore((s) => s.clearPendingRevealWorktreeId)
 
   // Read tabsByWorktree when needed for filtering or sorting
-  const needsTabs = showActiveOnly || sortBy === 'recent' || sortBy === 'smart'
+  const needsTabs = showActiveOnly || sortBy === 'recent'
   const tabsByWorktree = useAppStore((s) => (needsTabs ? s.tabsByWorktree : null))
 
   // PR cache only when grouping by pr-status
@@ -83,19 +83,10 @@ const WorktreeList = React.memo(function WorktreeList() {
     }
 
     // Sort
-    all.sort(buildWorktreeComparator(sortBy, tabsByWorktree, repoMap, activeWorktreeId))
+    all.sort(buildWorktreeComparator(sortBy, tabsByWorktree, repoMap, Date.now()))
 
     return all
-  }, [
-    worktreesByRepo,
-    filterRepoIds,
-    searchQuery,
-    showActiveOnly,
-    sortBy,
-    repoMap,
-    tabsByWorktree,
-    activeWorktreeId
-  ])
+  }, [worktreesByRepo, filterRepoIds, searchQuery, showActiveOnly, sortBy, repoMap, tabsByWorktree])
 
   // Collapsed group state
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())

@@ -2,6 +2,8 @@ import type { StateCreator } from 'zustand'
 import type { AppState } from '../types'
 import type { PersistedUIState, UpdateStatus } from '../../../../shared/types'
 
+type LegacyPersistedSortBy = PersistedUIState['sortBy'] | 'smart'
+
 export type UISlice = {
   sidebarOpen: boolean
   sidebarWidth: number
@@ -18,7 +20,7 @@ export type UISlice = {
   setSearchQuery: (q: string) => void
   groupBy: 'none' | 'repo' | 'pr-status'
   setGroupBy: (g: UISlice['groupBy']) => void
-  sortBy: 'name' | 'recent' | 'smart' | 'repo'
+  sortBy: 'name' | 'recent' | 'repo'
   setSortBy: (s: UISlice['sortBy']) => void
   showActiveOnly: boolean
   setShowActiveOnly: (v: boolean) => void
@@ -73,11 +75,12 @@ export const createUISlice: StateCreator<AppState, [], [], UISlice> = (set) => (
   hydratePersistedUI: (ui) =>
     set((s) => {
       const validRepoIds = new Set(s.repos.map((repo) => repo.id))
+      const sortBy = (ui.sortBy as LegacyPersistedSortBy) === 'smart' ? 'recent' : ui.sortBy
       return {
         sidebarWidth: ui.sidebarWidth,
         rightSidebarWidth: ui.rightSidebarWidth ?? 280,
         groupBy: ui.groupBy,
-        sortBy: ui.sortBy,
+        sortBy,
         filterRepoIds: (ui.filterRepoIds ?? []).filter((repoId) => validRepoIds.has(repoId)),
         persistedUIReady: true
       }

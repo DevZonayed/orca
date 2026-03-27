@@ -295,3 +295,31 @@ describe('removeWorktree cascade', () => {
     expect(s.terminalLayoutsByTabId['tab1']).toBeUndefined()
   })
 })
+
+describe('setActiveWorktree', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockApi.worktrees.updateMeta.mockResolvedValue({})
+  })
+
+  it('does not rewrite sortOrder when selecting a worktree', () => {
+    const store = createTestStore()
+    const worktreeId = 'repo1::/path/wt1'
+
+    store.setState({
+      repos: [
+        { id: 'repo1', path: '/repo1', displayName: 'Repo 1', badgeColor: '#000', addedAt: 0 }
+      ],
+      worktreesByRepo: {
+        repo1: [makeWorktree({ id: worktreeId, repoId: 'repo1', sortOrder: 123, isUnread: false })]
+      },
+      refreshGitHubForWorktree: vi.fn()
+    })
+
+    store.getState().setActiveWorktree(worktreeId)
+
+    const worktree = store.getState().worktreesByRepo.repo1[0]
+    expect(worktree.sortOrder).toBe(123)
+    expect(mockApi.worktrees.updateMeta).not.toHaveBeenCalled()
+  })
+})

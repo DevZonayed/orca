@@ -267,6 +267,21 @@ describe('Store', () => {
     expect(ui.groupBy).toBe('none') // default preserved
   })
 
+  it('migrates persisted smart sort to recent', async () => {
+    writeDataFile({
+      schemaVersion: 1,
+      repos: [],
+      worktreeMeta: {},
+      settings: {},
+      ui: { sortBy: 'smart' },
+      githubCache: { pr: {}, issue: {} },
+      workspaceSession: {}
+    })
+
+    const store = await createStore()
+    expect(store.getUI().sortBy).toBe('recent')
+  })
+
   // ── GitHub Cache ───────────────────────────────────────────────────
 
   it('get/set GitHub cache round-trips', async () => {

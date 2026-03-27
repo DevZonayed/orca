@@ -13,6 +13,16 @@ import {
 
 const DATA_FILE = join(app.getPath('userData'), 'orca-data.json')
 
+function normalizeSortBy(sortBy: unknown): 'name' | 'recent' | 'repo' {
+  if (sortBy === 'recent' || sortBy === 'repo' || sortBy === 'name') {
+    return sortBy
+  }
+  if (sortBy === 'smart') {
+    return 'recent'
+  }
+  return getDefaultUIState().sortBy
+}
+
 export class Store {
   private state: PersistedState
   private writeTimer: ReturnType<typeof setTimeout> | null = null
@@ -33,7 +43,11 @@ export class Store {
           ...defaults,
           ...parsed,
           settings: { ...defaults.settings, ...parsed.settings },
-          ui: { ...defaults.ui, ...parsed.ui },
+          ui: {
+            ...defaults.ui,
+            ...parsed.ui,
+            sortBy: normalizeSortBy(parsed.ui?.sortBy)
+          },
           workspaceSession: { ...defaults.workspaceSession, ...parsed.workspaceSession }
         }
       }
@@ -168,11 +182,21 @@ export class Store {
   // ── UI State ───────────────────────────────────────────────────────
 
   getUI(): PersistedState['ui'] {
-    return { ...getDefaultUIState(), ...this.state.ui }
+    return {
+      ...getDefaultUIState(),
+      ...this.state.ui,
+      sortBy: normalizeSortBy(this.state.ui?.sortBy)
+    }
   }
 
   updateUI(updates: Partial<PersistedState['ui']>): void {
-    this.state.ui = { ...this.state.ui, ...updates }
+    this.state.ui = {
+      ...this.state.ui,
+      ...updates,
+      sortBy: updates.sortBy
+        ? normalizeSortBy(updates.sortBy)
+        : normalizeSortBy(this.state.ui?.sortBy)
+    }
     this.scheduleSave()
   }
 
