@@ -251,7 +251,8 @@ export async function mergePR(
   try {
     await execFileAsync('gh', ['pr', 'merge', String(prNumber), `--${method}`, '--delete-branch'], {
       cwd: repoPath,
-      encoding: 'utf-8'
+      encoding: 'utf-8',
+      env: { ...process.env, GH_PROMPT_DISABLED: '1' }
     })
     return { ok: true }
   } catch (err) {
