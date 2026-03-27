@@ -35,6 +35,7 @@ export function useIpcEvents(): void {
 
     let checkingToastId: string | number | undefined
     let availableToastId: string | number | undefined
+    const downloadToastId = 'update-download-progress'
     unsubs.push(
       window.api.updater.onStatus((raw) => {
         const status = raw as UpdateStatus
@@ -65,11 +66,16 @@ export function useIpcEvents(): void {
             toast.dismiss(availableToastId)
             availableToastId = undefined
           }
+          toast.loading(`Downloading v${status.version}… ${status.percent}%`, {
+            id: downloadToastId,
+            duration: Infinity
+          })
         } else if (status.state === 'downloaded') {
           if (availableToastId) {
             toast.dismiss(availableToastId)
             availableToastId = undefined
           }
+          toast.dismiss(downloadToastId)
           toast.success(`Version ${status.version} is ready to install.`, {
             duration: Infinity,
             action: {
@@ -77,12 +83,15 @@ export function useIpcEvents(): void {
               onClick: () => window.api.updater.quitAndInstall()
             }
           })
-        } else if (status.state === 'error' && 'userInitiated' in status && status.userInitiated) {
-          toast.error('Could not check for updates.', {
-            description: status.message,
-            id: checkingToastId
-          })
-          checkingToastId = undefined
+        } else if (status.state === 'error') {
+          toast.dismiss(downloadToastId)
+          if ('userInitiated' in status && status.userInitiated) {
+            toast.error('Could not check for updates.', {
+              description: status.message,
+              id: checkingToastId
+            })
+            checkingToastId = undefined
+          }
         }
       })
     )

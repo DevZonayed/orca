@@ -5,7 +5,7 @@ import { registerRepoHandlers } from '../ipc/repos'
 import { registerWorktreeHandlers } from '../ipc/worktrees'
 import { registerPtyHandlers } from '../ipc/pty'
 import {
-  checkForUpdates,
+  checkForUpdatesFromMenu,
   downloadUpdate,
   getUpdateStatus,
   quitAndInstall,
@@ -57,7 +57,7 @@ export function registerUpdaterHandlers(): void {
 
   ipcMain.handle('updater:getStatus', () => getUpdateStatus())
   ipcMain.handle('updater:getVersion', () => app.getVersion())
-  ipcMain.handle('updater:check', () => checkForUpdates())
+  ipcMain.handle('updater:check', () => checkForUpdatesFromMenu())
   ipcMain.handle('updater:download', () => downloadUpdate())
   ipcMain.handle('updater:quitAndInstall', () => quitAndInstall())
 }
