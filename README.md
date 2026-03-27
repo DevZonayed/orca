@@ -15,7 +15,10 @@ Learn more at <a align="center" href="https://www.orcabuild.ai">www.OrcaBuild.ai
   <img src="screenshot.png" alt="Orca Screenshot" width="800" />
 </p>
 
-## Project Setup
+## Install
+Grab a release (easiest from https://www.orcabuild.ai/)
+
+## Developing
 
 ### Install
 
