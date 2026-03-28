@@ -1,0 +1,101 @@
+import { spawn } from 'child_process'
+import { relative } from 'path'
+import type { Store } from '../persistence'
+import { resolveAuthorizedPath } from './filesystem-auth'
+
+function normalizeRelativePath(path: string): string {
+  return path.replace(/[\\/]+/g, '/').replace(/^\/+/, '')
+}
+
+function shouldIncludeQuickOpenPath(path: string): boolean {
+  const normalizedPath = normalizeRelativePath(path)
+  const segments = normalizedPath.split('/')
+  return segments.every((segment, index) => {
+    if (segment === 'node_modules') {
+      return false
+    }
+    if (segment.startsWith('.') && !(index === 0 && segment === '.github')) {
+      return false
+    }
+    return true
+  })
+}
+
+export async function listQuickOpenFiles(rootPath: string, store: Store): Promise<string[]> {
+  const authorizedRootPath = await resolveAuthorizedPath(rootPath, store)
+  return new Promise((resolve) => {
+    const files: string[] = []
+    let buf = ''
+    let done = false
+    const finish = (): void => {
+      if (done) {
+        return
+      }
+      done = true
+      clearTimeout(timer)
+      resolve(files)
+    }
+    const child = spawn(
+      'rg',
+      [
+        '--files',
+        '--hidden',
+        '--glob',
+        '!.git',
+        '--glob',
+        '!.git/**',
+        '--glob',
+        '!**/node_modules',
+        '--glob',
+        '!**/node_modules/**',
+        '--glob',
+        '!.*',
+        '--glob',
+        '!.*/*',
+        '--glob',
+        '!**/.*',
+        '--glob',
+        '!**/.*/**',
+        '--glob',
+        '.github',
+        '--glob',
+        '.github/**',
+        authorizedRootPath
+      ],
+      {
+        stdio: ['ignore', 'pipe', 'pipe']
+      }
+    )
+    child.stdout.setEncoding('utf-8')
+    child.stdout.on('data', (chunk: string) => {
+      buf += chunk
+      const lines = buf.split('\n')
+      buf = lines.pop() ?? ''
+      for (const line of lines) {
+        if (!line) {
+          continue
+        }
+        const relPath = normalizeRelativePath(relative(authorizedRootPath, line))
+        if (shouldIncludeQuickOpenPath(relPath)) {
+          files.push(relPath)
+        }
+      }
+    })
+    child.stderr.on('data', () => {
+      /* drain */
+    })
+    child.once('error', () => {
+      finish()
+    })
+    child.once('close', () => {
+      if (buf) {
+        const relPath = normalizeRelativePath(relative(authorizedRootPath, buf))
+        if (shouldIncludeQuickOpenPath(relPath)) {
+          files.push(relPath)
+        }
+      }
+      finish()
+    })
+    const timer = setTimeout(() => child.kill(), 10000)
+  })
+}

@@ -10,6 +10,20 @@ import Terminal from './components/Terminal'
 import Landing from './components/Landing'
 import Settings from './components/settings/Settings'
 import RightSidebar from './components/right-sidebar'
+import QuickOpen from './components/QuickOpen'
+
+function isEditableTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) {
+    return false
+  }
+  if (target.isContentEditable) {
+    return true
+  }
+  return (
+    target.closest('input, textarea, select, [contenteditable=""], [contenteditable="true"]') !==
+    null
+  )
+}
 
 function App(): React.JSX.Element {
   const toggleSidebar = useAppStore((s) => s.toggleSidebar)
@@ -43,6 +57,7 @@ function App(): React.JSX.Element {
   const rightSidebarWidth = useAppStore((s) => s.rightSidebarWidth)
   const setRightSidebarOpen = useAppStore((s) => s.setRightSidebarOpen)
   const setRightSidebarTab = useAppStore((s) => s.setRightSidebarTab)
+  const setQuickOpenVisible = useAppStore((s) => s.setQuickOpenVisible)
 
   // Subscribe to IPC push events
   useIpcEvents()
@@ -214,9 +229,25 @@ function App(): React.JSX.Element {
       if (e.repeat) {
         return
       }
+      if (isEditableTarget(e.target)) {
+        return
+      }
       // Accept Cmd on macOS, Ctrl on other platforms
       const mod = navigator.userAgent.includes('Mac') ? e.metaKey : e.ctrlKey
       if (!mod) {
+        return
+      }
+
+      // Cmd/Ctrl+P — quick open (go to file)
+      if (
+        !e.altKey &&
+        !e.shiftKey &&
+        e.key.toLowerCase() === 'p' &&
+        activeView !== 'settings' &&
+        activeWorktreeId !== null
+      ) {
+        e.preventDefault()
+        setQuickOpenVisible(true)
         return
       }
 
@@ -256,7 +287,15 @@ function App(): React.JSX.Element {
 
     window.addEventListener('keydown', onKeyDown, { capture: true })
     return () => window.removeEventListener('keydown', onKeyDown, { capture: true })
-  }, [openModal, repos.length, setRightSidebarTab, setRightSidebarOpen])
+  }, [
+    activeView,
+    activeWorktreeId,
+    openModal,
+    repos.length,
+    setRightSidebarTab,
+    setRightSidebarOpen,
+    setQuickOpenVisible
+  ])
 
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden">
@@ -311,6 +350,7 @@ function App(): React.JSX.Element {
         </div>
         {showSidebar && rightSidebarOpen ? <RightSidebar /> : null}
       </div>
+      <QuickOpen />
       <Toaster closeButton toastOptions={{ className: 'font-sans text-sm' }} />
     </div>
   )

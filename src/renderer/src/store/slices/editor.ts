@@ -97,6 +97,10 @@ export type EditorSlice = {
   setPendingEditorReveal: (
     reveal: { line: number; column: number; matchLength: number } | null
   ) => void
+
+  // Quick open (Cmd+P)
+  quickOpenVisible: boolean
+  setQuickOpenVisible: (visible: boolean) => void
 }
 
 export const createEditorSlice: StateCreator<AppState, [], [], EditorSlice> = (set) => ({
@@ -480,5 +484,9 @@ export const createEditorSlice: StateCreator<AppState, [], [], EditorSlice> = (s
 
   // Editor navigation
   pendingEditorReveal: null,
-  setPendingEditorReveal: (reveal) => set({ pendingEditorReveal: reveal })
+  setPendingEditorReveal: (reveal) => set({ pendingEditorReveal: reveal }),
+
+  // Quick open
+  quickOpenVisible: false,
+  setQuickOpenVisible: (visible) => set({ quickOpenVisible: visible })
 })

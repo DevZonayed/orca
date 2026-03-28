@@ -18,6 +18,7 @@ import {
   validateGitRelativeFilePath,
   isENOENT
 } from './filesystem-auth'
+import { listQuickOpenFiles } from './filesystem-list-files'
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024 // 5MB
 const IMAGE_MIME_TYPES: Record<string, string> = {
@@ -146,6 +147,9 @@ export function registerFilesystemHandlers(store: Store): void {
     return new Promise((resolvePromise) => {
       const rgArgs: string[] = [
         '--json',
+        '--hidden',
+        '--glob',
+        '!.git',
         '--max-count',
         '200', // max matches per file
         '--max-filesize',
@@ -269,6 +273,13 @@ export function registerFilesystemHandlers(store: Store): void {
       const killTimeout = setTimeout(() => child.kill(), 30000)
     })
   })
+
+  // ─── List all files (for quick-open) ─────────────────────
+  ipcMain.handle(
+    'fs:listFiles',
+    async (_event, args: { rootPath: string }): Promise<string[]> =>
+      listQuickOpenFiles(args.rootPath, store)
+  )
 
   // ─── Git operations ─────────────────────────────────────
   ipcMain.handle(

@@ -134,6 +134,7 @@ type FsApi = {
   stat: (args: {
     filePath: string
   }) => Promise<{ size: number; isDirectory: boolean; mtime: number }>
+  listFiles: (args: { rootPath: string }) => Promise<string[]>
   search: (args: SearchOptions) => Promise<SearchResult>
 }
 

@@ -21,6 +21,7 @@ export function ShortcutsPane(): React.JSX.Element {
       {
         title: 'Global',
         items: [
+          { action: 'Go to File', keys: [mod, 'P'] },
           { action: 'Create worktree', keys: [mod, 'N'] },
           { action: 'Toggle File Explorer', keys: [mod, shift, 'E'] },
           { action: 'Toggle Search', keys: [mod, shift, 'F'] },
