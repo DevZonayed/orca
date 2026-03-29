@@ -17,7 +17,7 @@ Learn more at <a align="center" href="https://www.orcabuild.ai">www.OrcaBuild.ai
 
 ---
 
-### Shipped daily
+### Shipping daily
 
 Missing something? It's probably landing tomorrow. **[Request a feature](https://github.com/stablyai/orca/issues)** · **Star** to follow along.
 
