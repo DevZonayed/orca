@@ -1,10 +1,16 @@
 /* eslint-disable max-lines */
 import type { StateCreator } from 'zustand'
 import type { AppState } from '../types'
+import { joinPath } from '@/lib/path'
 import type {
   GitBranchChangeEntry,
   GitBranchCompareSummary,
+  GitConflictKind,
+  GitConflictOperation,
+  GitConflictResolutionStatus,
+  GitConflictStatusSource,
   GitStatusEntry,
+  GitStatusResult,
   SearchResult
 } from '../../../../shared/types'
 
@@ -27,6 +33,41 @@ type CombinedDiffAlternate = {
   branchCompare?: BranchCompareSnapshot
 }
 
+export type OpenConflictMetadata = {
+  kind: 'conflict-editable' | 'conflict-placeholder'
+  conflictKind: GitConflictKind
+  conflictStatus: GitConflictResolutionStatus
+  conflictStatusSource: GitConflictStatusSource
+  message?: string
+  guidance?: string
+}
+
+export type ConflictReviewEntry = {
+  path: string
+  conflictKind: GitConflictKind
+}
+
+export type ConflictReviewState = {
+  source: 'live-summary' | 'combined-diff-exclusion'
+  snapshotTimestamp: number
+  entries: ConflictReviewEntry[]
+}
+
+export type CombinedDiffSkippedConflict = {
+  path: string
+  conflictKind: GitConflictKind
+}
+
+// Why: OpenFile is a single type (not a discriminated union on `mode`) because
+// the tab plumbing (reorder, close, activate) treats all tabs uniformly. However,
+// consumers that access `filePath` must be aware that conflict-review tabs use
+// the worktree root as filePath, not a real file. Any code that assumes filePath
+// points to an actual file should check `mode` first.
+//
+// `skippedConflicts` is stored directly on the tab state so the exclusion notice
+// in combined-diff views is stable for the tab's lifetime. It must NOT be
+// reconstructed from live status on every render — the live set can change
+// between polls, which would make the notice flicker or become inaccurate.
 export type OpenFile = {
   id: string // use filePath as unique key
   filePath: string // absolute path
@@ -34,13 +75,16 @@ export type OpenFile = {
   worktreeId: string
   language: string
   isDirty: boolean
-  mode: 'edit' | 'diff'
   diffSource?: DiffSource
   branchCompare?: BranchCompareSnapshot
   branchOldPath?: string
   combinedAlternate?: CombinedDiffAlternate
   combinedAreaFilter?: string // filter combined diff to a specific area (e.g. 'staged', 'unstaged', 'untracked')
+  conflict?: OpenConflictMetadata
+  skippedConflicts?: CombinedDiffSkippedConflict[]
+  conflictReview?: ConflictReviewState
   isPreview?: boolean // preview tabs are replaced when another file is single-clicked
+  mode: 'edit' | 'diff' | 'conflict-review'
 }
 
 export type RightSidebarTab = 'explorer' | 'search' | 'source-control' | 'checks'
@@ -109,6 +153,18 @@ export type EditorSlice = {
     alternate?: CombinedDiffAlternate,
     areaFilter?: string
   ) => void
+  openConflictFile: (
+    worktreeId: string,
+    worktreePath: string,
+    entry: GitStatusEntry,
+    language: string
+  ) => void
+  openConflictReview: (
+    worktreeId: string,
+    worktreePath: string,
+    entries: ConflictReviewEntry[],
+    source: ConflictReviewState['source']
+  ) => void
   openBranchAllDiffs: (
     worktreeId: string,
     worktreePath: string,
@@ -122,7 +178,10 @@ export type EditorSlice = {
 
   // Git status cache
   gitStatusByWorktree: Record<string, GitStatusEntry[]>
-  setGitStatus: (worktreeId: string, entries: GitStatusEntry[]) => void
+  gitConflictOperationByWorktree: Record<string, GitConflictOperation>
+  trackedConflictPathsByWorktree: Record<string, Record<string, GitConflictKind>>
+  trackConflictPath: (worktreeId: string, path: string, conflictKind: GitConflictKind) => void
+  setGitStatus: (worktreeId: string, status: GitStatusResult) => void
   gitBranchChangesByWorktree: Record<string, GitBranchChangeEntry[]>
   gitBranchCompareSummaryByWorktree: Record<string, GitBranchCompareSummary | null>
   gitBranchCompareRequestKeyByWorktree: Record<string, string>
@@ -244,6 +303,10 @@ export const createEditorSlice: StateCreator<AppState, [], [], EditorSlice> = (s
           existing.mode === file.mode &&
           existing.diffSource === file.diffSource &&
           existing.branchCompare?.compareVersion === file.branchCompare?.compareVersion &&
+          existing.conflict?.kind === file.conflict?.kind &&
+          existing.conflict?.conflictKind === file.conflict?.conflictKind &&
+          existing.conflict?.conflictStatus === file.conflict?.conflictStatus &&
+          existing.conflictReview?.snapshotTimestamp === file.conflictReview?.snapshotTimestamp &&
           existing.isPreview === updatedPreview
         ) {
           return activeResult
@@ -258,6 +321,10 @@ export const createEditorSlice: StateCreator<AppState, [], [], EditorSlice> = (s
                   branchCompare: file.branchCompare,
                   branchOldPath: file.branchOldPath,
                   combinedAlternate: file.combinedAlternate,
+                  combinedAreaFilter: file.combinedAreaFilter,
+                  conflict: file.conflict,
+                  skippedConflicts: file.skippedConflicts,
+                  conflictReview: file.conflictReview,
                   isPreview: updatedPreview
                 }
               : f
@@ -314,6 +381,11 @@ export const createEditorSlice: StateCreator<AppState, [], [], EditorSlice> = (s
       }
     }),
 
+  // Why: closing a tab does NOT clear Resolved locally state. If the file is
+  // still present in Changes or Staged Changes, the continuity badge should
+  // remain visible until the file leaves the sidebar, the session resets, or
+  // the file becomes live-unresolved again. trackedConflictPaths is tied to
+  // sidebar presence, not tab lifecycle.
   closeFile: (fileId) =>
     set((s) => {
       const closedFile = s.openFiles.find((f) => f.id === fileId)
@@ -451,7 +523,16 @@ export const createEditorSlice: StateCreator<AppState, [], [], EditorSlice> = (s
         return {
           openFiles: needsUpdate
             ? s.openFiles.map((f) =>
-                f.id === id ? { ...f, mode: 'diff' as const, diffSource } : f
+                f.id === id
+                  ? {
+                      ...f,
+                      mode: 'diff' as const,
+                      diffSource,
+                      conflict: undefined,
+                      skippedConflicts: undefined,
+                      conflictReview: undefined
+                    }
+                  : f
               )
             : s.openFiles,
           activeFileId: id,
@@ -468,7 +549,10 @@ export const createEditorSlice: StateCreator<AppState, [], [], EditorSlice> = (s
         language,
         isDirty: false,
         mode: 'diff',
-        diffSource
+        diffSource,
+        conflict: undefined,
+        skippedConflicts: undefined,
+        conflictReview: undefined
       }
       return {
         openFiles: [...s.openFiles, newFile],
@@ -493,7 +577,10 @@ export const createEditorSlice: StateCreator<AppState, [], [], EditorSlice> = (s
                   mode: 'diff' as const,
                   diffSource: 'branch' as const,
                   branchCompare,
-                  branchOldPath: entry.oldPath
+                  branchOldPath: entry.oldPath,
+                  conflict: undefined,
+                  skippedConflicts: undefined,
+                  conflictReview: undefined
                 }
               : f
           ),
@@ -505,7 +592,7 @@ export const createEditorSlice: StateCreator<AppState, [], [], EditorSlice> = (s
       }
       const newFile: OpenFile = {
         id,
-        filePath: `${worktreePath}/${entry.path}`,
+        filePath: joinPath(worktreePath, entry.path),
         relativePath: entry.path,
         worktreeId,
         language,
@@ -513,7 +600,10 @@ export const createEditorSlice: StateCreator<AppState, [], [], EditorSlice> = (s
         mode: 'diff',
         diffSource: 'branch',
         branchCompare,
-        branchOldPath: entry.oldPath
+        branchOldPath: entry.oldPath,
+        conflict: undefined,
+        skippedConflicts: undefined,
+        conflictReview: undefined
       }
       return {
         openFiles: [...s.openFiles, newFile],
@@ -526,6 +616,15 @@ export const createEditorSlice: StateCreator<AppState, [], [], EditorSlice> = (s
 
   openAllDiffs: (worktreeId, worktreePath, alternate, areaFilter) =>
     set((s) => {
+      const relevantEntries = (s.gitStatusByWorktree[worktreeId] ?? []).filter((entry) => {
+        if (areaFilter) {
+          return entry.area === areaFilter
+        }
+        return entry.area !== 'untracked'
+      })
+      const skippedConflicts = relevantEntries
+        .filter((entry) => entry.conflictStatus === 'unresolved' && entry.conflictKind)
+        .map((entry) => ({ path: entry.path, conflictKind: entry.conflictKind! }))
       const id = areaFilter
         ? `${worktreeId}::all-diffs::uncommitted::${areaFilter}`
         : `${worktreeId}::all-diffs::uncommitted`
@@ -538,7 +637,16 @@ export const createEditorSlice: StateCreator<AppState, [], [], EditorSlice> = (s
       if (existing) {
         return {
           openFiles: s.openFiles.map((f) =>
-            f.id === id ? { ...f, combinedAlternate: alternate, combinedAreaFilter: areaFilter } : f
+            f.id === id
+              ? {
+                  ...f,
+                  combinedAlternate: alternate,
+                  combinedAreaFilter: areaFilter,
+                  skippedConflicts,
+                  conflictReview: undefined,
+                  conflict: undefined
+                }
+              : f
           ),
           activeFileId: id,
           activeTabType: 'editor',
@@ -556,8 +664,139 @@ export const createEditorSlice: StateCreator<AppState, [], [], EditorSlice> = (s
         mode: 'diff',
         diffSource: 'combined-uncommitted',
         combinedAlternate: alternate,
-        combinedAreaFilter: areaFilter
+        combinedAreaFilter: areaFilter,
+        skippedConflicts,
+        conflictReview: undefined,
+        conflict: undefined
       }
+      return {
+        openFiles: [...s.openFiles, newFile],
+        activeFileId: id,
+        activeTabType: 'editor',
+        activeFileIdByWorktree: { ...s.activeFileIdByWorktree, [worktreeId]: id },
+        activeTabTypeByWorktree: { ...s.activeTabTypeByWorktree, [worktreeId]: 'editor' }
+      }
+    }),
+
+  openConflictFile: (worktreeId, worktreePath, entry, language) =>
+    set((s) => {
+      const absolutePath = joinPath(worktreePath, entry.path)
+      const id = absolutePath
+      const conflict = toOpenConflictMetadata(entry)
+      const existing = s.openFiles.find((f) => f.id === id)
+      const nextTracked =
+        entry.conflictStatus === 'unresolved' && entry.conflictKind
+          ? {
+              ...s.trackedConflictPathsByWorktree[worktreeId],
+              [entry.path]: entry.conflictKind
+            }
+          : s.trackedConflictPathsByWorktree[worktreeId]
+
+      if (!conflict) {
+        return s
+      }
+
+      if (existing) {
+        return {
+          openFiles: s.openFiles.map((f) =>
+            f.id === id
+              ? {
+                  ...f,
+                  mode: 'edit' as const,
+                  language,
+                  relativePath: entry.path,
+                  filePath: absolutePath,
+                  conflict,
+                  diffSource: undefined,
+                  skippedConflicts: undefined,
+                  conflictReview: undefined
+                }
+              : f
+          ),
+          activeFileId: id,
+          activeTabType: 'editor',
+          activeFileIdByWorktree: { ...s.activeFileIdByWorktree, [worktreeId]: id },
+          activeTabTypeByWorktree: { ...s.activeTabTypeByWorktree, [worktreeId]: 'editor' },
+          trackedConflictPathsByWorktree:
+            nextTracked === s.trackedConflictPathsByWorktree[worktreeId]
+              ? s.trackedConflictPathsByWorktree
+              : { ...s.trackedConflictPathsByWorktree, [worktreeId]: nextTracked }
+        }
+      }
+
+      const newFile: OpenFile = {
+        id,
+        filePath: absolutePath,
+        relativePath: entry.path,
+        worktreeId,
+        language,
+        isDirty: false,
+        mode: 'edit',
+        conflict
+      }
+
+      return {
+        openFiles: [...s.openFiles, newFile],
+        activeFileId: id,
+        activeTabType: 'editor',
+        activeFileIdByWorktree: { ...s.activeFileIdByWorktree, [worktreeId]: id },
+        activeTabTypeByWorktree: { ...s.activeTabTypeByWorktree, [worktreeId]: 'editor' },
+        trackedConflictPathsByWorktree:
+          nextTracked === s.trackedConflictPathsByWorktree[worktreeId]
+            ? s.trackedConflictPathsByWorktree
+            : { ...s.trackedConflictPathsByWorktree, [worktreeId]: nextTracked }
+      }
+    }),
+
+  // Why: Review conflicts is launched from Source Control into the editor area,
+  // not from Checks. Merge-conflict review is source-control work, not CI/PR
+  // status. The tab renders from a stored snapshot (entries + timestamp), not
+  // from live status on every paint, so the list is stable even if the live
+  // unresolved set changes between polls.
+  openConflictReview: (worktreeId, worktreePath, entries, source) =>
+    set((s) => {
+      const id = `${worktreeId}::conflict-review`
+      const conflictReview: ConflictReviewState = {
+        source,
+        snapshotTimestamp: Date.now(),
+        entries
+      }
+      const existing = s.openFiles.find((f) => f.id === id)
+
+      if (existing) {
+        return {
+          openFiles: s.openFiles.map((f) =>
+            f.id === id
+              ? {
+                  ...f,
+                  mode: 'conflict-review' as const,
+                  relativePath: 'Conflict Review',
+                  filePath: worktreePath,
+                  language: 'plaintext',
+                  conflictReview,
+                  conflict: undefined,
+                  skippedConflicts: undefined
+                }
+              : f
+          ),
+          activeFileId: id,
+          activeTabType: 'editor',
+          activeFileIdByWorktree: { ...s.activeFileIdByWorktree, [worktreeId]: id },
+          activeTabTypeByWorktree: { ...s.activeTabTypeByWorktree, [worktreeId]: 'editor' }
+        }
+      }
+
+      const newFile: OpenFile = {
+        id,
+        filePath: worktreePath,
+        relativePath: 'Conflict Review',
+        worktreeId,
+        language: 'plaintext',
+        isDirty: false,
+        mode: 'conflict-review',
+        conflictReview
+      }
+
       return {
         openFiles: [...s.openFiles, newFile],
         activeFileId: id,
@@ -575,7 +814,16 @@ export const createEditorSlice: StateCreator<AppState, [], [], EditorSlice> = (s
       if (existing) {
         return {
           openFiles: s.openFiles.map((f) =>
-            f.id === id ? { ...f, branchCompare, combinedAlternate: alternate } : f
+            f.id === id
+              ? {
+                  ...f,
+                  branchCompare,
+                  combinedAlternate: alternate,
+                  conflict: undefined,
+                  skippedConflicts: undefined,
+                  conflictReview: undefined
+                }
+              : f
           ),
           activeFileId: id,
           activeTabType: 'editor',
@@ -593,7 +841,10 @@ export const createEditorSlice: StateCreator<AppState, [], [], EditorSlice> = (s
         mode: 'diff',
         diffSource: 'combined-branch',
         branchCompare,
-        combinedAlternate: alternate
+        combinedAlternate: alternate,
+        conflict: undefined,
+        skippedConflicts: undefined,
+        conflictReview: undefined
       }
       return {
         openFiles: [...s.openFiles, newFile],
@@ -613,22 +864,110 @@ export const createEditorSlice: StateCreator<AppState, [], [], EditorSlice> = (s
 
   // Git status
   gitStatusByWorktree: {},
-  setGitStatus: (worktreeId, entries) =>
+  gitConflictOperationByWorktree: {},
+  trackedConflictPathsByWorktree: {},
+  trackConflictPath: (worktreeId, path, conflictKind) =>
     set((s) => {
-      const prev = s.gitStatusByWorktree[worktreeId]
+      const nextTracked = {
+        ...s.trackedConflictPathsByWorktree[worktreeId],
+        [path]: conflictKind
+      }
+      return {
+        trackedConflictPathsByWorktree: {
+          ...s.trackedConflictPathsByWorktree,
+          [worktreeId]: nextTracked
+        }
+      }
+    }),
+  // Why: session-local conflict tracking (trackedConflictPaths, Resolved locally
+  // state) lives entirely in the renderer and never crosses the IPC boundary.
+  // The main process returns only what `git status` reports. The renderer is
+  // responsible for setting conflictStatusSource ('git' for live u-records,
+  // 'session' for Resolved locally) and for all Resolved locally lifecycle.
+  setGitStatus: (worktreeId, status) =>
+    set((s) => {
+      const prevEntries = s.gitStatusByWorktree[worktreeId] ?? []
+      const prevOperation = s.gitConflictOperationByWorktree[worktreeId] ?? 'unknown'
+      const currentTracked = { ...s.trackedConflictPathsByWorktree[worktreeId] }
+      // Why: conflictStatusSource is NOT set by the main process. The renderer
+      // stamps 'git' here for live u-records, and 'session' below when applying
+      // Resolved locally state. This keeps the main process free of session
+      // awareness while letting the renderer distinguish the two sources.
+      const normalizedEntries = status.entries.map((entry) =>
+        entry.conflictStatus === 'unresolved'
+          ? { ...entry, conflictStatusSource: 'git' as const }
+          : entry
+      )
+      const unresolvedEntries = normalizedEntries.filter(
+        (entry) => entry.conflictStatus === 'unresolved' && entry.conflictKind
+      )
+      const unresolvedByPath = new Map(unresolvedEntries.map((entry) => [entry.path, entry]))
+
+      // Why: when the operation is aborted (git merge --abort, etc.), all u-records
+      // disappear and the HEAD file is cleaned up simultaneously. We detect this as
+      // the operation transitioning to 'unknown' with zero unresolved entries. In
+      // this case we clear the entire trackedConflictPaths set rather than
+      // transitioning each path to Resolved locally — abort is NOT resolution, and
+      // showing "Resolved locally" on every previously-conflicted file after an
+      // abort would be misleading.
       if (
-        prev &&
-        prev.length === entries.length &&
-        prev.every(
-          (e, i) =>
-            e.path === entries[i].path &&
-            e.status === entries[i].status &&
-            e.area === entries[i].area
-        )
+        status.conflictOperation === 'unknown' &&
+        prevOperation !== 'unknown' &&
+        unresolvedByPath.size === 0
       ) {
+        for (const path of Object.keys(currentTracked)) {
+          delete currentTracked[path]
+        }
+      }
+
+      const nextEntries = normalizedEntries.map((entry) => {
+        if (entry.conflictStatus === 'unresolved') {
+          return entry
+        }
+        const trackedConflictKind = currentTracked[entry.path]
+        if (!trackedConflictKind) {
+          return entry
+        }
+        return {
+          ...entry,
+          conflictKind: trackedConflictKind,
+          conflictStatus: 'resolved_locally' as const,
+          conflictStatusSource: 'session' as const
+        }
+      })
+
+      const visiblePaths = new Set(nextEntries.map((entry) => entry.path))
+      for (const path of Object.keys(currentTracked)) {
+        if (!visiblePaths.has(path) && !unresolvedByPath.has(path)) {
+          delete currentTracked[path]
+        }
+      }
+
+      const nextOpenFiles = reconcileOpenFilesForStatus(s.openFiles, worktreeId, nextEntries)
+      const statusUnchanged = areGitStatusEntriesEqual(prevEntries, nextEntries)
+      const trackedUnchanged = areTrackedConflictMapsEqual(
+        s.trackedConflictPathsByWorktree[worktreeId] ?? {},
+        currentTracked
+      )
+      const openFilesUnchanged = nextOpenFiles === s.openFiles
+      const operationUnchanged = prevOperation === status.conflictOperation
+
+      if (statusUnchanged && trackedUnchanged && openFilesUnchanged && operationUnchanged) {
         return s
       }
-      return { gitStatusByWorktree: { ...s.gitStatusByWorktree, [worktreeId]: entries } }
+
+      return {
+        openFiles: nextOpenFiles,
+        gitStatusByWorktree: statusUnchanged
+          ? s.gitStatusByWorktree
+          : { ...s.gitStatusByWorktree, [worktreeId]: nextEntries },
+        gitConflictOperationByWorktree: operationUnchanged
+          ? s.gitConflictOperationByWorktree
+          : { ...s.gitConflictOperationByWorktree, [worktreeId]: status.conflictOperation },
+        trackedConflictPathsByWorktree: trackedUnchanged
+          ? s.trackedConflictPathsByWorktree
+          : { ...s.trackedConflictPathsByWorktree, [worktreeId]: currentTracked }
+      }
     }),
   gitBranchChangesByWorktree: {},
   gitBranchCompareSummaryByWorktree: {},
@@ -751,4 +1090,106 @@ function toBranchCompareSnapshot(compare: GitBranchCompareSummary): BranchCompar
     mergeBase: compare.mergeBase,
     compareVersion: getCompareVersion(compare)
   }
+}
+
+function toOpenConflictMetadata(entry: GitStatusEntry): OpenConflictMetadata | undefined {
+  if (!entry.conflictKind || !entry.conflictStatus || !entry.conflictStatusSource) {
+    return undefined
+  }
+
+  const hasWorkingTreeFile = entry.status !== 'deleted'
+  return hasWorkingTreeFile
+    ? {
+        kind: 'conflict-editable',
+        conflictKind: entry.conflictKind,
+        conflictStatus: entry.conflictStatus,
+        conflictStatusSource: entry.conflictStatusSource
+      }
+    : {
+        kind: 'conflict-placeholder',
+        conflictKind: entry.conflictKind,
+        conflictStatus: entry.conflictStatus,
+        conflictStatusSource: entry.conflictStatusSource,
+        message: 'This file is in a conflict state, but no working-tree file is available to edit.',
+        guidance: 'Resolve the conflict in Git or restore one side before reopening it.'
+      }
+}
+
+// Why: equality checks comparing only path/status/area are insufficient. A row
+// can change from unresolved to resolved_locally (or vice versa) without its
+// base GitFileStatus changing. Without checking conflictKind, conflictStatus,
+// and conflictStatusSource here, the affected row would remain visually stale.
+function areGitStatusEntriesEqual(prev: GitStatusEntry[], next: GitStatusEntry[]): boolean {
+  return (
+    prev.length === next.length &&
+    prev.every(
+      (entry, index) =>
+        entry.path === next[index].path &&
+        entry.status === next[index].status &&
+        entry.area === next[index].area &&
+        entry.oldPath === next[index].oldPath &&
+        entry.conflictKind === next[index].conflictKind &&
+        entry.conflictStatus === next[index].conflictStatus &&
+        entry.conflictStatusSource === next[index].conflictStatusSource
+    )
+  )
+}
+
+function areTrackedConflictMapsEqual(
+  prev: Record<string, GitConflictKind>,
+  next: Record<string, GitConflictKind>
+): boolean {
+  const prevKeys = Object.keys(prev)
+  const nextKeys = Object.keys(next)
+  return prevKeys.length === nextKeys.length && prevKeys.every((key) => prev[key] === next[key])
+}
+
+function reconcileOpenFilesForStatus(
+  openFiles: OpenFile[],
+  worktreeId: string,
+  nextEntries: GitStatusEntry[]
+): OpenFile[] {
+  const entriesByPath = new Map(nextEntries.map((entry) => [entry.path, entry]))
+  let changed = false
+
+  const nextOpenFiles = openFiles.flatMap((file) => {
+    if (file.worktreeId !== worktreeId) {
+      return [file]
+    }
+
+    if (file.mode === 'conflict-review') {
+      return [file]
+    }
+
+    const entry = entriesByPath.get(file.relativePath)
+    if (!file.conflict) {
+      return [file]
+    }
+
+    if (!entry || !entry.conflictKind || !entry.conflictStatus || !entry.conflictStatusSource) {
+      changed = true
+      return file.conflict.kind === 'conflict-placeholder' ? [] : [{ ...file, conflict: undefined }]
+    }
+
+    const nextConflict = toOpenConflictMetadata(entry)
+    if (!nextConflict) {
+      return [file]
+    }
+
+    if (
+      file.conflict.kind === nextConflict.kind &&
+      file.conflict.conflictKind === nextConflict.conflictKind &&
+      file.conflict.conflictStatus === nextConflict.conflictStatus &&
+      file.conflict.conflictStatusSource === nextConflict.conflictStatusSource &&
+      file.conflict.message === nextConflict.message &&
+      file.conflict.guidance === nextConflict.guidance
+    ) {
+      return [file]
+    }
+
+    changed = true
+    return [{ ...file, conflict: nextConflict }]
+  })
+
+  return changed ? nextOpenFiles : openFiles
 }

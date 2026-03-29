@@ -215,15 +215,46 @@ export type DirEntry = {
 // ─── Git Status ─────────────────────────────────────────────
 export type GitFileStatus = 'modified' | 'added' | 'deleted' | 'renamed' | 'untracked' | 'copied'
 export type GitStagingArea = 'staged' | 'unstaged' | 'untracked'
+export type GitConflictKind =
+  | 'both_modified'
+  | 'both_added'
+  | 'both_deleted'
+  | 'added_by_us'
+  | 'added_by_them'
+  | 'deleted_by_us'
+  | 'deleted_by_them'
 
+export type GitConflictResolutionStatus = 'unresolved' | 'resolved_locally'
+export type GitConflictStatusSource = 'git' | 'session'
+export type GitConflictOperation = 'merge' | 'rebase' | 'cherry-pick' | 'unknown'
+
+// Compatibility note for non-upgraded consumers:
+// Any consumer that has not been upgraded to read `conflictStatus` may still
+// render `modified` styling via the `status` field (which is a compatibility
+// fallback, not a semantic claim). However, such consumers must NOT offer
+// file-existence-dependent affordances (diff loading, drag payloads, editable-
+// file opening) for entries where `conflictStatus === 'unresolved'` — the file
+// may not exist on disk (e.g. both_deleted). This affects file explorer
+// decorations, tab badges, and any surface outside Source Control.
+//
+// `conflictStatusSource` is never set by the main process. The renderer stamps
+// 'git' for live u-records and 'session' for Resolved locally state.
 export type GitUncommittedEntry = {
   path: string
   status: GitFileStatus
   area: GitStagingArea
   oldPath?: string
+  conflictKind?: GitConflictKind
+  conflictStatus?: GitConflictResolutionStatus
+  conflictStatusSource?: GitConflictStatusSource
 }
 
 export type GitStatusEntry = GitUncommittedEntry
+
+export type GitStatusResult = {
+  entries: GitStatusEntry[]
+  conflictOperation: GitConflictOperation
+}
 
 export type GitBranchChangeStatus = 'modified' | 'added' | 'deleted' | 'renamed' | 'copied'
 

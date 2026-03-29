@@ -1,5 +1,6 @@
 /* eslint-disable max-lines */
 import { execFile } from 'child_process'
+import { existsSync } from 'fs'
 import { readFile, rm } from 'fs/promises'
 import { promisify } from 'util'
 import * as path from 'path'
@@ -8,9 +9,12 @@ import type {
   GitBranchChangeStatus,
   GitBranchCompareResult,
   GitBranchCompareSummary,
+  GitConflictKind,
+  GitConflictOperation,
   GitDiffResult,
   GitFileStatus,
-  GitStatusEntry
+  GitStatusEntry,
+  GitStatusResult
 } from '../../shared/types'
 
 const execFileAsync = promisify(execFile)
@@ -19,8 +23,9 @@ const MAX_GIT_SHOW_BYTES = 10 * 1024 * 1024
 /**
  * Parse `git status --porcelain=v2` output into structured entries.
  */
-export async function getStatus(worktreePath: string): Promise<GitStatusEntry[]> {
+export async function getStatus(worktreePath: string): Promise<GitStatusResult> {
   const entries: GitStatusEntry[] = []
+  const conflictOperation = await detectConflictOperation(worktreePath)
 
   try {
     const { stdout } = await execFileAsync(
@@ -71,13 +76,18 @@ export async function getStatus(worktreePath: string): Promise<GitStatusEntry[]>
         // Untracked file
         const path = line.slice(2)
         entries.push({ path, status: 'untracked', area: 'untracked' })
+      } else if (line.startsWith('u ')) {
+        const unmergedEntry = await parseUnmergedEntry(worktreePath, line)
+        if (unmergedEntry) {
+          entries.push(unmergedEntry)
+        }
       }
     }
   } catch {
     // Not a git repo or git not available
   }
 
-  return entries
+  return { entries, conflictOperation }
 }
 
 function parseStatusChar(char: string): GitFileStatus {
@@ -112,6 +122,154 @@ function parseBranchStatusChar(char: string): GitBranchChangeStatus {
     default:
       return 'modified'
   }
+}
+
+async function parseUnmergedEntry(
+  worktreePath: string,
+  line: string
+): Promise<GitStatusEntry | null> {
+  const tabIndex = line.indexOf('\t')
+  if (tabIndex === -1) {
+    return null
+  }
+
+  const metadata = line.slice(0, tabIndex)
+  const filePath = line.slice(tabIndex + 1)
+  const parts = metadata.split(' ')
+  const xy = parts[1]
+  const modeStage1 = parts[3]
+  const modeStage2 = parts[4]
+  const modeStage3 = parts[5]
+
+  // Why: submodule conflicts (mode 160000) are out of scope for v1.
+  // Presenting them with normal file-conflict UX would be misleading because
+  // submodule resolution requires different Git commands and user mental model.
+  if ([modeStage1, modeStage2, modeStage3].some((mode) => mode === '160000')) {
+    return null
+  }
+
+  const conflictKind = parseConflictKind(xy)
+  if (!conflictKind) {
+    return null
+  }
+
+  // Why: porcelain v2 `u` records do not provide rename-origin metadata (unlike
+  // `2` records), so oldPath is intentionally omitted. v1 should not promise
+  // rename ancestry in conflict rows without a separate Git query.
+  return {
+    path: filePath,
+    area: 'unstaged',
+    status: await getConflictCompatibilityStatus(worktreePath, filePath, conflictKind),
+    conflictKind,
+    conflictStatus: 'unresolved'
+  }
+}
+
+function parseConflictKind(xy: string): GitConflictKind | null {
+  switch (xy) {
+    case 'UU':
+      return 'both_modified'
+    case 'AA':
+      return 'both_added'
+    case 'DD':
+      return 'both_deleted'
+    case 'AU':
+      return 'added_by_us'
+    case 'UA':
+      return 'added_by_them'
+    case 'DU':
+      return 'deleted_by_us'
+    case 'UD':
+      return 'deleted_by_them'
+    default:
+      return null
+  }
+}
+
+// Why: the `status` field on conflict entries is a *rendering compatibility*
+// choice for existing icon/color plumbing, not a semantic claim about the file.
+// The conflict badge and subtype carry the real meaning. We use 'modified' when
+// a working-tree file exists and 'deleted' when it does not, so that downstream
+// consumers (file explorer decorations, tab badges) get a reasonable fallback
+// without needing conflict-aware upgrades in v1.
+//
+// For `deleted_by_us` / `deleted_by_them` and the `added_by_*` variants, Git's
+// behavior depends on the merge strategy, so we check the filesystem rather
+// than hardcoding an assumption.
+async function getConflictCompatibilityStatus(
+  worktreePath: string,
+  filePath: string,
+  conflictKind: GitConflictKind
+): Promise<GitFileStatus> {
+  if (conflictKind === 'both_modified' || conflictKind === 'both_added') {
+    return 'modified'
+  }
+
+  if (conflictKind === 'both_deleted') {
+    return 'deleted'
+  }
+
+  try {
+    return existsSync(path.join(worktreePath, filePath)) ? 'modified' : 'deleted'
+  } catch {
+    // Why: if the filesystem check throws (permissions error, unmounted path,
+    // etc.), 'modified' is the safer fallback. It avoids suppressing the row
+    // from the sidebar and avoids a misleading 'deleted' when we simply could
+    // not check. The conflict badge still carries the real semantics.
+    return 'modified'
+  }
+}
+
+// Why: there is an inherent race between the `git status` call and these
+// fs.existsSync checks — the HEAD file may not yet exist or may already be
+// cleaned up by the time we check. In that case we fall back to 'unknown' for
+// one poll cycle, which is acceptable. The renderer uses this to label the
+// merge summary ("Merge conflicts" vs "Rebase conflicts" vs generic "Conflicts").
+async function detectConflictOperation(worktreePath: string): Promise<GitConflictOperation> {
+  const gitDir = await resolveGitDir(worktreePath)
+  const mergeHead = path.join(gitDir, 'MERGE_HEAD')
+  const rebaseHead = path.join(gitDir, 'REBASE_HEAD')
+  const cherryPickHead = path.join(gitDir, 'CHERRY_PICK_HEAD')
+
+  let hasMergeHead = false
+  let hasRebaseHead = false
+  let hasCherryPickHead = false
+
+  try {
+    hasMergeHead = existsSync(mergeHead)
+    hasRebaseHead = existsSync(rebaseHead)
+    hasCherryPickHead = existsSync(cherryPickHead)
+  } catch {
+    return 'unknown'
+  }
+
+  if (Number(hasMergeHead) + Number(hasRebaseHead) + Number(hasCherryPickHead) !== 1) {
+    return 'unknown'
+  }
+
+  if (hasMergeHead) {
+    return 'merge'
+  }
+  if (hasRebaseHead) {
+    return 'rebase'
+  }
+  return 'cherry-pick'
+}
+
+async function resolveGitDir(worktreePath: string): Promise<string> {
+  const dotGitPath = path.join(worktreePath, '.git')
+
+  try {
+    const dotGitContents = await readFile(dotGitPath, 'utf-8')
+    const match = dotGitContents.match(/^gitdir:\s*(.+)\s*$/m)
+    if (match) {
+      return path.resolve(worktreePath, match[1])
+    }
+  } catch {
+    // `.git` is likely a directory in a non-worktree checkout.
+  }
+
+  return dotGitPath
 }
 
 /**

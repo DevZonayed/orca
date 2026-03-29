@@ -13,7 +13,10 @@ import {
   FilePlus,
   FileQuestion,
   ArrowRightLeft,
-  FolderOpen
+  FolderOpen,
+  GitMerge,
+  TriangleAlert,
+  CircleCheck
 } from 'lucide-react'
 import { useAppStore } from '@/store'
 import { detectLanguage } from '@/lib/language-detect'
@@ -39,10 +42,11 @@ import { PullRequestIcon } from './checks-helpers'
 import type {
   GitBranchChangeEntry,
   GitBranchCompareSummary,
+  GitConflictKind,
+  GitConflictOperation,
   GitStatusEntry,
   PRInfo
 } from '../../../../shared/types'
-import { getSourceControlActions } from './source-control-actions'
 import { STATUS_COLORS, STATUS_LABELS } from './status-display'
 
 type SourceControlScope = 'all' | 'uncommitted'
@@ -68,12 +72,37 @@ const SECTION_LABELS: Record<(typeof SECTION_ORDER)[number], string> = {
 
 const BRANCH_REFRESH_INTERVAL_MS = 5000
 
+const CONFLICT_KIND_LABELS: Record<GitConflictKind, string> = {
+  both_modified: 'Both modified',
+  both_added: 'Both added',
+  deleted_by_us: 'Deleted by us',
+  deleted_by_them: 'Deleted by them',
+  added_by_us: 'Added by us',
+  added_by_them: 'Added by them',
+  both_deleted: 'Both deleted'
+}
+
+// Why: hint text is derived at render time in the renderer, not returned by the
+// main process on GitUncommittedEntry. This keeps UI copy out of the IPC layer
+// and the main-process parser. See also ConflictComponents.tsx for the editor-
+// side copy of this map.
+const CONFLICT_HINT_MAP: Record<GitConflictKind, string> = {
+  both_modified: 'Open and edit the final contents',
+  both_added: 'Choose which version to keep, or combine them',
+  deleted_by_us: 'Decide whether to restore the file',
+  deleted_by_them: 'Decide whether to keep the file or accept deletion',
+  added_by_us: 'Review whether to keep the added file',
+  added_by_them: 'Review the added file before keeping it',
+  both_deleted: 'Resolve in Git or restore one side before editing'
+}
+
 export default function SourceControl(): React.JSX.Element {
   const activeWorktreeId = useAppStore((s) => s.activeWorktreeId)
   const rightSidebarTab = useAppStore((s) => s.rightSidebarTab)
   const repos = useAppStore((s) => s.repos)
   const worktreesByRepo = useAppStore((s) => s.worktreesByRepo)
   const gitStatusByWorktree = useAppStore((s) => s.gitStatusByWorktree)
+  const gitConflictOperationByWorktree = useAppStore((s) => s.gitConflictOperationByWorktree)
   const gitBranchChangesByWorktree = useAppStore((s) => s.gitBranchChangesByWorktree)
   const gitBranchCompareSummaryByWorktree = useAppStore((s) => s.gitBranchCompareSummaryByWorktree)
   const prCache = useAppStore((s) => s.prCache)
@@ -81,7 +110,10 @@ export default function SourceControl(): React.JSX.Element {
   const beginGitBranchCompareRequest = useAppStore((s) => s.beginGitBranchCompareRequest)
   const setGitBranchCompareResult = useAppStore((s) => s.setGitBranchCompareResult)
   const revealInExplorer = useAppStore((s) => s.revealInExplorer)
+  const trackConflictPath = useAppStore((s) => s.trackConflictPath)
   const openDiff = useAppStore((s) => s.openDiff)
+  const openConflictFile = useAppStore((s) => s.openConflictFile)
+  const openConflictReview = useAppStore((s) => s.openConflictReview)
   const openBranchDiff = useAppStore((s) => s.openBranchDiff)
   const openAllDiffs = useAppStore((s) => s.openAllDiffs)
   const openBranchAllDiffs = useAppStore((s) => s.openBranchAllDiffs)
@@ -120,6 +152,9 @@ export default function SourceControl(): React.JSX.Element {
   const branchSummary = activeWorktreeId
     ? (gitBranchCompareSummaryByWorktree[activeWorktreeId] ?? null)
     : null
+  const conflictOperation = activeWorktreeId
+    ? (gitConflictOperationByWorktree[activeWorktreeId] ?? 'unknown')
+    : 'unknown'
   const isBranchVisible = rightSidebarTab === 'source-control'
 
   useEffect(() => {
@@ -151,7 +186,7 @@ export default function SourceControl(): React.JSX.Element {
   const branchCompareAvailable = branchSummary?.status === 'ready'
   const hasBranchEntries = branchCompareAvailable && branchEntries.length > 0
   const branchName = activeWorktree?.branch.replace(/^refs\/heads\//, '') ?? 'HEAD'
-  const prCacheKey = activeRepo ? `${activeRepo.path}::${branchName}` : null
+  const prCacheKey = activeRepo && branchName ? `${activeRepo.path}::${branchName}` : null
   const prInfo: PRInfo | null = prCacheKey ? (prCache[prCacheKey]?.data ?? null) : null
 
   const grouped = useMemo(() => {
@@ -163,8 +198,24 @@ export default function SourceControl(): React.JSX.Element {
     for (const entry of entries) {
       groups[entry.area].push(entry)
     }
+    for (const area of SECTION_ORDER) {
+      groups[area].sort(compareGitStatusEntries)
+    }
     return groups
   }, [entries])
+
+  const unresolvedConflicts = useMemo(
+    () => entries.filter((entry) => entry.conflictStatus === 'unresolved' && entry.conflictKind),
+    [entries]
+  )
+  const unresolvedConflictReviewEntries = useMemo(
+    () =>
+      unresolvedConflicts.map((entry) => ({
+        path: entry.path,
+        conflictKind: entry.conflictKind!
+      })),
+    [unresolvedConflicts]
+  )
 
   const refreshBranchCompare = useCallback(async () => {
     if (!activeWorktreeId || !worktreePath || !effectiveBaseRef) {
@@ -250,6 +301,19 @@ export default function SourceControl(): React.JSX.Element {
       if (!activeWorktreeId || !worktreePath) {
         return
       }
+      // Why: unresolved conflicts must NOT go through openDiff(). The current
+      // diff pipeline reads normal index and worktree content, not merge stages,
+      // so routing conflicts into the two-way diff viewer would show misleading
+      // content. Instead, we use the conflict-aware open path (openConflictFile)
+      // which opens an editable file view or a placeholder, depending on whether
+      // a working-tree file exists.
+      if (entry.conflictKind && entry.conflictStatus) {
+        if (entry.conflictStatus === 'unresolved') {
+          trackConflictPath(activeWorktreeId, entry.path, entry.conflictKind)
+        }
+        openConflictFile(activeWorktreeId, worktreePath, entry, detectLanguage(entry.path))
+        return
+      }
       openDiff(
         activeWorktreeId,
         joinPath(worktreePath, entry.path),
@@ -258,7 +322,7 @@ export default function SourceControl(): React.JSX.Element {
         entry.area === 'staged'
       )
     },
-    [activeWorktreeId, openDiff, worktreePath]
+    [activeWorktreeId, openConflictFile, openDiff, trackConflictPath, worktreePath]
   )
 
   const openCommittedDiff = useCallback(
@@ -390,6 +454,26 @@ export default function SourceControl(): React.JSX.Element {
         )}
 
         <div className="flex-1 overflow-auto scrollbar-sleek py-1">
+          {unresolvedConflictReviewEntries.length > 0 && (
+            <div className="px-3 pb-2">
+              <ConflictSummaryCard
+                conflictOperation={conflictOperation}
+                unresolvedCount={unresolvedConflictReviewEntries.length}
+                onReview={() => {
+                  if (!activeWorktreeId || !worktreePath) {
+                    return
+                  }
+                  openConflictReview(
+                    activeWorktreeId,
+                    worktreePath,
+                    unresolvedConflictReviewEntries,
+                    'live-summary'
+                  )
+                }}
+              />
+            </div>
+          )}
+
           {scope === 'all' && showGenericEmptyState ? (
             <EmptyState
               heading="No changes on this branch"
@@ -417,19 +501,39 @@ export default function SourceControl(): React.JSX.Element {
                     <SectionHeader
                       label={SECTION_LABELS[area]}
                       count={items.length}
+                      conflictCount={
+                        items.filter((entry) => entry.conflictStatus === 'unresolved').length
+                      }
                       isCollapsed={isCollapsed}
                       onToggle={() => toggleSection(area)}
                       actions={
-                        <ActionButton
-                          icon={Layers}
-                          title="Open all diffs in this section"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            if (activeWorktreeId && worktreePath) {
-                              openAllDiffs(activeWorktreeId, worktreePath, undefined, area)
-                            }
-                          }}
-                        />
+                        items.some((entry) => entry.conflictStatus === 'unresolved') ? (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 px-1.5 text-[10px] text-muted-foreground hover:text-foreground"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              if (activeWorktreeId && worktreePath) {
+                                openAllDiffs(activeWorktreeId, worktreePath, undefined, area)
+                              }
+                            }}
+                          >
+                            Open non-conflict diffs
+                          </Button>
+                        ) : (
+                          <ActionButton
+                            icon={Layers}
+                            title="Open all diffs in this section"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              if (activeWorktreeId && worktreePath) {
+                                openAllDiffs(activeWorktreeId, worktreePath, undefined, area)
+                              }
+                            }}
+                          />
+                        )
                       }
                     />
                     {!isCollapsed &&
@@ -647,12 +751,14 @@ function CompareUnavailable({
 function SectionHeader({
   label,
   count,
+  conflictCount = 0,
   isCollapsed,
   onToggle,
   actions
 }: {
   label: string
   count: number
+  conflictCount?: number
   isCollapsed: boolean
   onToggle: () => void
   actions?: React.ReactNode
@@ -669,8 +775,59 @@ function SectionHeader({
         />
         <span>{label}</span>
         <span className="text-[11px] font-medium tabular-nums">{count}</span>
+        {conflictCount > 0 && (
+          <span className="text-[11px] font-medium text-destructive/80">
+            · {conflictCount} conflict{conflictCount === 1 ? '' : 's'}
+          </span>
+        )}
       </button>
       <div className="shrink-0 flex items-center">{actions}</div>
+    </div>
+  )
+}
+
+function ConflictSummaryCard({
+  conflictOperation,
+  unresolvedCount,
+  onReview
+}: {
+  conflictOperation: GitConflictOperation
+  unresolvedCount: number
+  onReview: () => void
+}): React.JSX.Element {
+  const operationLabel =
+    conflictOperation === 'merge'
+      ? 'Merge conflicts'
+      : conflictOperation === 'rebase'
+        ? 'Rebase conflicts'
+        : conflictOperation === 'cherry-pick'
+          ? 'Cherry-pick conflicts'
+          : 'Conflicts'
+
+  return (
+    <div className="rounded-md border border-destructive/25 bg-destructive/5 px-3 py-2">
+      <div className="flex items-start gap-2">
+        <TriangleAlert className="mt-0.5 size-4 shrink-0 text-destructive" />
+        <div className="min-w-0 flex-1">
+          <div
+            className="text-xs font-medium text-foreground"
+            aria-live="polite"
+          >{`${operationLabel}: ${unresolvedCount} unresolved`}</div>
+          <div className="mt-1 text-[11px] text-muted-foreground">
+            Resolved files move back to normal changes after they leave the live conflict state.
+          </div>
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-7 text-xs"
+          onClick={onReview}
+        >
+          <GitMerge className="size-3.5" />
+          Review conflicts
+        </Button>
+      </div>
     </div>
   )
 }
@@ -696,7 +853,26 @@ function UncommittedEntryRow({
   const fileName = basename(entry.path)
   const parentDir = dirname(entry.path)
   const dirPath = parentDir === '.' ? '' : parentDir
-  const actions = getSourceControlActions(entry.area)
+  const isUnresolvedConflict = entry.conflictStatus === 'unresolved'
+  const isResolvedLocally = entry.conflictStatus === 'resolved_locally'
+  const conflictLabel = entry.conflictKind ? CONFLICT_KIND_LABELS[entry.conflictKind] : null
+  const conflictHint = entry.conflictKind ? CONFLICT_HINT_MAP[entry.conflictKind] : null
+  // Why: Stage is suppressed for unresolved conflicts because `git add` would
+  // immediately erase the `u` record — the only live conflict signal in the
+  // sidebar — before the user has actually reviewed the file. The user should
+  // resolve in the editor first, then stage from the post-resolution state.
+  //
+  // Discard is hidden for both unresolved AND resolved_locally rows in v1.
+  // For unresolved: discarding is too easy to misfire on a high-risk file.
+  // For resolved_locally: discarding can silently re-create the conflict or
+  // lose the resolution, and v1 does not have UX to explain this clearly.
+  const canDiscard =
+    !isUnresolvedConflict &&
+    !isResolvedLocally &&
+    (entry.area === 'unstaged' || entry.area === 'untracked')
+  const canStage =
+    !isUnresolvedConflict && (entry.area === 'unstaged' || entry.area === 'untracked')
+  const canUnstage = entry.area === 'staged'
 
   return (
     <SourceControlEntryContextMenu
@@ -707,6 +883,10 @@ function UncommittedEntryRow({
         className="group flex cursor-pointer items-center gap-1 pl-5 pr-3 py-1 transition-colors hover:bg-accent/40"
         draggable
         onDragStart={(e) => {
+          if (isUnresolvedConflict && entry.status === 'deleted') {
+            e.preventDefault()
+            return
+          }
           const absolutePath = joinPath(worktreePath, entry.path)
           e.dataTransfer.setData('text/x-orca-file-path', absolutePath)
           e.dataTransfer.effectAllowed = 'copy'
@@ -714,18 +894,31 @@ function UncommittedEntryRow({
         onClick={onOpen}
       >
         <StatusIcon className="size-3.5 shrink-0" style={{ color: STATUS_COLORS[entry.status] }} />
-        <span className="min-w-0 flex-1 truncate text-xs">
-          <span className="text-foreground">{fileName}</span>
-          {dirPath && <span className="ml-1.5 text-[11px] text-muted-foreground">{dirPath}</span>}
-        </span>
-        <span
-          className="w-4 shrink-0 text-center text-[10px] font-bold"
-          style={{ color: STATUS_COLORS[entry.status] }}
-        >
-          {STATUS_LABELS[entry.status]}
-        </span>
+        <div className="min-w-0 flex-1 text-xs">
+          <div className="flex items-center gap-1.5">
+            <span className="min-w-0 truncate text-foreground">{fileName}</span>
+            {dirPath && (
+              <span className="truncate text-[11px] text-muted-foreground">{dirPath}</span>
+            )}
+          </div>
+          {conflictLabel && conflictHint && (
+            <div className="truncate text-[11px] text-muted-foreground">
+              {conflictLabel} · {conflictHint}
+            </div>
+          )}
+        </div>
+        {entry.conflictStatus ? (
+          <ConflictBadge entry={entry} />
+        ) : (
+          <span
+            className="w-4 shrink-0 text-center text-[10px] font-bold"
+            style={{ color: STATUS_COLORS[entry.status] }}
+          >
+            {STATUS_LABELS[entry.status]}
+          </span>
+        )}
         <div className="shrink-0 opacity-0 transition-opacity group-hover:opacity-100 flex items-center gap-0.5">
-          {actions.includes('discard') && (
+          {canDiscard && (
             <ActionButton
               icon={Undo2}
               title={entry.area === 'untracked' ? 'Revert untracked file' : 'Discard changes'}
@@ -741,7 +934,7 @@ function UncommittedEntryRow({
               }}
             />
           )}
-          {actions.includes('stage') && (
+          {canStage && (
             <ActionButton
               icon={Plus}
               title="Stage"
@@ -751,7 +944,7 @@ function UncommittedEntryRow({
               }}
             />
           )}
-          {actions.includes('unstage') && (
+          {canUnstage && (
             <ActionButton
               icon={Minus}
               title="Unstage"
@@ -764,6 +957,42 @@ function UncommittedEntryRow({
         </div>
       </div>
     </SourceControlEntryContextMenu>
+  )
+}
+
+function ConflictBadge({ entry }: { entry: GitStatusEntry }): React.JSX.Element {
+  const isUnresolvedConflict = entry.conflictStatus === 'unresolved'
+  const label = isUnresolvedConflict ? 'Unresolved' : 'Resolved locally'
+  const Icon = isUnresolvedConflict ? TriangleAlert : CircleCheck
+  const badge = (
+    <span
+      role="status"
+      aria-label={`${label} conflict${entry.conflictKind ? `, ${CONFLICT_KIND_LABELS[entry.conflictKind]}` : ''}`}
+      className={cn(
+        'inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold',
+        isUnresolvedConflict
+          ? 'bg-destructive/12 text-destructive'
+          : 'bg-emerald-500/12 text-emerald-700 dark:text-emerald-400'
+      )}
+    >
+      <Icon className="size-3" />
+      <span>{label}</span>
+    </span>
+  )
+
+  if (isUnresolvedConflict) {
+    return badge
+  }
+
+  return (
+    <TooltipProvider delayDuration={300}>
+      <Tooltip>
+        <TooltipTrigger asChild>{badge}</TooltipTrigger>
+        <TooltipContent side="left" sideOffset={6}>
+          Local session state derived from a conflict you opened here.
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   )
 }
 
@@ -873,4 +1102,21 @@ function ActionButton({
       <Icon className="size-3.5" />
     </Button>
   )
+}
+
+function compareGitStatusEntries(a: GitStatusEntry, b: GitStatusEntry): number {
+  return (
+    getConflictSortRank(a) - getConflictSortRank(b) ||
+    a.path.localeCompare(b.path, undefined, { numeric: true })
+  )
+}
+
+function getConflictSortRank(entry: GitStatusEntry): number {
+  if (entry.conflictStatus === 'unresolved') {
+    return 0
+  }
+  if (entry.conflictStatus === 'resolved_locally') {
+    return 1
+  }
+  return 2
 }
