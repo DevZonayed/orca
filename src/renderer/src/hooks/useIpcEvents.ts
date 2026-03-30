@@ -5,6 +5,27 @@ import { applyUIZoom } from '@/lib/ui-zoom'
 import type { UpdateStatus } from '../../../shared/types'
 
 const ZOOM_STEP = 0.5
+type ReleaseToastStatus = Extract<UpdateStatus, { state: 'available' | 'downloaded' }>
+
+function getReleaseUrl(status: ReleaseToastStatus): string {
+  return status.releaseUrl ?? `https://github.com/stablyai/orca/releases/tag/v${status.version}`
+}
+
+function createViewChangesButton(releaseUrl: string): ReturnType<typeof createElement> {
+  return createElement(
+    'button',
+    {
+      type: 'button',
+      'data-button': true,
+      'data-cancel': true,
+      // Sonner auto-dismisses structured cancel actions after onClick. Render a
+      // plain button instead so users can open the release notes and keep the
+      // update toast visible until they explicitly install or close it.
+      onClick: () => window.api.shell.openUrl(releaseUrl)
+    },
+    'View Changes'
+  )
+}
 
 export function useIpcEvents(): void {
   useEffect(() => {
@@ -59,13 +80,12 @@ export function useIpcEvents(): void {
             toast.dismiss(checkingToastId)
           }
           checkingToastId = undefined
+          const releaseUrl = getReleaseUrl(status)
           availableToastId = toast.info(`Version ${status.version} is available.`, {
             description: createElement(
               'a',
               {
-                href:
-                  status.releaseUrl ??
-                  `https://github.com/stablyai/orca/releases/tag/v${status.version}`,
+                href: releaseUrl,
                 target: '_blank',
                 rel: 'noopener noreferrer',
                 style: { textDecoration: 'underline' }
@@ -76,7 +96,8 @@ export function useIpcEvents(): void {
             action: {
               label: status.manualDownloadUrl ? 'Download' : 'Install',
               onClick: () => window.api.updater.download()
-            }
+            },
+            cancel: createViewChangesButton(releaseUrl)
           })
         } else if (status.state === 'downloading') {
           if (availableToastId) {
@@ -93,13 +114,12 @@ export function useIpcEvents(): void {
             availableToastId = undefined
           }
           toast.dismiss(downloadToastId)
+          const releaseUrl = getReleaseUrl(status)
           toast.success(`Version ${status.version} is ready to install.`, {
             description: createElement(
               'a',
               {
-                href:
-                  status.releaseUrl ??
-                  `https://github.com/stablyai/orca/releases/tag/v${status.version}`,
+                href: releaseUrl,
                 target: '_blank',
                 rel: 'noopener noreferrer',
                 style: { textDecoration: 'underline' }
@@ -110,7 +130,8 @@ export function useIpcEvents(): void {
             action: {
               label: 'Restart Now',
               onClick: () => window.api.updater.quitAndInstall()
-            }
+            },
+            cancel: createViewChangesButton(releaseUrl)
           })
         } else if (status.state === 'error') {
           toast.dismiss(downloadToastId)
