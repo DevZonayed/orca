@@ -263,11 +263,14 @@ describe('updater', () => {
 
     setupAutoUpdater(mainWindow as never)
     checkForUpdatesFromMenu()
+    // User-initiated checks with no fallback release show 'not-available'
+    // (instead of 'idle') so the user gets explicit feedback that they're
+    // already on the latest version.
     await vi.waitFor(() => {
       const statuses = sendMock.mock.calls
         .filter(([channel]) => channel === 'updater:status')
         .map(([, status]) => status)
-      expect(statuses).toContainEqual({ state: 'idle' })
+      expect(statuses).toContainEqual({ state: 'not-available', userInitiated: true })
     })
 
     const statuses = sendMock.mock.calls
@@ -275,7 +278,7 @@ describe('updater', () => {
       .map(([, status]) => status)
 
     expect(statuses).toContainEqual({ state: 'checking', userInitiated: true })
-    expect(statuses).toContainEqual({ state: 'idle' })
+    expect(statuses).toContainEqual({ state: 'not-available', userInitiated: true })
     expect(statuses).not.toContainEqual(
       expect.objectContaining({
         state: 'error',
@@ -284,7 +287,8 @@ describe('updater', () => {
     )
     expect(
       statuses.filter(
-        (status) => typeof status === 'object' && status !== null && status.state === 'idle'
+        (status) =>
+          typeof status === 'object' && status !== null && status.state === 'not-available'
       )
     ).toHaveLength(1)
   })
