@@ -1,10 +1,10 @@
-import { useEffect, useState, useMemo, useRef } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { ScrollArea } from '../ui/scroll-area'
 import { Input } from '../ui/input'
 import { Label } from '../ui/label'
 import { Check, ChevronsUpDown, CircleX } from 'lucide-react'
 import { BUILTIN_TERMINAL_THEME_NAMES, normalizeColor } from '@/lib/terminal-theme'
-import { MAX_THEME_RESULTS, MAX_FONT_RESULTS } from './SettingsConstants'
+import { MAX_THEME_RESULTS } from './SettingsConstants'
 
 type ThemePickerProps = {
   label: string
@@ -216,7 +216,11 @@ export function FontAutocomplete({
   const [query, setQuery] = useState(value)
   const [prevValue, setPrevValue] = useState(value)
   const [open, setOpen] = useState(false)
+  const [highlightedIndex, setHighlightedIndex] = useState(-1)
+  const inputRef = useRef<HTMLInputElement | null>(null)
   const rootRef = useRef<HTMLDivElement | null>(null)
+  const optionRefs = useRef(new Map<string, HTMLButtonElement>())
+  const listboxId = useId()
 
   if (value !== prevValue) {
     setPrevValue(value)
@@ -246,9 +250,31 @@ export function FontAutocomplete({
         !font.toLowerCase().startsWith(normalizedQuery) &&
         font.toLowerCase().includes(normalizedQuery)
     )
-    const ordered = normalizedQuery ? [...startsWith, ...includes] : suggestions
-    return ordered.slice(0, MAX_FONT_RESULTS)
+    return normalizedQuery ? [...startsWith, ...includes] : suggestions
   }, [suggestions, normalizedQuery])
+
+  useEffect(() => {
+    if (!open || filteredSuggestions.length === 0) {
+      setHighlightedIndex(-1)
+      return
+    }
+
+    const selectedIndex = filteredSuggestions.findIndex((font) => font === value)
+    setHighlightedIndex(Math.max(selectedIndex, 0))
+  }, [filteredSuggestions, open, value])
+
+  useEffect(() => {
+    if (!open || highlightedIndex < 0) {
+      return
+    }
+
+    const highlightedFont = filteredSuggestions[highlightedIndex]
+    if (!highlightedFont) {
+      return
+    }
+
+    optionRefs.current.get(highlightedFont)?.scrollIntoView({ block: 'nearest' })
+  }, [filteredSuggestions, highlightedIndex, open])
 
   const commitValue = (nextValue: string): void => {
     setQuery(nextValue)
@@ -256,10 +282,15 @@ export function FontAutocomplete({
     setOpen(false)
   }
 
+  const focusInput = (): void => {
+    inputRef.current?.focus()
+  }
+
   return (
     <div ref={rootRef} className="relative max-w-sm">
       <div className="relative">
         <Input
+          ref={inputRef}
           value={query}
           onChange={(e) => {
             const next = e.target.value
@@ -268,17 +299,65 @@ export function FontAutocomplete({
             setOpen(true)
           }}
           onFocus={() => setOpen(true)}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') {
+              if (open) {
+                e.preventDefault()
+                setOpen(false)
+              }
+              return
+            }
+
+            if (e.key === 'ArrowDown') {
+              e.preventDefault()
+              setOpen(true)
+              if (filteredSuggestions.length > 0) {
+                setHighlightedIndex((current) =>
+                  current < 0 ? 0 : Math.min(current + 1, filteredSuggestions.length - 1)
+                )
+              }
+              return
+            }
+
+            if (e.key === 'ArrowUp') {
+              e.preventDefault()
+              setOpen(true)
+              if (filteredSuggestions.length > 0) {
+                setHighlightedIndex((current) =>
+                  current < 0 ? filteredSuggestions.length - 1 : Math.max(current - 1, 0)
+                )
+              }
+              return
+            }
+
+            if (e.key === 'Enter' && open && highlightedIndex >= 0) {
+              const highlightedFont = filteredSuggestions[highlightedIndex]
+              if (highlightedFont) {
+                e.preventDefault()
+                commitValue(highlightedFont)
+              }
+            }
+          }}
           placeholder="SF Mono"
           className="pr-18"
+          role="combobox"
+          aria-autocomplete="list"
+          aria-expanded={open}
+          aria-controls={listboxId}
+          aria-activedescendant={
+            open && highlightedIndex >= 0 ? `${listboxId}-option-${highlightedIndex}` : undefined
+          }
         />
         <div className="absolute inset-y-0 right-2 flex items-center gap-1">
           {query ? (
             <button
               type="button"
+              onMouseDown={(e) => e.preventDefault()}
               onClick={() => {
                 setQuery('')
                 onChange('')
                 setOpen(true)
+                focusInput()
               }}
               className="rounded-sm p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
               aria-label="Clear font selection"
@@ -289,7 +368,14 @@ export function FontAutocomplete({
           ) : null}
           <button
             type="button"
-            onClick={() => setOpen((current) => !current)}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => {
+              const nextOpen = !open
+              setOpen(nextOpen)
+              if (nextOpen) {
+                focusInput()
+              }
+            }}
             className="rounded-sm p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
             aria-label="Toggle font suggestions"
             title="Fonts"
@@ -301,17 +387,30 @@ export function FontAutocomplete({
 
       {open ? (
         <div className="absolute top-full z-20 mt-2 w-full overflow-hidden rounded-md border border-border/50 bg-popover shadow-md">
-          <ScrollArea className="max-h-64">
-            <div className="p-1">
+          <ScrollArea className={filteredSuggestions.length > 8 ? 'h-64' : undefined}>
+            <div id={listboxId} role="listbox" className="p-1">
               {filteredSuggestions.length > 0 ? (
-                filteredSuggestions.map((font) => (
+                filteredSuggestions.map((font, index) => (
                   <button
                     key={font}
                     type="button"
+                    id={`${listboxId}-option-${index}`}
+                    role="option"
+                    aria-selected={index === highlightedIndex}
+                    ref={(element) => {
+                      if (element) {
+                        optionRefs.current.set(font, element)
+                        return
+                      }
+                      optionRefs.current.delete(font)
+                    }}
                     onMouseDown={(e) => e.preventDefault()}
+                    onMouseEnter={() => setHighlightedIndex(index)}
                     onClick={() => commitValue(font)}
                     className={`flex w-full items-center justify-between rounded-sm px-3 py-2 text-left text-sm transition-colors ${
-                      font === value ? 'bg-accent text-accent-foreground' : 'hover:bg-muted/60'
+                      index === highlightedIndex
+                        ? 'bg-accent text-accent-foreground'
+                        : 'hover:bg-muted/60'
                     }`}
                   >
                     <span className="truncate">{font}</span>
