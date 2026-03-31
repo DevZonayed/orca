@@ -138,6 +138,8 @@ export function restoreScrollbackBuffers(
     }
     try {
       let buf = buffer
+      // If buffer ends in alt-screen mode (agent TUI was running at
+      // shutdown), exit alt-screen so the user sees a usable terminal.
       const lastOn = buf.lastIndexOf(ALT_SCREEN_ON)
       const lastOff = buf.lastIndexOf(ALT_SCREEN_OFF)
       if (lastOn > lastOff) {

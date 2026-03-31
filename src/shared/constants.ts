@@ -3,11 +3,21 @@ import type {
   PersistedState,
   PersistedUIState,
   RepoHookSettings,
-  WorkspaceSessionState
+  WorkspaceSessionState,
+  WorktreeCardProperty
 } from './types'
 import { DEFAULT_TERMINAL_FONT_WEIGHT } from './terminal-fonts'
 
 export const SCHEMA_VERSION = 1
+
+export const DEFAULT_WORKTREE_CARD_PROPERTIES: WorktreeCardProperty[] = [
+  'status',
+  'unread',
+  'ci',
+  'issue',
+  'pr',
+  'comment'
+]
 
 export const REPO_COLORS = [
   '#737373', // neutral
@@ -77,7 +87,8 @@ export function getDefaultUIState(): PersistedUIState {
     groupBy: 'none',
     sortBy: 'name',
     filterRepoIds: [],
-    uiZoomLevel: 0
+    uiZoomLevel: 0,
+    worktreeCardProperties: [...DEFAULT_WORKTREE_CARD_PROPERTIES]
   }
 }
 

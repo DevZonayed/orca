@@ -1,4 +1,6 @@
 import { useEffect } from 'react'
+import { DEFAULT_WORKTREE_CARD_PROPERTIES } from '../../shared/constants'
+
 import { Minimize2, PanelLeft, PanelRight } from 'lucide-react'
 import { TOGGLE_TERMINAL_PANE_EXPAND_EVENT } from '@/constants/terminal'
 import { syncZoomCSSVar } from '@/lib/ui-zoom'
@@ -100,7 +102,8 @@ function App(): React.JSX.Element {
             groupBy: 'none',
             sortBy: 'name',
             filterRepoIds: [],
-            uiZoomLevel: 0
+            uiZoomLevel: 0,
+            worktreeCardProperties: [...DEFAULT_WORKTREE_CARD_PROPERTIES]
           })
           hydrateWorkspaceSession({
             activeRepoId: null,

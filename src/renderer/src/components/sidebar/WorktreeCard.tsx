@@ -99,6 +99,7 @@ const WorktreeCard = React.memo(function WorktreeCard({
   const updateWorktreeMeta = useAppStore((s) => s.updateWorktreeMeta)
   const fetchPRForBranch = useAppStore((s) => s.fetchPRForBranch)
   const fetchIssue = useAppStore((s) => s.fetchIssue)
+  const cardProps = useAppStore((s) => s.worktreeCardProperties)
   const handleEditIssue = useCallback(
     (e: React.MouseEvent) => {
       e.stopPropagation()
@@ -166,18 +167,23 @@ const WorktreeCard = React.memo(function WorktreeCard({
     return liveTabs.length > 0 ? 'active' : 'inactive'
   }, [hasTerminals, tabs])
 
-  // Fetch PR data on mount. The store handles freshness checks, and
-  // activity-based refresh is triggered by setActiveWorktree + visibilitychange.
+  const showPR = cardProps.includes('pr')
+  const showCI = cardProps.includes('ci')
+  const showIssue = cardProps.includes('issue')
+
+  // Skip GitHub fetches when the corresponding card sections are hidden.
+  // This preference is purely presentational, so background refreshes would
+  // spend rate limit budget on data the user cannot see.
   useEffect(() => {
-    if (repo && !worktree.isBare && prCacheKey) {
+    if (repo && !worktree.isBare && prCacheKey && (showPR || showCI)) {
       fetchPRForBranch(repo.path, branch)
     }
-  }, [repo, worktree.isBare, fetchPRForBranch, branch, prCacheKey])
+  }, [repo, worktree.isBare, fetchPRForBranch, branch, prCacheKey, showPR, showCI])
 
-  // Fetch issue data on mount + background poll as safety net.
-  // Primary refresh comes from setActiveWorktree + visibilitychange.
+  // Same rationale for issues: once that section is hidden, polling only burns
+  // GitHub calls and keeps stale-but-invisible data warm for no user benefit.
   useEffect(() => {
-    if (!repo || !worktree.linkedIssue || !issueCacheKey) {
+    if (!repo || !worktree.linkedIssue || !issueCacheKey || !showIssue) {
       return
     }
 
@@ -189,7 +195,7 @@ const WorktreeCard = React.memo(function WorktreeCard({
     }, 5 * 60_000) // 5 minutes
 
     return () => clearInterval(interval)
-  }, [repo, worktree.linkedIssue, fetchIssue, issueCacheKey])
+  }, [repo, worktree.linkedIssue, fetchIssue, issueCacheKey, showIssue])
 
   // Stable click handler – ignore clicks that are really text selections
   const handleClick = useCallback(() => {
@@ -244,33 +250,37 @@ const WorktreeCard = React.memo(function WorktreeCard({
         )}
 
         {/* Status indicator on the left */}
-        <div className="flex flex-col items-center justify-start pt-[2px] gap-2 shrink-0">
-          <StatusIndicator status={status} />
+        {(cardProps.includes('status') || cardProps.includes('unread')) && (
+          <div className="flex flex-col items-center justify-start pt-[2px] gap-2 shrink-0">
+            {cardProps.includes('status') && <StatusIndicator status={status} />}
 
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                onClick={handleToggleUnreadQuick}
-                className={cn(
-                  'group/unread flex size-4 cursor-pointer items-center justify-center rounded transition-all',
-                  'hover:bg-accent/80 active:scale-95',
-                  'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
-                )}
-                aria-label={worktree.isUnread ? 'Mark as read' : 'Mark as unread'}
-              >
-                {worktree.isUnread ? (
-                  <FilledBellIcon className="size-[13px] text-amber-500 drop-shadow-sm" />
-                ) : (
-                  <Bell className="size-3 text-muted-foreground/40 opacity-0 group-hover:opacity-100 group-hover/unread:opacity-100 transition-opacity" />
-                )}
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="right" sideOffset={8}>
-              <span>{unreadTooltip}</span>
-            </TooltipContent>
-          </Tooltip>
-        </div>
+            {cardProps.includes('unread') && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    onClick={handleToggleUnreadQuick}
+                    className={cn(
+                      'group/unread flex size-4 cursor-pointer items-center justify-center rounded transition-all',
+                      'hover:bg-accent/80 active:scale-95',
+                      'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
+                    )}
+                    aria-label={worktree.isUnread ? 'Mark as read' : 'Mark as unread'}
+                  >
+                    {worktree.isUnread ? (
+                      <FilledBellIcon className="size-[13px] text-amber-500 drop-shadow-sm" />
+                    ) : (
+                      <Bell className="size-3 text-muted-foreground/40 opacity-0 group-hover:opacity-100 group-hover/unread:opacity-100 transition-opacity" />
+                    )}
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="right" sideOffset={8}>
+                  <span>{unreadTooltip}</span>
+                </TooltipContent>
+              </Tooltip>
+            )}
+          </div>
+        )}
 
         {/* Content area */}
         <div className="flex-1 min-w-0 flex flex-col gap-1.5">
@@ -281,8 +291,8 @@ const WorktreeCard = React.memo(function WorktreeCard({
             </div>
 
             {/* CI Checks & PR state on the right */}
-            <div className="flex items-center gap-2 shrink-0">
-              {pr && pr.checksStatus !== 'neutral' && (
+            {cardProps.includes('ci') && pr && pr.checksStatus !== 'neutral' && (
+              <div className="flex items-center gap-2 shrink-0">
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <span className="inline-flex items-center opacity-80 hover:opacity-100 transition-opacity">
@@ -301,8 +311,8 @@ const WorktreeCard = React.memo(function WorktreeCard({
                     <span>CI checks {checksLabel(pr.checksStatus).toLowerCase()}</span>
                   </TooltipContent>
                 </Tooltip>
-              )}
-            </div>
+              </div>
+            )}
           </div>
 
           {/* Subtitle row: Repo badge + Branch */}
@@ -348,9 +358,11 @@ const WorktreeCard = React.memo(function WorktreeCard({
           </div>
 
           {/* Meta section: Issue / PR Links / Comment */}
-          {(issue || worktree.comment || pr) && (
+          {((cardProps.includes('issue') && issue) ||
+            (cardProps.includes('pr') && pr) ||
+            (cardProps.includes('comment') && worktree.comment)) && (
             <div className="flex flex-col gap-[3px] mt-0.5">
-              {issue && (
+              {cardProps.includes('issue') && issue && (
                 <HoverCard openDelay={300}>
                   <HoverCardTrigger asChild>
                     <div
@@ -400,7 +412,7 @@ const WorktreeCard = React.memo(function WorktreeCard({
                 </HoverCard>
               )}
 
-              {pr && (
+              {cardProps.includes('pr') && pr && (
                 <HoverCard openDelay={300}>
                   <HoverCardTrigger asChild>
                     <div
@@ -462,7 +474,7 @@ const WorktreeCard = React.memo(function WorktreeCard({
                 </HoverCard>
               )}
 
-              {worktree.comment && (
+              {cardProps.includes('comment') && worktree.comment && (
                 <HoverCard openDelay={300}>
                   <HoverCardTrigger asChild>
                     <div

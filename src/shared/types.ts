@@ -194,6 +194,8 @@ export type GlobalSettings = {
   rightSidebarOpenByDefault: boolean
 }
 
+export type WorktreeCardProperty = 'status' | 'unread' | 'ci' | 'issue' | 'pr' | 'comment'
+
 export type PersistedUIState = {
   lastActiveRepoId: string | null
   lastActiveWorktreeId: string | null
@@ -203,6 +205,7 @@ export type PersistedUIState = {
   sortBy: 'name' | 'recent' | 'repo'
   filterRepoIds: string[]
   uiZoomLevel: number
+  worktreeCardProperties: WorktreeCardProperty[]
 }
 
 // ─── Persistence shape ──────────────────────────────────────────────
