@@ -16,6 +16,10 @@ import RightSidebar from './components/right-sidebar'
 import QuickOpen from './components/QuickOpen'
 import UpdateReminder from './components/UpdateReminder'
 import { useGitStatusPolling } from './components/right-sidebar/useGitStatusPolling'
+import {
+  setRuntimeGraphStoreStateGetter,
+  setRuntimeGraphSyncEnabled
+} from './runtime/sync-runtime-graph'
 
 function isEditableTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) {
@@ -140,10 +144,23 @@ function App(): React.JSX.Element {
   ])
 
   useEffect(() => {
+    setRuntimeGraphStoreStateGetter(useAppStore.getState)
+    return () => {
+      setRuntimeGraphStoreStateGetter(null)
+    }
+  }, [])
+
+  useEffect(() => {
+    setRuntimeGraphSyncEnabled(workspaceSessionReady)
+    return () => {
+      setRuntimeGraphSyncEnabled(false)
+    }
+  }, [workspaceSessionReady])
+
+  useEffect(() => {
     if (!workspaceSessionReady) {
       return
     }
-
     const timer = window.setTimeout(() => {
       void window.api.session.set({
         activeRepoId,
