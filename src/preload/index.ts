@@ -245,6 +245,8 @@ const api = {
       ipcRenderer.invoke('fs:rename', args),
     deletePath: (args: { targetPath: string }): Promise<void> =>
       ipcRenderer.invoke('fs:deletePath', args),
+    authorizeExternalPath: (args: { targetPath: string }): Promise<void> =>
+      ipcRenderer.invoke('fs:authorizeExternalPath', args),
     stat: (args: {
       filePath: string
     }): Promise<{ size: number; isDirectory: boolean; mtime: number }> =>

@@ -155,6 +155,7 @@ type FsApi = {
   createDir: (args: { dirPath: string }) => Promise<void>
   rename: (args: { oldPath: string; newPath: string }) => Promise<void>
   deletePath: (args: { targetPath: string }) => Promise<void>
+  authorizeExternalPath: (args: { targetPath: string }) => Promise<void>
   stat: (args: {
     filePath: string
   }) => Promise<{ size: number; isDirectory: boolean; mtime: number }>
