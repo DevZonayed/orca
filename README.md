@@ -25,33 +25,15 @@
   <img src="file-drag.gif" alt="Orca Screenshot" width="800" />
 </p>
 
----
-
 ## Introducing the Orca CLI
 
 **Agent orchestration from your terminal.**
 
-Let your AI agent control your IDE. Programmatically add repos, spin up worktrees, and update status directly from the terminal. Ships with the Orca IDE (install under Settings).
+Let your AI agent control your IDE. Use AI to add repos to your IDE, spin up worktrees, and update status directly from the terminal. Ships with the Orca IDE (install under Settings).
 
 ```bash
 npx skills add https://github.com/stablyai/orca --skill orca-cli
 ```
-
----
-
-## Quick Start
-
-1. **Connect:** Open Orca and connect your local Git repository.
-2. **Isolate:** Spin up a new worktree in one click (no more `git stash`).
-3. **Automate:** Open the built-in terminal, fire up your AI agent (like Claude Code), and let it work autonomously while you switch to another task.
-
----
-
-## Why Orca?
-
-- **Zero-Friction Context Switching:** Need to review an urgent PR while your agent builds a new feature? Spin up an isolated worktree instantly without messing up your local dev environment.
-- **Agent Supervision:** Stop babysitting terminals. Let multiple agents work autonomously across different repos while you monitor their status, logs, and unread notifications from a single dashboard.
-- **Purpose-Built for AI Devs:** Traditional IDEs aren't built for autonomous agents. Orca gives your AI the isolated environments, terminals, and programmatic control it needs to thrive.
 
 ---
 
@@ -62,6 +44,7 @@ npx skills add https://github.com/stablyai/orca --skill orca-cli
 - **Smart Notifications & Status Tracking**: See exactly which worktrees have active agents. Get worktree notifications and manually mark threads as unread (like Gmail ⭐).
 - **Deep GitHub Integration**: Automatically track PRs, link GitHub issues (via the `gh` CLI), and view GitHub Actions checks right from your workspace.
 - **Integrated Dev Tools**: Built-in file editor, lightning-fast search, and a comprehensive source control tab to review diffs, make quick edits, and commit effortlessly.
+- **CLI to Control the IDE**: Give your agent first-class control over Orca from the terminal.
 
 ---
 
