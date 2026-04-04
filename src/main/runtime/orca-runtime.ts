@@ -38,7 +38,8 @@ import {
   isOrphanedWorktreeError,
   mergeWorktree,
   sanitizeWorktreeName,
-  shouldSetDisplayName
+  shouldSetDisplayName,
+  areWorktreePathsEqual
 } from '../ipc/worktree-logic'
 
 type RuntimeStore = {
@@ -590,12 +591,12 @@ export class OrcaRuntimeService {
 
     addWorktree(repo.path, worktreePath, branchName, baseBranch)
     const gitWorktrees = await listWorktrees(repo.path)
-    const created = gitWorktrees.find((gw) => gw.path === worktreePath)
+    const created = gitWorktrees.find((gw) => areWorktreePathsEqual(gw.path, worktreePath))
     if (!created) {
       throw new Error('Worktree created but not found in listing')
     }
 
-    const worktreeId = `${repo.id}::${worktreePath}`
+    const worktreeId = `${repo.id}::${created.path}`
     const meta = this.store.setWorktreeMeta(worktreeId, {
       lastActivityAt: Date.now(),
       ...(shouldSetDisplayName(requestedName, branchName, sanitizedName)

@@ -16,6 +16,7 @@ import {
   shouldSetDisplayName,
   mergeWorktree,
   parseWorktreeId,
+  areWorktreePathsEqual,
   formatWorktreeRemovalError,
   isOrphanedWorktreeError
 } from './worktree-logic'
@@ -123,12 +124,12 @@ export function registerWorktreeHandlers(mainWindow: BrowserWindow, store: Store
 
       // Re-list to get the freshly created worktree info
       const gitWorktrees = await listWorktrees(repo.path)
-      const created = gitWorktrees.find((gw) => gw.path === worktreePath)
+      const created = gitWorktrees.find((gw) => areWorktreePathsEqual(gw.path, worktreePath))
       if (!created) {
         throw new Error('Worktree created but not found in listing')
       }
 
-      const worktreeId = `${repo.id}::${worktreePath}`
+      const worktreeId = `${repo.id}::${created.path}`
       const metaUpdates: Partial<WorktreeMeta> = {
         // Stamp activity so the worktree sorts into its final position
         // immediately — prevents scroll-to-reveal racing with a later

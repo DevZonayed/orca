@@ -1,9 +1,11 @@
 /* eslint-disable max-lines -- Why: runtime behavior is stateful and cross-cutting, so these tests stay in one file to preserve the end-to-end invariants around handles, waits, and graph sync. */
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { listWorktrees } from '../git/worktree'
+import type { WorktreeMeta } from '../../shared/types'
+import { addWorktree, listWorktrees } from '../git/worktree'
 import { OrcaRuntimeService } from './orca-runtime'
 
-const { MOCK_GIT_WORKTREES } = vi.hoisted(() => ({
+const { MOCK_GIT_WORKTREES, addWorktreeMock, computeWorktreePathMock, ensurePathWithinWorkspaceMock } =
+  vi.hoisted(() => ({
   MOCK_GIT_WORKTREES: [
     {
       path: '/tmp/worktree-a',
@@ -12,15 +14,31 @@ const { MOCK_GIT_WORKTREES } = vi.hoisted(() => ({
       isBare: false,
       isMainWorktree: false
     }
-  ]
+  ],
+  addWorktreeMock: vi.fn(),
+  computeWorktreePathMock: vi.fn(),
+  ensurePathWithinWorkspaceMock: vi.fn()
 }))
 
 vi.mock('../git/worktree', () => ({
-  listWorktrees: vi.fn().mockResolvedValue(MOCK_GIT_WORKTREES)
+  listWorktrees: vi.fn().mockResolvedValue(MOCK_GIT_WORKTREES),
+  addWorktree: addWorktreeMock
 }))
+
+vi.mock('../ipc/worktree-logic', async (importOriginal) => {
+  const actual = (await importOriginal()) as Record<string, unknown>
+  return {
+    ...actual,
+    computeWorktreePath: computeWorktreePathMock,
+    ensurePathWithinWorkspace: ensurePathWithinWorkspaceMock
+  }
+})
 
 afterEach(() => {
   vi.mocked(listWorktrees).mockResolvedValue(MOCK_GIT_WORKTREES)
+  vi.mocked(addWorktree).mockReset()
+  computeWorktreePathMock.mockReset()
+  ensurePathWithinWorkspaceMock.mockReset()
 })
 
 const store = {
@@ -66,6 +84,21 @@ const store = {
     branchPrefixCustom: ''
   })
 }
+
+computeWorktreePathMock.mockImplementation(
+  (
+    sanitizedName: string,
+    repoPath: string,
+    settings: { nestWorkspaces: boolean; workspaceDir: string }
+  ) => {
+    if (settings.nestWorkspaces) {
+      const repoName = repoPath.split(/[\\/]/).at(-1)?.replace(/\.git$/, '') ?? 'repo'
+      return `${settings.workspaceDir}/${repoName}/${sanitizedName}`
+    }
+    return `${settings.workspaceDir}/${sanitizedName}`
+  }
+)
+ensurePathWithinWorkspaceMock.mockImplementation((targetPath: string) => targetPath)
 
 describe('OrcaRuntimeService', () => {
   it('starts unavailable with no authoritative window', () => {
@@ -507,5 +540,82 @@ describe('OrcaRuntimeService', () => {
     await expect(runtime.getWorktreePs(-1)).rejects.toThrow('invalid_limit')
     await expect(runtime.listManagedWorktrees(undefined, 0)).rejects.toThrow('invalid_limit')
     await expect(runtime.searchRepoRefs('id:repo-1', 'main', -5)).rejects.toThrow('invalid_limit')
+  })
+
+  it('preserves create-time metadata on later runtime listings when Windows path formatting differs', async () => {
+    const metaById: Record<string, WorktreeMeta> = {}
+    const runtimeStore = {
+      getRepo: (id: string) => runtimeStore.getRepos().find((repo) => repo.id === id),
+      getRepos: () => [
+        {
+          id: 'repo-1',
+          path: 'C:\\repo',
+          displayName: 'repo',
+          badgeColor: 'blue',
+          addedAt: 1
+        }
+      ],
+      addRepo: () => {},
+      updateRepo: () => undefined as never,
+      getAllWorktreeMeta: () => metaById,
+      getWorktreeMeta: (worktreeId: string) => metaById[worktreeId],
+      setWorktreeMeta: (worktreeId: string, meta: Partial<WorktreeMeta>) => {
+        const existingMeta = metaById[worktreeId]
+        const nextMeta: WorktreeMeta = {
+          displayName: meta.displayName ?? existingMeta?.displayName ?? '',
+          comment: meta.comment ?? existingMeta?.comment ?? '',
+          linkedIssue: meta.linkedIssue ?? existingMeta?.linkedIssue ?? null,
+          linkedPR: meta.linkedPR ?? existingMeta?.linkedPR ?? null,
+          isArchived: meta.isArchived ?? existingMeta?.isArchived ?? false,
+          isUnread: meta.isUnread ?? existingMeta?.isUnread ?? false,
+          sortOrder: meta.sortOrder ?? existingMeta?.sortOrder ?? 0,
+          lastActivityAt: meta.lastActivityAt ?? existingMeta?.lastActivityAt ?? 0
+        }
+        metaById[worktreeId] = nextMeta
+        return nextMeta
+      },
+      removeWorktreeMeta: () => {},
+      getSettings: () => ({
+        workspaceDir: 'C:\\workspaces',
+        nestWorkspaces: false,
+        branchPrefix: 'none',
+        branchPrefixCustom: ''
+      })
+    }
+    computeWorktreePathMock.mockReturnValue('C:\\workspaces\\improve-dashboard')
+    ensurePathWithinWorkspaceMock.mockReturnValue('C:\\workspaces\\improve-dashboard')
+    vi.mocked(listWorktrees)
+      .mockResolvedValueOnce([
+        {
+          path: 'C:/workspaces/improve-dashboard',
+          head: 'abc',
+          branch: 'refs/heads/improve-dashboard',
+          isBare: false,
+          isMainWorktree: false
+        }
+      ])
+      .mockResolvedValueOnce([
+        {
+          path: 'C:/workspaces/improve-dashboard',
+          head: 'abc',
+          branch: 'refs/heads/improve-dashboard',
+          isBare: false,
+          isMainWorktree: false
+        }
+      ])
+
+    const runtime = new OrcaRuntimeService(runtimeStore)
+    await runtime.createManagedWorktree({
+      repoSelector: 'id:repo-1',
+      name: 'Improve Dashboard'
+    })
+    const listed = await runtime.listManagedWorktrees('id:repo-1')
+
+    expect(listed.worktrees).toMatchObject([
+      {
+        id: 'repo-1::C:/workspaces/improve-dashboard',
+        displayName: 'Improve Dashboard'
+      }
+    ])
   })
 })
