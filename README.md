@@ -68,6 +68,7 @@ npx skills add https://github.com/stablyai/orca --skill orca-cli
 ## Install
 
 Get started today:
+
 - **[Download from onOrca.dev](https://onOrca.dev)**
 - Or download the latest binaries via the **[GitHub Releases page](https://github.com/stablyai/orca/releases)**.
 
