@@ -97,6 +97,17 @@ describe('RuntimeClient', () => {
     })
   })
 
+  it('reports stale_bootstrap when bootstrap artifacts exist but no runtime is reachable', async () => {
+    const userDataPath = mkdtempSync(join(tmpdir(), 'orca-runtime-client-'))
+    writeMetadata(userDataPath, join(userDataPath, 'missing.sock'))
+
+    const client = new RuntimeClient(userDataPath, 100)
+    const status = await client.getCliStatus()
+
+    expect(status.result.runtime.state).toBe('stale_bootstrap')
+    expect(status.result.runtime.reachable).toBe(false)
+  })
+
   it('reports graph_not_ready when the runtime is reachable but graph is unavailable', async () => {
     const userDataPath = mkdtempSync(join(tmpdir(), 'orca-runtime-client-'))
     const endpoint = join(userDataPath, 'runtime.sock')

@@ -3,12 +3,9 @@ import { randomBytes } from 'crypto'
 import { createServer, type Server, type Socket } from 'net'
 import { chmodSync, existsSync, rmSync } from 'fs'
 import { join } from 'path'
+import type { RuntimeMetadata, RuntimeTransportMetadata } from '../../shared/runtime-bootstrap'
 import type { OrcaRuntimeService } from './orca-runtime'
-import {
-  type RuntimeMetadata,
-  type RuntimeTransportMetadata,
-  writeRuntimeMetadata
-} from './runtime-metadata'
+import { writeRuntimeMetadata } from './runtime-metadata'
 
 type RuntimeRpcRequest = {
   id: string

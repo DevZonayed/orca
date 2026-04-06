@@ -2,12 +2,8 @@ import { mkdtempSync, statSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { afterEach, describe, expect, it } from 'vitest'
-import {
-  clearRuntimeMetadata,
-  getRuntimeMetadataPath,
-  readRuntimeMetadata,
-  writeRuntimeMetadata
-} from './runtime-metadata'
+import { getRuntimeMetadataPath } from '../../shared/runtime-bootstrap'
+import { clearRuntimeMetadata, readRuntimeMetadata, writeRuntimeMetadata } from './runtime-metadata'
 
 const tempDirs: string[] = []
 

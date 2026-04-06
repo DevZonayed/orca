@@ -8,46 +8,14 @@ import {
   writeFileSync
 } from 'fs'
 import { execFileSync } from 'child_process'
-import { dirname, join } from 'path'
+import { dirname } from 'path'
+import { getRuntimeMetadataPath, type RuntimeMetadata } from '../../shared/runtime-bootstrap'
 
-export type RuntimeTransportMetadata = {
-  kind: 'unix' | 'named-pipe'
-  endpoint: string
-}
-
-export type RuntimeMetadata = {
-  runtimeId: string
-  pid: number
-  transport: RuntimeTransportMetadata | null
-  authToken: string | null
-  startedAt: number
-}
-
-const RUNTIME_METADATA_FILE = 'orca-runtime.json'
 let cachedWindowsUserSid: string | null | undefined
-
-export function getRuntimeMetadataPath(userDataPath: string): string {
-  return join(userDataPath, RUNTIME_METADATA_FILE)
-}
 
 export function writeRuntimeMetadata(userDataPath: string, metadata: RuntimeMetadata): void {
   const metadataPath = getRuntimeMetadataPath(userDataPath)
-  const dir = dirname(metadataPath)
-  if (!existsSync(dir)) {
-    mkdirSync(dir, { recursive: true, mode: 0o700 })
-  }
-  hardenRuntimePath(dir, { isDirectory: true, platform: process.platform })
-  const tmpFile = `${metadataPath}.tmp`
-  writeFileSync(tmpFile, JSON.stringify(metadata, null, 2), {
-    encoding: 'utf-8',
-    mode: 0o600
-  })
-  hardenRuntimePath(tmpFile, { isDirectory: false, platform: process.platform })
-  renameSync(tmpFile, metadataPath)
-  // Why: the runtime auth token is stored on disk so the local CLI can attach
-  // to the running app. Restricting file permissions keeps that token scoped
-  // to the current user on local machines.
-  hardenRuntimePath(metadataPath, { isDirectory: false, platform: process.platform })
+  writeMetadataFile(metadataPath, metadata)
 }
 
 export function readRuntimeMetadata(userDataPath: string): RuntimeMetadata | null {
@@ -60,6 +28,25 @@ export function readRuntimeMetadata(userDataPath: string): RuntimeMetadata | nul
 
 export function clearRuntimeMetadata(userDataPath: string): void {
   rmSync(getRuntimeMetadataPath(userDataPath), { force: true })
+}
+
+function writeMetadataFile(path: string, metadata: RuntimeMetadata): void {
+  const dir = dirname(path)
+  if (!existsSync(dir)) {
+    mkdirSync(dir, { recursive: true, mode: 0o700 })
+  }
+  hardenRuntimePath(dir, { isDirectory: true, platform: process.platform })
+  const tmpFile = `${path}.tmp`
+  writeFileSync(tmpFile, JSON.stringify(metadata, null, 2), {
+    encoding: 'utf-8',
+    mode: 0o600
+  })
+  hardenRuntimePath(tmpFile, { isDirectory: false, platform: process.platform })
+  renameSync(tmpFile, path)
+  // Why: runtime bootstrap files carry auth material that lets the local CLI
+  // attach to a live Orca runtime. The published file must stay scoped to
+  // the current user.
+  hardenRuntimePath(path, { isDirectory: false, platform: process.platform })
 }
 
 function hardenRuntimePath(

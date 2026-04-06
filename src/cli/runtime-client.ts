@@ -6,24 +6,11 @@ import { dirname, join } from 'path'
 import { readFileSync } from 'fs'
 import { spawn as spawnProcess } from 'child_process'
 import type { CliStatusResult, RuntimeStatus } from '../shared/runtime-types'
-
-type RuntimeTransportMetadata =
-  | {
-      kind: 'unix'
-      endpoint: string
-    }
-  | {
-      kind: 'named-pipe'
-      endpoint: string
-    }
-
-type RuntimeMetadata = {
-  runtimeId: string
-  pid: number
-  transport: RuntimeTransportMetadata | null
-  authToken: string
-  startedAt: number
-}
+import {
+  getRuntimeMetadataPath,
+  type RuntimeMetadata,
+  type RuntimeTransportMetadata
+} from '../shared/runtime-bootstrap'
 
 export type RuntimeRpcSuccess<TResult> = {
   id: string
@@ -100,7 +87,10 @@ export class RuntimeClient {
           pid: null
         },
         runtime: {
-          state: 'not_running',
+          // Why: distinguishing "never started" from "was running but died"
+          // gives the user a better signal about what happened. If the metadata
+          // file exists, Orca was running at some point.
+          state: metadata ? 'stale_bootstrap' : 'not_running',
           reachable: false,
           runtimeId: null
         },
@@ -143,7 +133,7 @@ export class RuntimeClient {
           pid: running ? metadata.pid : null
         },
         runtime: {
-          state: running ? 'starting' : 'not_running',
+          state: running ? 'starting' : 'stale_bootstrap',
           reachable: false,
           runtimeId: null
         },
@@ -410,8 +400,4 @@ export function getDefaultUserDataPath(
   // runs, so this mirrors Electron's default userData base instead of inventing
   // a CLI-specific config path.
   return join(process.env.XDG_CONFIG_HOME || join(homeDir, '.config'), 'orca')
-}
-
-function getRuntimeMetadataPath(userDataPath: string): string {
-  return join(userDataPath, 'orca-runtime.json')
 }
