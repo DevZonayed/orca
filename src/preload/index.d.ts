@@ -60,6 +60,7 @@ type PtyApi = {
   write: (id: string, data: string) => void
   resize: (id: string, cols: number, rows: number) => void
   kill: (id: string) => Promise<void>
+  hasChildProcesses: (id: string) => Promise<boolean>
   onData: (callback: (data: { id: string; data: string }) => void) => () => void
   onExit: (callback: (data: { id: string; code: number }) => void) => () => void
 }
@@ -153,6 +154,8 @@ type UIApi = {
   getZoomLevel: () => number
   setZoomLevel: (level: number) => void
   onFullscreenChanged: (callback: (isFullScreen: boolean) => void) => () => void
+  onWindowCloseRequested: (callback: () => void) => () => void
+  confirmWindowClose: () => void
 }
 
 type RuntimeApi = {

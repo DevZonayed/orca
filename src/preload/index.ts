@@ -172,6 +172,11 @@ const api = {
 
     kill: (id: string): Promise<void> => ipcRenderer.invoke('pty:kill', { id }),
 
+    /** Check if a PTY's shell has child processes (e.g. a running command).
+     *  Returns false for an idle shell prompt. */
+    hasChildProcesses: (id: string): Promise<boolean> =>
+      ipcRenderer.invoke('pty:hasChildProcesses', { id }),
+
     onData: (callback: (data: { id: string; data: string }) => void): (() => void) => {
       const listener = (_event: Electron.IpcRendererEvent, data: { id: string; data: string }) =>
         callback(data)
@@ -470,6 +475,18 @@ const api = {
         callback(isFullScreen)
       ipcRenderer.on('window:fullscreen-changed', listener)
       return () => ipcRenderer.removeListener('window:fullscreen-changed', listener)
+    },
+    /** Fired by the main process when the user tries to close the window
+     *  (X button, Cmd+Q, etc.). Renderer should show a confirmation dialog
+     *  if terminals are still running, then call confirmWindowClose(). */
+    onWindowCloseRequested: (callback: () => void): (() => void) => {
+      const listener = () => callback()
+      ipcRenderer.on('window:close-requested', listener)
+      return () => ipcRenderer.removeListener('window:close-requested', listener)
+    },
+    /** Tell the main process to proceed with the window close. */
+    confirmWindowClose: (): void => {
+      ipcRenderer.send('window:confirm-close')
     }
   },
 
