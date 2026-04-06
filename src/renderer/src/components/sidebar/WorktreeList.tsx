@@ -9,6 +9,7 @@ import { cn } from '@/lib/utils'
 import type { Worktree, Repo } from '../../../../shared/types'
 import { buildWorktreeComparator } from './smart-sort'
 import { matchesSearch, type Row, buildRows, getGroupKeyForWorktree } from './worktree-list-groups'
+import { estimateRowHeight } from './worktree-list-estimate'
 
 const WorktreeList = React.memo(function WorktreeList() {
   // ── Granular selectors (each is a primitive or shallow-stable ref) ──
@@ -29,10 +30,14 @@ const WorktreeList = React.memo(function WorktreeList() {
   const needsTabs = showActiveOnly || sortBy === 'recent'
   const tabsByWorktree = useAppStore((s) => (needsTabs ? s.tabsByWorktree : null))
 
-  // PR cache is needed for PR-status grouping and for recent sorting, which
-  // incorporates whether the current branch has a live PR attached.
+  const cardProps = useAppStore((s) => s.worktreeCardProperties)
+
+  // PR cache is needed for PR-status grouping, recent sorting, search, and
+  // estimateSize when the PR card property is visible.
   const prCache = useAppStore((s) =>
-    groupBy === 'pr-status' || sortBy === 'recent' || searchQuery ? s.prCache : null
+    groupBy === 'pr-status' || sortBy === 'recent' || searchQuery || cardProps.includes('pr')
+      ? s.prCache
+      : null
   )
   // Subscribe to issue cache only during active search to avoid unnecessary re-renders.
   const issueCache = useAppStore((s) => (searchQuery ? s.issueCache : null))
@@ -191,13 +196,27 @@ const WorktreeList = React.memo(function WorktreeList() {
   const virtualizer = useVirtualizer({
     count: rows.length,
     getScrollElement: () => scrollRef.current,
-    estimateSize: (index) => (rows[index].type === 'header' ? 42 : 56 + 4),
+    // Dynamic height estimate — pixel constants coupled to WorktreeCard's
+    // Tailwind classes (see coupling comment in WorktreeCard meta section).
+    estimateSize: (index) => estimateRowHeight(rows[index], cardProps, repoMap, prCache),
     overscan: 10,
     getItemKey: (index) => {
       const row = rows[index]
       return row.type === 'header' ? `hdr:${row.key}` : `wt:${row.worktree.id}`
     }
   })
+
+  // Invalidate cached sizes when async PR data arrives or card props change,
+  // so the virtualizer re-measures and eliminates overlap / scroll jumps.
+  useEffect(() => {
+    if (!prCache) {
+      return
+    }
+    virtualizer.measure()
+  }, [prCache, virtualizer])
+  useEffect(() => {
+    virtualizer.measure()
+  }, [cardProps, virtualizer])
 
   React.useEffect(() => {
     if (!pendingRevealWorktreeId) {
