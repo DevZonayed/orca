@@ -21,6 +21,10 @@ import {
   type EditorPathMutationTarget,
   type EditorSaveQuiesceDetail
 } from './editor-autosave'
+import {
+  ORCA_EDITOR_SAVE_DIRTY_FILES_EVENT,
+  type EditorSaveDirtyFilesDetail
+} from '../../../../shared/editor-save-events'
 
 type FileContent = {
   content: string
@@ -66,9 +70,13 @@ export default function EditorPanel(): React.JSX.Element | null {
   const saveQueueRef = React.useRef<Map<string, Promise<void>>>(new Map())
   const saveGenerationRef = React.useRef<Map<string, number>>(new Map())
   const openFilesRef = React.useRef(openFiles)
+  const fileContentsRef = React.useRef(fileContents)
+  const diffContentsRef = React.useRef(diffContents)
   const editBuffersRef = React.useRef(editBuffers)
   const autoSaveDelayMs = normalizeAutoSaveDelayMs(settings?.editorAutoSaveDelayMs)
   openFilesRef.current = openFiles
+  fileContentsRef.current = fileContents
+  diffContentsRef.current = diffContents
   editBuffersRef.current = editBuffers
 
   const clearAutoSaveTimer = useCallback((fileId: string): void => {
@@ -311,7 +319,82 @@ export default function EditorPanel(): React.JSX.Element | null {
     [activeFile, queueSave]
   )
 
+  const getLatestWritableContent = useCallback((file: OpenFile): string | null => {
+    const bufferedContent = editBuffersRef.current[file.id]
+    if (bufferedContent !== undefined) {
+      return bufferedContent
+    }
+
+    if (file.mode === 'edit') {
+      return fileContentsRef.current[file.id]?.content ?? null
+    }
+
+    const diffContent = diffContentsRef.current[file.id]
+    return diffContent?.kind === 'text' ? diffContent.modifiedContent : null
+  }, [])
+
+  const getDuplicateDirtySavePaths = useCallback((files: OpenFile[]): string[] => {
+    const counts = new Map<string, number>()
+    for (const file of files) {
+      counts.set(file.filePath, (counts.get(file.filePath) ?? 0) + 1)
+    }
+    return Array.from(counts.entries())
+      .filter(([, count]) => count > 1)
+      .map(([filePath]) => filePath)
+  }, [])
+
   // Handle save-and-close events from the save confirmation dialog
+  useEffect(() => {
+    const handler = async (event: Event): Promise<void> => {
+      const detail = (event as CustomEvent<EditorSaveDirtyFilesDetail>).detail
+      if (!detail) {
+        return
+      }
+
+      // Why: the entire handler body after the null guard is wrapped in a
+      // single try/catch so that any unexpected error (including from
+      // detail.claim()) always calls detail.reject() rather than leaving
+      // the promise in the preload hanging forever.
+      try {
+        detail.claim()
+
+        const dirtyFiles = openFilesRef.current.filter((file) => file.isDirty)
+        const unsupportedDirtyFiles = dirtyFiles.filter((file) => !canAutoSaveOpenFile(file))
+        if (unsupportedDirtyFiles.length > 0) {
+          detail.reject('Some unsaved editor changes cannot be auto-saved before restart.')
+          return
+        }
+
+        const duplicateDirtySavePaths = getDuplicateDirtySavePaths(dirtyFiles)
+        if (duplicateDirtySavePaths.length > 0) {
+          // Why: edit tabs and unstaged diff tabs can both target the same
+          // on-disk file while holding different in-memory buffers. Refusing the
+          // updater restart here is safer than racing two writes and silently
+          // picking whichever tab happens to save last.
+          detail.reject('Some unsaved files are open in multiple dirty tabs. Save them manually before restarting.')
+          return
+        }
+
+        await Promise.all(
+          dirtyFiles.map(async (file) => {
+            const content = getLatestWritableContent(file)
+            if (content === null) {
+              throw new Error(`Missing editor buffer for ${file.relativePath}`)
+            }
+            await queueSave(file, content)
+          })
+        )
+        detail.resolve()
+      } catch (error) {
+        detail.reject(String((error as Error)?.message ?? error))
+      }
+    }
+
+    window.addEventListener(ORCA_EDITOR_SAVE_DIRTY_FILES_EVENT, handler as EventListener)
+    return () =>
+      window.removeEventListener(ORCA_EDITOR_SAVE_DIRTY_FILES_EVENT, handler as EventListener)
+  }, [getDuplicateDirtySavePaths, getLatestWritableContent, queueSave])
+
   useEffect(() => {
     const handler = async (e: Event): Promise<void> => {
       const { fileId } = (e as CustomEvent).detail as { fileId: string }
