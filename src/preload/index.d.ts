@@ -37,6 +37,10 @@ type ReposApi = {
     >
   }) => Promise<Repo>
   pickFolder: () => Promise<string | null>
+  pickDirectory: () => Promise<string | null>
+  clone: (args: { url: string; destination: string }) => Promise<Repo>
+  cloneAbort: () => Promise<void>
+  onCloneProgress: (callback: (data: { phase: string; percent: number }) => void) => () => void
   getGitUsername: (args: { repoId: string }) => Promise<string>
   getBaseRefDefault: (args: { repoId: string }) => Promise<string>
   searchBaseRefs: (args: { repoId: string; query: string; limit?: number }) => Promise<string[]>

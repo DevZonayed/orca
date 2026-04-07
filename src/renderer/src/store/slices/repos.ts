@@ -166,8 +166,9 @@ export const createRepoSlice: StateCreator<AppState, [], [], RepoSlice> = (set, 
         const activeFileCleared = s.activeFileId
           ? s.openFiles.some((f) => f.id === s.activeFileId && worktreeIdSet.has(f.worktreeId))
           : false
+        const nextRepos = s.repos.filter((r) => r.id !== repoId)
         return {
-          repos: s.repos.filter((r) => r.id !== repoId),
+          repos: nextRepos,
           activeRepoId: s.activeRepoId === repoId ? null : s.activeRepoId,
           filterRepoIds: s.filterRepoIds.filter((id) => id !== repoId),
           worktreesByRepo: nextWorktrees,
@@ -181,7 +182,18 @@ export const createRepoSlice: StateCreator<AppState, [], [], RepoSlice> = (set, 
           activeTabTypeByWorktree: nextActiveTabTypeByWorktree,
           activeFileId: activeFileCleared ? null : s.activeFileId,
           activeTabType: activeFileCleared ? 'terminal' : s.activeTabType,
-          sortEpoch: s.sortEpoch + 1
+          sortEpoch: s.sortEpoch + 1,
+          // Why: removing the last repo while in settings leaves activeView as
+          // 'settings', which renders an empty settings pane instead of Landing.
+          // Also clear activeWorktreeId so App renders Landing (it checks
+          // !activeWorktreeId). Without this, the terminal surface shows instead.
+          ...(nextRepos.length === 0
+            ? {
+                activeView: 'terminal' as const,
+                activeWorktreeId: null,
+                activeRepoId: null
+              }
+            : {})
         }
       })
     } catch (err) {
