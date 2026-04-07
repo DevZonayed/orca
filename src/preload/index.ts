@@ -249,6 +249,14 @@ const api = {
     }> => ipcRenderer.invoke('preflight:check')
   },
 
+  notifications: {
+    dispatch: (args: Record<string, unknown>): Promise<{ delivered: boolean }> =>
+      ipcRenderer.invoke('notifications:dispatch', args),
+    getPermissionStatus: (): Promise<string> =>
+      ipcRenderer.invoke('notifications:getPermissionStatus'),
+    openSystemSettings: (): Promise<void> => ipcRenderer.invoke('notifications:openSystemSettings')
+  },
+
   shell: {
     openPath: (path: string): Promise<void> => ipcRenderer.invoke('shell:openPath', path),
 

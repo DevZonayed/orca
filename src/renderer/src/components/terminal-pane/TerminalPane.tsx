@@ -21,6 +21,7 @@ import { useSystemPrefersDark } from './use-system-prefers-dark'
 import { useTerminalPaneGlobalEffects } from './use-terminal-pane-global-effects'
 import { useTerminalPaneLifecycle } from './use-terminal-pane-lifecycle'
 import { useTerminalPaneContextMenu } from './use-terminal-pane-context-menu'
+import { useNotificationDispatch } from './use-notification-dispatch'
 
 /** Global set of buffer-capture callbacks, one per mounted TerminalPane.
  *  The beforeunload handler in App.tsx invokes every callback to populate
@@ -91,6 +92,7 @@ export default function TerminalPane({
   onPtyExitRef.current = onPtyExit
 
   const systemPrefersDark = useSystemPrefersDark()
+  const dispatchNotification = useNotificationDispatch(worktreeId)
 
   const persistLayoutSnapshot = (): void => {
     const manager = managerRef.current
@@ -198,6 +200,7 @@ export default function TerminalPane({
     updateTabTitle,
     updateTabPtyId,
     markWorktreeUnread,
+    dispatchNotification,
     setTabPaneExpanded,
     setTabCanExpandPane,
     setExpandedPane,
