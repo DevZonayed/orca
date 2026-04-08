@@ -1,32 +1,31 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useAppStore } from '@/store'
 import { useShallow } from 'zustand/react/shallow'
-import { TOGGLE_TERMINAL_PANE_EXPAND_EVENT } from '@/constants/terminal'
+import { reconcileTabOrder } from '../tab-bar/reconcile-order'
+import {
+  createNewTerminalTab,
+  closeTerminalTab,
+  closeOtherTerminalTabs,
+  closeTerminalTabsToRight,
+  activateTerminalTab,
+  activateEditorFile,
+  toggleTerminalPaneExpand
+} from './terminal-tab-actions'
 
 export type UnifiedTerminalItem = {
   type: 'terminal' | 'editor'
   id: string
 }
 
-type UseTerminalTabsResult = ReturnType<typeof useTerminalTabsInner>
-
-export function useTerminalTabs(): UseTerminalTabsResult {
-  return useTerminalTabsInner()
-}
-
-function useTerminalTabsInner() {
+export function useTerminalTabs() {
   const {
     activeWorktreeId,
     activeView,
     worktreesByRepo,
     tabsByWorktree,
     activeTabId,
-    createTab,
-    closeTab,
-    setActiveTab,
     tabBarOrderByWorktree,
-    setTabBarOrder,
-    setActiveWorktree,
+    setActiveTab,
     setTabCustomTitle,
     setTabColor,
     consumeSuppressedPtyExit,
@@ -35,8 +34,7 @@ function useTerminalTabsInner() {
     openFiles,
     activeFileId,
     activeTabType,
-    setActiveTabType,
-    setActiveFile,
+    setTabBarOrder,
     closeAllFiles
   } = useAppStore(
     useShallow((s) => ({
@@ -45,12 +43,8 @@ function useTerminalTabsInner() {
       worktreesByRepo: s.worktreesByRepo,
       tabsByWorktree: s.tabsByWorktree,
       activeTabId: s.activeTabId,
-      createTab: s.createTab,
-      closeTab: s.closeTab,
-      setActiveTab: s.setActiveTab,
       tabBarOrderByWorktree: s.tabBarOrderByWorktree,
-      setTabBarOrder: s.setTabBarOrder,
-      setActiveWorktree: s.setActiveWorktree,
+      setActiveTab: s.setActiveTab,
       setTabCustomTitle: s.setTabCustomTitle,
       setTabColor: s.setTabColor,
       consumeSuppressedPtyExit: s.consumeSuppressedPtyExit,
@@ -59,37 +53,31 @@ function useTerminalTabsInner() {
       openFiles: s.openFiles,
       activeFileId: s.activeFileId,
       activeTabType: s.activeTabType,
-      setActiveTabType: s.setActiveTabType,
-      setActiveFile: s.setActiveFile,
+      setTabBarOrder: s.setTabBarOrder,
       closeAllFiles: s.closeAllFiles
     }))
   )
 
-  const tabs = activeWorktreeId ? (tabsByWorktree[activeWorktreeId] ?? []) : []
+  const tabs = useMemo(
+    () => (activeWorktreeId ? (tabsByWorktree[activeWorktreeId] ?? []) : []),
+    [activeWorktreeId, tabsByWorktree]
+  )
   const allWorktrees = Object.values(worktreesByRepo).flat()
-  const worktreeFiles = activeWorktreeId
-    ? openFiles.filter((file) => file.worktreeId === activeWorktreeId)
-    : []
+  const worktreeFiles = useMemo(
+    () => (activeWorktreeId ? openFiles.filter((f) => f.worktreeId === activeWorktreeId) : []),
+    [activeWorktreeId, openFiles]
+  )
   const totalTabs = tabs.length + worktreeFiles.length
   const tabBarOrder = activeWorktreeId ? tabBarOrderByWorktree[activeWorktreeId] : undefined
 
-  // Build unified tab list respecting stored tab bar order
   const unifiedTabs = useMemo<UnifiedTerminalItem[]>(() => {
-    const terminalIdSet = new Set(tabs.map((t) => t.id))
-    const editorIdSet = new Set(worktreeFiles.map((f) => f.id))
-    const validIds = new Set([...terminalIdSet, ...editorIdSet])
-    const orderedIds: string[] = (tabBarOrder ?? []).filter((id) => validIds.has(id))
-    const inOrder = new Set(orderedIds)
-    for (const t of tabs) {
-      if (!inOrder.has(t.id)) {
-        orderedIds.push(t.id)
-      }
-    }
-    for (const f of worktreeFiles) {
-      if (!inOrder.has(f.id)) {
-        orderedIds.push(f.id)
-      }
-    }
+    const terminalIds = tabs.map((t) => t.id)
+    const terminalIdSet = new Set(terminalIds)
+    const orderedIds = reconcileTabOrder(
+      tabBarOrder,
+      terminalIds,
+      worktreeFiles.map((f) => f.id)
+    )
     return orderedIds.map((id) => ({
       type: (terminalIdSet.has(id) ? 'terminal' : 'editor') as 'terminal' | 'editor',
       id
@@ -134,8 +122,7 @@ function useTerminalTabsInner() {
       return
     }
     setActiveTab(tabs[0].id)
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- tabs is derived from tabsByWorktree which is stable via useShallow
-  }, [activeTabId, setActiveTab, tabsByWorktree, activeWorktreeId])
+  }, [activeTabId, setActiveTab, tabs])
 
   useEffect(() => {
     if (!workspaceSessionReady) {
@@ -145,7 +132,11 @@ function useTerminalTabsInner() {
       setInitialTabCreationGuard(null)
       return
     }
-    if (tabs.length > 0) {
+    // Why: skip auto-creation if terminal tabs already exist, or if editor files
+    // are open for this worktree. The user may have intentionally closed all
+    // terminal tabs while keeping editors open — auto-spawning a terminal would
+    // be disruptive.
+    if (tabs.length > 0 || worktreeFiles.length > 0) {
       if (initialTabCreationGuard === activeWorktreeId) {
         setInitialTabCreationGuard(null)
       }
@@ -156,149 +147,35 @@ function useTerminalTabsInner() {
     }
 
     setInitialTabCreationGuard(activeWorktreeId)
-    createTab(activeWorktreeId)
-  }, [activeWorktreeId, createTab, initialTabCreationGuard, tabs.length, workspaceSessionReady])
+    createNewTerminalTab(activeWorktreeId)
+  }, [
+    activeWorktreeId,
+    initialTabCreationGuard,
+    tabs.length,
+    worktreeFiles.length,
+    workspaceSessionReady
+  ])
 
-  const handleNewTab = useCallback(() => {
-    if (!activeWorktreeId) {
-      return
-    }
-    createTab(activeWorktreeId)
-  }, [activeWorktreeId, createTab])
-
-  const handleCloseTab = useCallback(
-    (tabId: string) => {
-      const state = useAppStore.getState()
-      const owningWorktreeEntry = Object.entries(state.tabsByWorktree).find(([, worktreeTabs]) =>
-        worktreeTabs.some((tab) => tab.id === tabId)
-      )
-      const owningWorktreeId = owningWorktreeEntry?.[0] ?? null
-
-      if (!owningWorktreeId) {
-        return
-      }
-
-      const currentTabs = state.tabsByWorktree[owningWorktreeId] ?? []
-      if (currentTabs.length <= 1) {
-        closeTab(tabId)
-        if (state.activeWorktreeId === owningWorktreeId) {
-          setActiveWorktree(null)
-        }
-        return
-      }
-
-      if (state.activeWorktreeId === owningWorktreeId && tabId === state.activeTabId) {
-        const currentIndex = currentTabs.findIndex((tab) => tab.id === tabId)
-        const nextTab = currentTabs[currentIndex + 1] ?? currentTabs[currentIndex - 1]
-        if (nextTab) {
-          setActiveTab(nextTab.id)
-        }
-      }
-
-      closeTab(tabId)
-    },
-    [closeTab, setActiveTab, setActiveWorktree]
-  )
+  const handleNewTab = useCallback(() => createNewTerminalTab(activeWorktreeId), [activeWorktreeId])
 
   const handlePtyExit = useCallback(
     (tabId: string, ptyId: string) => {
       if (consumeSuppressedPtyExit(ptyId)) {
         return
       }
-      handleCloseTab(tabId)
+      closeTerminalTab(tabId)
     },
-    [consumeSuppressedPtyExit, handleCloseTab]
+    [consumeSuppressedPtyExit]
   )
 
   const handleCloseOthers = useCallback(
-    (tabId: string) => {
-      if (!activeWorktreeId) {
-        return
-      }
-
-      const currentTabs = useAppStore.getState().tabsByWorktree[activeWorktreeId] ?? []
-      setActiveTab(tabId)
-      for (const tab of currentTabs) {
-        if (tab.id !== tabId) {
-          closeTab(tab.id)
-        }
-      }
-    },
-    [activeWorktreeId, closeTab, setActiveTab]
+    (tabId: string) => closeOtherTerminalTabs(tabId, activeWorktreeId),
+    [activeWorktreeId]
   )
 
   const handleCloseTabsToRight = useCallback(
-    (tabId: string) => {
-      if (!activeWorktreeId) {
-        return
-      }
-
-      const state = useAppStore.getState()
-      const currentTerminalTabs = state.tabsByWorktree[activeWorktreeId] ?? []
-      const currentEditorFiles = state.openFiles.filter((f) => f.worktreeId === activeWorktreeId)
-      const terminalIdSet = new Set(currentTerminalTabs.map((t) => t.id))
-      const editorIdSet = new Set(currentEditorFiles.map((f) => f.id))
-      const storedOrder = state.tabBarOrderByWorktree[activeWorktreeId]
-
-      // Build unified order (same reconciliation as TabBar)
-      const validIds = new Set([...terminalIdSet, ...editorIdSet])
-      const orderedIds: string[] = (storedOrder ?? []).filter((id) => validIds.has(id))
-      const inOrder = new Set(orderedIds)
-      for (const t of currentTerminalTabs) {
-        if (!inOrder.has(t.id)) {
-          orderedIds.push(t.id)
-        }
-      }
-      for (const f of currentEditorFiles) {
-        if (!inOrder.has(f.id)) {
-          orderedIds.push(f.id)
-        }
-      }
-
-      const index = orderedIds.indexOf(tabId)
-      if (index === -1) {
-        return
-      }
-      const rightIds = orderedIds.slice(index + 1)
-      for (const id of rightIds) {
-        if (terminalIdSet.has(id)) {
-          closeTab(id)
-        } else {
-          useAppStore.getState().closeFile(id)
-        }
-      }
-    },
-    [activeWorktreeId, closeTab]
-  )
-
-  const handleActivateTab = useCallback(
-    (tabId: string) => {
-      setActiveTab(tabId)
-      setActiveTabType('terminal')
-    },
-    [setActiveTab, setActiveTabType]
-  )
-
-  const handleActivateFile = useCallback(
-    (fileId: string) => {
-      setActiveFile(fileId)
-      setActiveTabType('editor')
-    },
-    [setActiveFile, setActiveTabType]
-  )
-
-  const handleTogglePaneExpand = useCallback(
-    (tabId: string) => {
-      setActiveTab(tabId)
-      requestAnimationFrame(() => {
-        window.dispatchEvent(
-          new CustomEvent(TOGGLE_TERMINAL_PANE_EXPAND_EVENT, {
-            detail: { tabId }
-          })
-        )
-      })
-    },
-    [setActiveTab]
+    (tabId: string) => closeTerminalTabsToRight(tabId, activeWorktreeId),
+    [activeWorktreeId]
   )
 
   return {
@@ -320,12 +197,12 @@ function useTerminalTabsInner() {
     setTabColor,
     closeAllFiles,
     handleNewTab,
-    handleCloseTab,
+    handleCloseTab: closeTerminalTab,
     handlePtyExit,
     handleCloseOthers,
     handleCloseTabsToRight,
-    handleActivateTab,
-    handleActivateFile,
-    handleTogglePaneExpand
+    handleActivateTab: activateTerminalTab,
+    handleActivateFile: activateEditorFile,
+    handleTogglePaneExpand: toggleTerminalPaneExpand
   }
 }
