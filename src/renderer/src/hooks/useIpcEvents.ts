@@ -12,7 +12,7 @@ const ZOOM_STEP = 0.5
 
 export function resolveZoomTarget(args: {
   activeView: 'terminal' | 'settings'
-  activeTabType: 'terminal' | 'editor'
+  activeTabType: 'terminal' | 'editor' | 'browser'
   activeElement: unknown
 }): 'terminal' | 'editor' | 'ui' {
   const { activeView, activeTabType, activeElement } = args
@@ -116,6 +116,17 @@ export function useIpcEvents(): void {
     unsubs.push(
       window.api.ui.onFullscreenChanged((isFullScreen) => {
         useAppStore.getState().setIsFullScreen(isFullScreen)
+      })
+    )
+
+    unsubs.push(
+      window.api.browser.onGuestLoadFailed(({ browserTabId, loadError }) => {
+        useAppStore.getState().updateBrowserTabPageState(browserTabId, {
+          loading: false,
+          loadError,
+          canGoBack: false,
+          canGoForward: false
+        })
       })
     )
 

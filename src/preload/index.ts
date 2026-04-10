@@ -305,6 +305,34 @@ const api = {
       ipcRenderer.invoke('shell:copyFile', args)
   },
 
+  browser: {
+    registerGuest: (args: { browserTabId: string; webContentsId: number }): Promise<void> =>
+      ipcRenderer.invoke('browser:registerGuest', args),
+
+    unregisterGuest: (args: { browserTabId: string }): Promise<void> =>
+      ipcRenderer.invoke('browser:unregisterGuest', args),
+
+    openDevTools: (args: { browserTabId: string }): Promise<boolean> =>
+      ipcRenderer.invoke('browser:openDevTools', args),
+
+    onGuestLoadFailed: (
+      callback: (args: {
+        browserTabId: string
+        loadError: { code: number; description: string; validatedUrl: string }
+      }) => void
+    ): (() => void) => {
+      const listener = (
+        _event: Electron.IpcRendererEvent,
+        data: {
+          browserTabId: string
+          loadError: { code: number; description: string; validatedUrl: string }
+        }
+      ) => callback(data)
+      ipcRenderer.on('browser:guest-load-failed', listener)
+      return () => ipcRenderer.removeListener('browser:guest-load-failed', listener)
+    }
+  },
+
   hooks: {
     check: (args: { repoId: string }): Promise<{ hasHooks: boolean; hooks: unknown }> =>
       ipcRenderer.invoke('hooks:check', args)

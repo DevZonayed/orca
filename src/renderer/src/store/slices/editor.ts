@@ -12,7 +12,8 @@ import type {
   GitStatusEntry,
   GitStatusResult,
   SearchResult,
-  WorkspaceSessionState
+  WorkspaceSessionState,
+  WorkspaceVisibleTabType
 } from '../../../../shared/types'
 
 export type DiffSource =
@@ -141,9 +142,9 @@ export type EditorSlice = {
   openFiles: OpenFile[]
   activeFileId: string | null
   activeFileIdByWorktree: Record<string, string | null> // worktreeId -> last active file
-  activeTabTypeByWorktree: Record<string, 'terminal' | 'editor'> // worktreeId -> last active tab type
-  activeTabType: 'terminal' | 'editor'
-  setActiveTabType: (type: 'terminal' | 'editor') => void
+  activeTabTypeByWorktree: Record<string, WorkspaceVisibleTabType> // worktreeId -> last active tab type
+  activeTabType: WorkspaceVisibleTabType
+  setActiveTabType: (type: WorkspaceVisibleTabType) => void
   openFile: (file: Omit<OpenFile, 'id' | 'isDirty'>, options?: { preview?: boolean }) => void
   pinFile: (fileId: string) => void
   closeFile: (fileId: string) => void
@@ -526,21 +527,42 @@ export const createEditorSlice: StateCreator<AppState, [], [], EditorSlice> = (s
         }
       }
 
-      // When last editor file for current worktree is closed, switch back to terminal
+      // Why: editor tabs share a mixed tab strip with browser tabs. Closing the
+      // last editor in a worktree should reveal an available browser tab before
+      // falling all the way back to a terminal surface.
       const activeWorktreeId = s.activeWorktreeId
       const remainingForWorktree = activeWorktreeId
         ? newFiles.filter((f) => f.worktreeId === activeWorktreeId)
         : newFiles
-      const newActiveTabType = remainingForWorktree.length === 0 ? 'terminal' : s.activeTabType
+      const browserTabsForWorktree = activeWorktreeId
+        ? (s.browserTabsByWorktree[activeWorktreeId] ?? [])
+        : []
+      const fallbackBrowserTabId =
+        activeWorktreeId && browserTabsForWorktree.length > 0
+          ? (s.activeBrowserTabIdByWorktree[activeWorktreeId] ??
+            browserTabsForWorktree[0]?.id ??
+            null)
+          : s.activeBrowserTabId
+      const newActiveTabType =
+        remainingForWorktree.length > 0
+          ? s.activeTabType
+          : browserTabsForWorktree.length > 0
+            ? 'browser'
+            : 'terminal'
       const newActiveTabTypeByWorktree = { ...s.activeTabTypeByWorktree }
       if (activeWorktreeId && remainingForWorktree.length === 0) {
-        newActiveTabTypeByWorktree[activeWorktreeId] = 'terminal'
+        newActiveTabTypeByWorktree[activeWorktreeId] =
+          browserTabsForWorktree.length > 0 ? 'browser' : 'terminal'
       }
 
       return {
         openFiles: newFiles,
         editorDrafts: newEditorDrafts,
         activeFileId: newActiveId,
+        activeBrowserTabId:
+          activeWorktreeId && remainingForWorktree.length === 0
+            ? fallbackBrowserTabId
+            : s.activeBrowserTabId,
         activeTabType: newActiveTabType,
         activeFileIdByWorktree: newActiveFileIdByWorktree,
         activeTabTypeByWorktree: newActiveTabTypeByWorktree,
@@ -574,12 +596,20 @@ export const createEditorSlice: StateCreator<AppState, [], [], EditorSlice> = (s
       const newActiveFileIdByWorktree = { ...s.activeFileIdByWorktree }
       delete newActiveFileIdByWorktree[activeWorktreeId]
       const newActiveTabTypeByWorktree = { ...s.activeTabTypeByWorktree }
-      newActiveTabTypeByWorktree[activeWorktreeId] = 'terminal'
+      const browserTabsForWorktree = s.browserTabsByWorktree[activeWorktreeId] ?? []
+      newActiveTabTypeByWorktree[activeWorktreeId] =
+        browserTabsForWorktree.length > 0 ? 'browser' : 'terminal'
       return {
         openFiles: newFiles,
         editorDrafts: newEditorDrafts,
         activeFileId: null,
-        activeTabType: 'terminal',
+        activeBrowserTabId:
+          browserTabsForWorktree.length > 0
+            ? (s.activeBrowserTabIdByWorktree[activeWorktreeId] ??
+              browserTabsForWorktree[0]?.id ??
+              null)
+            : s.activeBrowserTabId,
+        activeTabType: browserTabsForWorktree.length > 0 ? 'browser' : 'terminal',
         markdownViewMode: newMarkdownViewMode,
         activeFileIdByWorktree: newActiveFileIdByWorktree,
         activeTabTypeByWorktree: newActiveTabTypeByWorktree,
@@ -1296,7 +1326,7 @@ export const createEditorSlice: StateCreator<AppState, [], [], EditorSlice> = (s
       // The file may have been removed due to worktree validation or the
       // persisted data may reference a stale path.
       const activeFileExists = activeFileId ? openFiles.some((f) => f.id === activeFileId) : false
-      const activeTabType =
+      const activeTabType: WorkspaceVisibleTabType =
         activeWorktreeId && persistedActiveTabTypeByWorktree[activeWorktreeId]
           ? persistedActiveTabTypeByWorktree[activeWorktreeId]
           : 'terminal'
@@ -1309,9 +1339,19 @@ export const createEditorSlice: StateCreator<AppState, [], [], EditorSlice> = (s
         )
       )
       const filteredActiveTabTypeByWorktree = Object.fromEntries(
-        Object.entries(persistedActiveTabTypeByWorktree).filter(([wId]) =>
-          validWorktreeIds.has(wId)
-        )
+        Object.entries(persistedActiveTabTypeByWorktree).filter(([wId, tabType]) => {
+          if (!validWorktreeIds.has(wId)) {
+            return false
+          }
+          if (tabType !== 'editor') {
+            return true
+          }
+          // Why: a persisted "editor" surface only makes sense if that
+          // worktree still restored a concrete active editor file. Otherwise we
+          // preserve a stale last-active marker that conflicts with browser or
+          // terminal restore logic for the same worktree.
+          return Boolean(filteredActiveFileIdByWorktree[wId])
+        })
       )
 
       return {
