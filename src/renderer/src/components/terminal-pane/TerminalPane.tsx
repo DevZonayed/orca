@@ -97,6 +97,10 @@ export default function TerminalPane({
   const consumeTabStartupCommand = useAppStore((store) => store.consumeTabStartupCommand)
   const [setupSplit] = useState(() => useAppStore.getState().pendingSetupSplitByTabId[tabId])
   const consumeTabSetupSplit = useAppStore((store) => store.consumeTabSetupSplit)
+  const [issueCommandSplit] = useState(
+    () => useAppStore.getState().pendingIssueCommandSplitByTabId[tabId]
+  )
+  const consumeTabIssueCommandSplit = useAppStore((store) => store.consumeTabIssueCommandSplit)
 
   useEffect(() => {
     if (startup) {
@@ -109,6 +113,13 @@ export default function TerminalPane({
       consumeTabSetupSplit(tabId)
     }
   }, [setupSplit, tabId, consumeTabSetupSplit])
+
+  // Clear the queued issue-command split once this tab has captured it for initial mount.
+  useEffect(() => {
+    if (issueCommandSplit) {
+      consumeTabIssueCommandSplit(tabId)
+    }
+  }, [issueCommandSplit, tabId, consumeTabIssueCommandSplit])
 
   const settingsRef = useRef(settings)
   settingsRef.current = settings
@@ -228,6 +239,7 @@ export default function TerminalPane({
     cwd,
     startup,
     setupSplit,
+    issueCommandSplit,
     isActive,
     systemPrefersDark,
     settings,
