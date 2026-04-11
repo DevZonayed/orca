@@ -19,7 +19,7 @@ export type LinkHandlerDeps = {
 }
 
 type TerminalLinkEvent = Pick<MouseEvent, 'metaKey' | 'ctrlKey'> &
-  Partial<Pick<MouseEvent, 'shiftKey'>>
+  Partial<Pick<MouseEvent, 'shiftKey' | 'preventDefault' | 'stopPropagation'>>
 
 function isMacPlatform(): boolean {
   return navigator.userAgent.includes('Mac')
@@ -182,6 +182,12 @@ export function handleOscLink(
     return
   }
 
+  // Why: xterm renders URL links as clickable anchors. Once Orca decides to
+  // handle a modified click itself, we must suppress the browser's default
+  // anchor navigation or Electron will still launch the system browser.
+  event?.preventDefault?.()
+  event?.stopPropagation?.()
+
   let parsed: URL
   try {
     parsed = new URL(rawText)
@@ -191,12 +197,10 @@ export function handleOscLink(
 
   if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
     const store = useAppStore.getState()
-    // Why: when the user opts into Orca's browser tabs, terminal links should
-    // stay worktree-scoped instead of escaping to the system browser. We still
-    // fall back externally when the setting is off or no worktree owns the pane.
-    // Shift is the explicit escape hatch for "open this one in my system browser"
-    // without forcing the user to toggle the global in-app browser preference.
-    if (store.settings?.openLinksInApp && deps.worktreeId && !event?.shiftKey) {
+    // Why: terminal URL clicks are now always worktree-scoped by default so
+    // Cmd/Ctrl+click reliably stays inside Orca's browser. Shift is the only
+    // escape hatch for opening the same URL in the system browser instead.
+    if (deps.worktreeId && !event?.shiftKey) {
       store.setActiveWorktree(deps.worktreeId)
       store.createBrowserTab(deps.worktreeId, parsed.toString())
       return
