@@ -17,13 +17,13 @@ import Landing from './components/Landing'
 import Settings from './components/settings/Settings'
 import RightSidebar from './components/right-sidebar'
 import QuickOpen from './components/QuickOpen'
+import WorktreeJumpPalette from './components/WorktreeJumpPalette'
 import { ZoomOverlay } from './components/ZoomOverlay'
 import { useGitStatusPolling } from './components/right-sidebar/useGitStatusPolling'
 import {
   setRuntimeGraphStoreStateGetter,
   setRuntimeGraphSyncEnabled
 } from './runtime/sync-runtime-graph'
-import { getVisibleWorktreeIds } from './components/sidebar/visible-worktrees'
 import { useGlobalFileDrop } from './hooks/useGlobalFileDrop'
 import { registerUpdaterBeforeUnloadBypass } from './lib/updater-beforeunload'
 import { buildWorkspaceSessionPayload } from './lib/workspace-session'
@@ -97,7 +97,7 @@ function App(): React.JSX.Element {
   const rightSidebarWidth = useAppStore((s) => s.rightSidebarWidth)
   const setRightSidebarOpen = useAppStore((s) => s.setRightSidebarOpen)
   const setRightSidebarTab = useAppStore((s) => s.setRightSidebarTab)
-  const setQuickOpenVisible = useAppStore((s) => s.setQuickOpenVisible)
+  const closeModal = useAppStore((s) => s.closeModal)
   const isFullScreen = useAppStore((s) => s.isFullScreen)
 
   // Subscribe to IPC push events
@@ -383,47 +383,11 @@ function App(): React.JSX.Element {
       // Accept Cmd on macOS, Ctrl on other platforms
       const mod = isMac ? e.metaKey : e.ctrlKey
 
-      // Why: Cmd/Ctrl+P must be handled before the isEditableTarget guard
-      // because contentEditable elements (e.g. the Tiptap rich markdown
-      // editor) would otherwise swallow the event, making quick-open
-      // unreachable while the rich editor has focus.
-      if (
-        mod &&
-        !e.altKey &&
-        !e.shiftKey &&
-        e.key.toLowerCase() === 'p' &&
-        activeView !== 'settings' &&
-        activeWorktreeId !== null
-      ) {
-        e.preventDefault()
-        setQuickOpenVisible(true)
-        return
-      }
-
-      // Why: Cmd/Ctrl+1–9 must be handled before the isEditableTarget guard so
-      // the shortcut fires from any focus context — including sidebar search
-      // input, Monaco editor, and contentEditable elements. This follows the
-      // same pattern as Cmd+P above.
-      if (
-        mod &&
-        !e.altKey &&
-        !e.shiftKey &&
-        e.key >= '1' &&
-        e.key <= '9' &&
-        activeView !== 'settings'
-      ) {
-        const index = parseInt(e.key, 10) - 1
-        const visibleIds = getVisibleWorktreeIds()
-        if (index < visibleIds.length) {
-          // Prevent the digit from being typed into the focused input/editor
-          e.preventDefault()
-          const store = useAppStore.getState()
-          store.setActiveWorktree(visibleIds[index])
-          // Scroll sidebar to reveal the activated card
-          store.revealWorktreeInSidebar(visibleIds[index])
-        }
-        return
-      }
+      // Note: Cmd/Ctrl+P (quick-open) and Cmd/Ctrl+1-9 (jump-to-worktree) are
+      // handled via before-input-event in createMainWindow.ts, which forwards
+      // them as IPC events. The IPC handlers in useIpcEvents.ts apply the same
+      // view-state guards (activeView !== 'settings', etc.). This approach
+      // ensures the shortcuts work even when a browser guest has focus.
 
       if (isEditableTarget(e.target)) {
         return
@@ -486,12 +450,12 @@ function App(): React.JSX.Element {
     activeView,
     activeWorktreeId,
     openModal,
+    closeModal,
     repos,
     toggleSidebar,
     toggleRightSidebar,
     setRightSidebarTab,
-    setRightSidebarOpen,
-    setQuickOpenVisible
+    setRightSidebarOpen
   ])
 
   return (
@@ -588,6 +552,7 @@ function App(): React.JSX.Element {
         {showSidebar && rightSidebarOpen ? <RightSidebar /> : null}
       </div>
       <QuickOpen />
+      <WorktreeJumpPalette />
       <ZoomOverlay />
       <Toaster closeButton toastOptions={{ className: 'font-sans text-sm' }} />
     </div>
