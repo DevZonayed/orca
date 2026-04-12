@@ -76,7 +76,8 @@ const { appMock, browserWindowMock, nativeUpdaterMock, autoUpdaterMock, isMock, 
 vi.mock('electron', () => ({
   app: appMock,
   BrowserWindow: browserWindowMock,
-  autoUpdater: nativeUpdaterMock
+  autoUpdater: nativeUpdaterMock,
+  net: { fetch: vi.fn() }
 }))
 
 vi.mock('electron-updater', () => ({
@@ -89,6 +90,10 @@ vi.mock('@electron-toolkit/utils', () => ({
 
 vi.mock('./ipc/pty', () => ({
   killAllPty: killAllPtyMock
+}))
+
+vi.mock('./updater-changelog', () => ({
+  fetchChangelog: vi.fn().mockResolvedValue(null)
 }))
 
 describe('updater', () => {
@@ -302,12 +307,14 @@ describe('updater', () => {
     })
 
     await vi.runAllTicks()
+    await vi.advanceTimersByTimeAsync(0)
 
     expect(autoUpdaterMock.checkForUpdates).toHaveBeenCalledTimes(1)
     expect(setLastUpdateCheckAt).toHaveBeenCalledTimes(1)
     expect(sendMock).toHaveBeenCalledWith('updater:status', {
       state: 'available',
-      version: '1.0.61'
+      version: '1.0.61',
+      changelog: null
     })
 
     vi.advanceTimersByTime(35 * 60 * 60 * 1000 + 59 * 60 * 1000)
