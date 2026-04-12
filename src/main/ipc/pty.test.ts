@@ -13,7 +13,9 @@ const {
   accessSyncMock,
   spawnMock,
   openCodeBuildPtyEnvMock,
-  openCodeClearPtyMock
+  openCodeClearPtyMock,
+  piBuildPtyEnvMock,
+  piClearPtyMock
 } = vi.hoisted(() => ({
   handleMock: vi.fn(),
   onMock: vi.fn(),
@@ -24,7 +26,9 @@ const {
   accessSyncMock: vi.fn(),
   spawnMock: vi.fn(),
   openCodeBuildPtyEnvMock: vi.fn(),
-  openCodeClearPtyMock: vi.fn()
+  openCodeClearPtyMock: vi.fn(),
+  piBuildPtyEnvMock: vi.fn(),
+  piClearPtyMock: vi.fn()
 }))
 
 vi.mock('electron', () => ({
@@ -56,6 +60,12 @@ vi.mock('../opencode/hook-service', () => ({
   }
 }))
 
+vi.mock('../pi/titlebar-extension-service', () => ({
+  piTitlebarExtensionService: {
+    buildPtyEnv: piBuildPtyEnvMock,
+    clearPty: piClearPtyMock
+  }
+}))
 import { registerPtyHandlers } from './pty'
 
 describe('registerPtyHandlers', () => {
@@ -80,6 +90,8 @@ describe('registerPtyHandlers', () => {
     spawnMock.mockReset()
     openCodeBuildPtyEnvMock.mockReset()
     openCodeClearPtyMock.mockReset()
+    piBuildPtyEnvMock.mockReset()
+    piClearPtyMock.mockReset()
     mainWindow.webContents.on.mockReset()
     mainWindow.webContents.send.mockReset()
 
@@ -94,6 +106,11 @@ describe('registerPtyHandlers', () => {
       ORCA_OPENCODE_PTY_ID: 'test-pty',
       OPENCODE_CONFIG_DIR: '/tmp/orca-opencode-config'
     })
+    piBuildPtyEnvMock.mockImplementation((_ptyId: string, existingAgentDir?: string) => ({
+      PI_CODING_AGENT_DIR: existingAgentDir
+        ? '/tmp/orca-pi-agent-overlay'
+        : '/tmp/orca-pi-agent-overlay'
+    }))
     spawnMock.mockReturnValue({
       onData: vi.fn(),
       onExit: vi.fn(),
@@ -182,6 +199,11 @@ describe('registerPtyHandlers', () => {
       expect(env.OPENCODE_CONFIG_DIR).toBe('/tmp/orca-opencode-config')
     })
 
+    it('injects the Pi agent overlay env into Orca terminal PTYs', () => {
+      const env = spawnAndGetEnv(undefined, { PI_CODING_AGENT_DIR: '/tmp/user-pi-agent' })
+      expect(piBuildPtyEnvMock).toHaveBeenCalledWith(expect.any(String), '/tmp/user-pi-agent')
+      expect(env.PI_CODING_AGENT_DIR).toBe('/tmp/orca-pi-agent-overlay')
+    })
     it('leaves ambient CODEX_HOME untouched when system default is selected', () => {
       const env = spawnAndGetEnv(undefined, { CODEX_HOME: '/tmp/system-codex-home' }, () => null)
       expect(env.CODEX_HOME).toBe('/tmp/system-codex-home')
@@ -345,5 +367,27 @@ describe('registerPtyHandlers', () => {
         process.env.SHELL = originalShell
       }
     }
+  })
+
+  it('cleans up provider-specific PTY overlays when a PTY is killed', () => {
+    const proc = {
+      onData: vi.fn(),
+      onExit: vi.fn(),
+      write: vi.fn(),
+      resize: vi.fn(),
+      kill: vi.fn()
+    }
+    spawnMock.mockReturnValue(proc)
+
+    registerPtyHandlers(mainWindow as never)
+    const spawnResult = handlers.get('pty:spawn')!(null, {
+      cols: 80,
+      rows: 24
+    }) as { id: string }
+
+    handlers.get('pty:kill')!(null, { id: spawnResult.id })
+
+    expect(openCodeClearPtyMock).toHaveBeenCalledWith(spawnResult.id)
+    expect(piClearPtyMock).toHaveBeenCalledWith(spawnResult.id)
   })
 })
