@@ -32,7 +32,7 @@ jobs:
             const selectedOs = osMatch[1].trim().toLowerCase();
             const osLabelMap = {
               macos: "os:macos",
-              windows: "os:windows",
+              windows: "os:Windows",
               linux: "os:linux",
             };
 
