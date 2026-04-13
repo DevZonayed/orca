@@ -194,12 +194,34 @@ export function connectPanePty(
       deps.onPtyErrorRef?.current?.(pane.id, message)
     }
 
+    // Why: 512 KB cap keeps the pending buffer from growing without bound
+    // when an agent runs for minutes in a background worktree.  When the
+    // cap is reached, the oldest output is trimmed so the most recent
+    // terminal state is preserved.  This matches the MAX_BUFFER_BYTES
+    // constant used for serialized scrollback capture.
+    const MAX_PENDING_BYTES = 512 * 1024
+
     const dataCallback = (data: string): void => {
       if (deps.isActiveRef.current) {
         pane.terminal.write(data)
       } else {
         const pending = deps.pendingWritesRef.current
-        pending.set(pane.id, (pending.get(pane.id) ?? '') + data)
+        let buf = (pending.get(pane.id) ?? '') + data
+        if (buf.length > MAX_PENDING_BYTES) {
+          // Why: slicing at an arbitrary offset can bisect a multi-byte
+          // character or an ANSI escape sequence (e.g. \x1b[38;2;255;0m),
+          // producing garbled output when the buffer is later flushed.
+          // Snapping forward to the next newline ensures the cut lands on
+          // a line boundary where escape state is far less likely to be
+          // mid-sequence.
+          let cutAt = buf.length - MAX_PENDING_BYTES
+          const nl = buf.indexOf('\n', cutAt)
+          if (nl !== -1 && nl < cutAt + 256) {
+            cutAt = nl + 1
+          }
+          buf = buf.slice(cutAt)
+        }
+        pending.set(pane.id, buf)
       }
     }
 
