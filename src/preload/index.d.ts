@@ -51,7 +51,9 @@ type PtyApi = {
     rows: number
     cwd?: string
     env?: Record<string, string>
+    command?: string
     connectionId?: string | null
+    worktreeId?: string
   }) => Promise<{ id: string }>
   write: (id: string, data: string) => void
   resize: (id: string, cols: number, rows: number) => void
