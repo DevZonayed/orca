@@ -28,7 +28,7 @@ body:
       description: Include the exact Orca version if you can. You can find it in `Orca > About Orca`.
       placeholder: v0.14.2
     validations:
-      required: true
+      required: false
 
   - type: textarea
     id: details
