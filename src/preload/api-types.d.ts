@@ -319,6 +319,7 @@ export type PreloadApi = {
     openFileUri: (uri: string) => Promise<void>
     pathExists: (path: string) => Promise<boolean>
     pickImage: () => Promise<string | null>
+    pickDirectory: (args: { defaultPath?: string }) => Promise<string | null>
     copyFile: (args: { srcPath: string; destPath: string }) => Promise<void>
   }
   browser: BrowserApi
