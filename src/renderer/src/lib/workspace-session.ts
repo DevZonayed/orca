@@ -40,6 +40,7 @@ export function buildEditorSessionData(
 > {
   const editFiles = openFiles.filter((f) => f.mode === 'edit')
   const byWorktree: Record<string, PersistedOpenFile[]> = {}
+  const editFileIdsByWorktree: Record<string, Set<string>> = {}
   for (const f of editFiles) {
     const arr = byWorktree[f.worktreeId] ?? (byWorktree[f.worktreeId] = [])
     arr.push({
@@ -49,11 +50,48 @@ export function buildEditorSessionData(
       language: f.language,
       isPreview: f.isPreview || undefined
     })
+    const ids =
+      editFileIdsByWorktree[f.worktreeId] ?? (editFileIdsByWorktree[f.worktreeId] = new Set())
+    ids.add(f.id)
   }
+
+  const activeFileEntries: [string, string][] = []
+  for (const [worktreeId, fileId] of Object.entries(activeFileIdByWorktree)) {
+    if (!fileId) {
+      continue
+    }
+    if (editFileIdsByWorktree[worktreeId]?.has(fileId)) {
+      activeFileEntries.push([worktreeId, fileId])
+    }
+  }
+  const persistedActiveFileIdByWorktree = Object.fromEntries(activeFileEntries) as Record<
+    string,
+    string
+  >
+
+  const activeTabTypeEntries: [string, WorkspaceVisibleTabType][] = []
+  for (const [worktreeId, tabType] of Object.entries(activeTabTypeByWorktree)) {
+    if (tabType !== 'editor') {
+      activeTabTypeEntries.push([worktreeId, tabType])
+      continue
+    }
+    // Why: restart only restores edit-mode files. Persisting "editor" with a
+    // transient diff/conflict file ID creates a session payload that cannot be
+    // satisfied on startup and leaves the UI with no real editor tab to select.
+    // Only keep the editor marker when it points at a restored file.
+    if (persistedActiveFileIdByWorktree[worktreeId]) {
+      activeTabTypeEntries.push([worktreeId, tabType])
+    }
+  }
+  const persistedActiveTabTypeByWorktree = Object.fromEntries(activeTabTypeEntries) as Record<
+    string,
+    WorkspaceVisibleTabType
+  >
+
   return {
     openFilesByWorktree: byWorktree,
-    activeFileIdByWorktree,
-    activeTabTypeByWorktree
+    activeFileIdByWorktree: persistedActiveFileIdByWorktree,
+    activeTabTypeByWorktree: persistedActiveTabTypeByWorktree
   }
 }
 
