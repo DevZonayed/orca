@@ -2,6 +2,12 @@ name: Schedule RC Release
 
 on:
   workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Validate the workflow without creating an RC version or tag
+        required: false
+        default: false
+        type: boolean
   schedule:
     - cron: '7,17,27 3,15 * * *'
       timezone: 'America/Los_Angeles'
@@ -61,8 +67,15 @@ jobs:
 
           echo "already_ran=false" >>"$GITHUB_OUTPUT"
 
+      - name: Dry run summary
+        if: github.event_name == 'workflow_dispatch' && inputs.dry_run
+        run: |
+          echo "Dry run only."
+          echo "Current PT slot: ${{ steps.slot.outputs.value }}"
+          echo "Already ran this slot: ${{ steps.existing.outputs.already_ran }}"
+
       - name: Create and push RC tag
-        if: steps.existing.outputs.already_ran != 'true'
+        if: steps.existing.outputs.already_ran != 'true' && !(github.event_name == 'workflow_dispatch' && inputs.dry_run)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
