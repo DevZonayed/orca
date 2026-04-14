@@ -14,12 +14,14 @@ import type { OrcaHooks } from '../../../../shared/types'
 import { getRepoKindLabel, isFolderRepo } from '../../../../shared/repo-kind'
 import { useAppStore } from '../../store'
 import { useSystemPrefersDark } from '@/components/terminal-pane/use-system-prefers-dark'
+import { isWindowsUserAgent } from '@/components/terminal-pane/pane-helpers'
 import { SCROLLBACK_PRESETS_MB, getFallbackTerminalFonts } from './SettingsConstants'
 import { GeneralPane, GENERAL_PANE_SEARCH_ENTRIES } from './GeneralPane'
 import { AppearancePane, APPEARANCE_PANE_SEARCH_ENTRIES } from './AppearancePane'
 import { ShortcutsPane, SHORTCUTS_PANE_SEARCH_ENTRIES } from './ShortcutsPane'
-import { TerminalPane, TERMINAL_PANE_SEARCH_ENTRIES } from './TerminalPane'
+import { TerminalPane } from './TerminalPane'
 import { RepositoryPane, getRepositoryPaneSearchEntries } from './RepositoryPane'
+import { getTerminalPaneSearchEntries } from './terminal-search'
 import { GitPane, GIT_PANE_SEARCH_ENTRIES } from './GitPane'
 import { NotificationsPane, NOTIFICATIONS_PANE_SEARCH_ENTRIES } from './NotificationsPane'
 import { SshPane, SSH_PANE_SEARCH_ENTRIES } from './SshPane'
@@ -76,6 +78,14 @@ function Settings(): React.JSX.Element {
     Record<string, { hasHooks: boolean; hooks: OrcaHooks | null; mayNeedUpdate: boolean }>
   >({})
   const systemPrefersDark = useSystemPrefersDark()
+  const isWindows = isWindowsUserAgent()
+  // Why: the Terminal settings section shares one search index with the
+  // sidebar. We trim Windows-only entries on other platforms so search never
+  // reveals controls that the renderer will intentionally hide.
+  const terminalPaneSearchEntries = useMemo(
+    () => getTerminalPaneSearchEntries(isWindows),
+    [isWindows]
+  )
   const [scrollbackMode, setScrollbackMode] = useState<'preset' | 'custom'>('preset')
   const [prevScrollbackBytes, setPrevScrollbackBytes] = useState(settings?.terminalScrollbackBytes)
   const [terminalFontSuggestions, setTerminalFontSuggestions] = useState<string[]>(
@@ -240,7 +250,7 @@ function Settings(): React.JSX.Element {
         title: 'Terminal',
         description: 'Terminal appearance, previews, and defaults for new panes.',
         icon: SquareTerminal,
-        searchEntries: TERMINAL_PANE_SEARCH_ENTRIES
+        searchEntries: terminalPaneSearchEntries
       },
       {
         id: 'notifications',
@@ -279,7 +289,7 @@ function Settings(): React.JSX.Element {
         searchEntries: getRepositoryPaneSearchEntries(repo)
       }))
     ],
-    [repos]
+    [repos, terminalPaneSearchEntries]
   )
 
   const visibleNavSections = useMemo(
@@ -445,7 +455,7 @@ function Settings(): React.JSX.Element {
                   id="terminal"
                   title="Terminal"
                   description="Terminal appearance, previews, and defaults for new panes."
-                  searchEntries={TERMINAL_PANE_SEARCH_ENTRIES}
+                  searchEntries={terminalPaneSearchEntries}
                 >
                   <TerminalPane
                     settings={settings}
