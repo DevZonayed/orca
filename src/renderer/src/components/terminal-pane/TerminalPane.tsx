@@ -49,7 +49,7 @@ export default function TerminalPane({
   worktreeId,
   cwd,
   isActive,
-  isVisible: _isVisible,
+  isVisible = true,
   onPtyExit,
   onCloseTab
 }: TerminalPaneProps): React.JSX.Element {
@@ -65,6 +65,8 @@ export default function TerminalPane({
   const pendingWritesRef = useRef<Map<number, string>>(new Map())
   const isActiveRef = useRef(isActive)
   isActiveRef.current = isActive
+  const isVisibleRef = useRef(isVisible)
+  isVisibleRef.current = isVisible
 
   const [expandedPaneId, setExpandedPaneId] = useState<number | null>(null)
   const [searchOpen, setSearchOpen] = useState(false)
@@ -173,10 +175,30 @@ export default function TerminalPane({
         Object.entries(existing.buffersByLeafId).filter(([id]) => currentLeafIds.has(id))
       )
     }
+    // Why: between pane creation and the deferred rAF where PTYs actually
+    // attach, all transports have getPtyId() === null. If persistLayoutSnapshot
+    // fires during that window the live-transport block below finds no entries,
+    // so this block preserves the *prior* snapshot's leaf→PTY mappings. Without
+    // it, a rapid successive remount (tab moved again before the first rAF)
+    // would lose the mappings and force fresh PTY spawns.
+    if (existing?.ptyIdsByLeafId) {
+      const currentLeafIds = new Set(manager.getPanes().map((p) => paneLeafId(p.id)))
+      layout.ptyIdsByLeafId = Object.fromEntries(
+        Object.entries(existing.ptyIdsByLeafId).filter(([id]) => currentLeafIds.has(id))
+      )
+    }
     // Preserve pane titles — uses the live React state (via ref) rather than
     // the stale Zustand value because React state reflects in-flight title
     // edits that haven't been persisted yet.
     const currentPanes = manager.getPanes()
+    const ptyEntries = currentPanes
+      .map(
+        (p) => [paneLeafId(p.id), paneTransportsRef.current.get(p.id)?.getPtyId() ?? null] as const
+      )
+      .filter((entry): entry is readonly [string, string] => entry[1] !== null)
+    if (ptyEntries.length > 0) {
+      layout.ptyIdsByLeafId = Object.fromEntries(ptyEntries)
+    }
     const titles = paneTitlesRef.current
     const titleEntries = currentPanes
       .filter((p) => titles[p.id])
@@ -186,6 +208,39 @@ export default function TerminalPane({
     }
     setTabLayout(tabId, layout)
   }, [tabId, setTabLayout])
+
+  const syncPanePtyLayoutBinding = useCallback(
+    (paneId: number, ptyId: string | null): void => {
+      const existingLayout = useAppStore.getState().terminalLayoutsByTabId[tabId] ?? EMPTY_LAYOUT
+      const { ptyIdsByLeafId: _existingPtyIdsByLeafId, ...layoutWithoutPtyBindings } =
+        existingLayout
+      const existingBindings = existingLayout.ptyIdsByLeafId ?? {}
+      const leafId = paneLeafId(paneId)
+
+      if (ptyId) {
+        setTabLayout(tabId, {
+          ...layoutWithoutPtyBindings,
+          // Why: PTY ownership changes happen after the synchronous layout
+          // snapshot on mount. Persist the live pane→PTY binding here so
+          // remounts attach each pane to its current shell instead of a stale
+          // or missing PTY id from an earlier snapshot.
+          ptyIdsByLeafId: {
+            ...existingBindings,
+            [leafId]: ptyId
+          }
+        })
+        return
+      }
+
+      const nextBindings = { ...existingBindings }
+      delete nextBindings[leafId]
+      setTabLayout(tabId, {
+        ...layoutWithoutPtyBindings,
+        ...(Object.keys(nextBindings).length > 0 ? { ptyIdsByLeafId: nextBindings } : {})
+      })
+    },
+    [setTabLayout, tabId]
+  )
 
   const {
     setExpandedPane,
@@ -218,10 +273,11 @@ export default function TerminalPane({
         // longer exists. The closeTab path handles bulk cleanup, but closing
         // a single split pane doesn't go through closeTab.
         useAppStore.getState().setCacheTimerStartedAt(`${tabId}:${paneId}`, null)
+        syncPanePtyLayoutBinding(paneId, null)
         manager.closePane(paneId)
       }
     },
-    [onCloseTab, tabId]
+    [onCloseTab, syncPanePtyLayoutBinding, tabId]
   )
 
   // Cmd+W handler — shows a Ghostty-style confirmation dialog when the
@@ -275,6 +331,7 @@ export default function TerminalPane({
     panePtyBindingsRef,
     pendingWritesRef,
     isActiveRef,
+    isVisibleRef,
     onPtyExitRef,
     onPtyErrorRef,
     clearTabPtyId,
@@ -286,6 +343,7 @@ export default function TerminalPane({
     markWorktreeUnread,
     dispatchNotification,
     setCacheTimerStartedAt,
+    syncPanePtyLayoutBinding,
     setTabPaneExpanded,
     setTabCanExpandPane,
     setExpandedPane,
@@ -320,6 +378,7 @@ export default function TerminalPane({
 
       panePtyBinding?.dispose()
       panePtyBindingsRef.current.delete(paneId)
+      syncPanePtyLayoutBinding(paneId, null)
       transport?.destroy?.()
       paneTransportsRef.current.delete(paneId)
       setCacheTimerStartedAt(`${tabId}:${paneId}`, null)
@@ -332,6 +391,7 @@ export default function TerminalPane({
         paneTransportsRef,
         pendingWritesRef,
         isActiveRef,
+        isVisibleRef,
         onPtyExitRef,
         onPtyErrorRef,
         clearTabPtyId,
@@ -342,7 +402,8 @@ export default function TerminalPane({
         updateTabPtyId,
         markWorktreeUnread,
         dispatchNotification,
-        setCacheTimerStartedAt
+        setCacheTimerStartedAt,
+        syncPanePtyLayoutBinding
       })
       panePtyBindingsRef.current.set(paneId, newPaneBinding)
       manager.setActivePane(paneId, { focus: true })
@@ -358,6 +419,7 @@ export default function TerminalPane({
       setCacheTimerStartedAt,
       setRuntimePaneTitle,
       suppressPtyExit,
+      syncPanePtyLayoutBinding,
       tabId,
       updateTabPtyId,
       updateTabTitle,
@@ -406,11 +468,13 @@ export default function TerminalPane({
   useTerminalPaneGlobalEffects({
     tabId,
     isActive,
+    isVisible,
     managerRef,
     containerRef,
     paneTransportsRef,
     pendingWritesRef,
     isActiveRef,
+    isVisibleRef,
     toggleExpandPane
   })
 
@@ -606,6 +670,18 @@ export default function TerminalPane({
       if (Object.keys(buffers).length > 0) {
         layout.buffersByLeafId = buffers
       }
+      const ptyEntries = panes
+        .map(
+          (pane) =>
+            [
+              paneLeafId(pane.id),
+              paneTransportsRef.current.get(pane.id)?.getPtyId() ?? null
+            ] as const
+        )
+        .filter((entry): entry is readonly [string, string] => entry[1] !== null)
+      if (ptyEntries.length > 0) {
+        layout.ptyIdsByLeafId = Object.fromEntries(ptyEntries)
+      }
       // Merge pane titles so the shutdown snapshot doesn't silently drop them.
       // Why: the old early-return on empty buffers skipped this entirely, which
       // meant titles were lost on restart when the terminal had no scrollback
@@ -704,7 +780,10 @@ export default function TerminalPane({
     : null
 
   const terminalContainerStyle: CSSProperties = {
-    display: isActive ? 'flex' : 'none',
+    // Why: split groups can keep one terminal visible in an unfocused group so
+    // users still see its output while typing elsewhere. Hiding on `isActive`
+    // blanked the previously focused pane and exposed the white group body.
+    display: isVisible ? 'flex' : 'none',
     ['--orca-terminal-divider-color' as string]:
       effectiveAppearance?.dividerColor ?? DEFAULT_TERMINAL_DIVIDER_DARK,
     ['--orca-terminal-divider-color-strong' as string]: normalizeColor(
