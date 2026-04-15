@@ -166,10 +166,7 @@ export class Store {
 
   getRepo(id: string): Repo | undefined {
     const repo = this.state.repos.find((r) => r.id === id)
-    if (!repo) {
-      return undefined
-    }
-    return this.hydrateRepo(repo)
+    return repo ? this.hydrateRepo(repo) : undefined
   }
 
   addRepo(repo: Repo): void {
@@ -376,6 +373,7 @@ function getDefaultWorktreeMeta(): WorktreeMeta {
     linkedPR: null,
     isArchived: false,
     isUnread: false,
+    isPinned: false,
     sortOrder: Date.now(),
     lastActivityAt: 0
   }
