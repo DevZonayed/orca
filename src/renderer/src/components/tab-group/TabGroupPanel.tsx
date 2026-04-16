@@ -1,18 +1,21 @@
-import { lazy, Suspense } from 'react'
-import { X } from 'lucide-react'
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
+import { Columns2, Rows2, X } from 'lucide-react'
 import { useAppStore } from '../../store'
+import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 import TabBar from '../tab-bar/TabBar'
 import TerminalPane from '../terminal-pane/TerminalPane'
 import BrowserPane from '../browser-pane/BrowserPane'
 import { useTabGroupWorkspaceModel } from './useTabGroupWorkspaceModel'
 
 const EditorPanel = lazy(() => import('../editor/EditorPanel'))
+const isMac = navigator.userAgent.includes('Mac')
 
 export default function TabGroupPanel({
   groupId,
   worktreeId,
   isFocused,
   hasSplitGroups,
+  showSplitButton,
   reserveClosedExplorerToggleSpace,
   reserveCollapsedSidebarHeaderSpace
 }: {
@@ -20,11 +23,46 @@ export default function TabGroupPanel({
   worktreeId: string
   isFocused: boolean
   hasSplitGroups: boolean
+  showSplitButton: boolean
   reserveClosedExplorerToggleSpace: boolean
   reserveCollapsedSidebarHeaderSpace: boolean
 }): React.JSX.Element {
   const rightSidebarOpen = useAppStore((state) => state.rightSidebarOpen)
   const sidebarOpen = useAppStore((state) => state.sidebarOpen)
+
+  // Why: track Option/Alt key state so the split button icon can preview the
+  // alternate direction (down) before the user clicks, matching the modifier-
+  // toggle convention used in VS Code and macOS toolbars.
+  const [altHeld, setAltHeld] = useState(false)
+  useEffect(() => {
+    if (!showSplitButton) {
+      return
+    }
+    const clearAltHeld = (): void => {
+      setAltHeld(false)
+    }
+    const down = (e: KeyboardEvent): void => {
+      if (e.key === 'Alt') {
+        setAltHeld(true)
+      }
+    }
+    const up = (e: KeyboardEvent): void => {
+      if (e.key === 'Alt') {
+        clearAltHeld()
+      }
+    }
+    window.addEventListener('keydown', down)
+    window.addEventListener('keyup', up)
+    // Why: if the user Alt+Tabs away, this window may never receive the keyup
+    // event, so clear the preview state on blur to avoid a stuck split-down icon.
+    window.addEventListener('blur', clearAltHeld)
+    return () => {
+      window.removeEventListener('keydown', down)
+      window.removeEventListener('keyup', up)
+      window.removeEventListener('blur', clearAltHeld)
+    }
+  }, [showSplitButton])
+
   const model = useTabGroupWorkspaceModel({ groupId, worktreeId })
   const {
     activeBrowserTab,
@@ -37,6 +75,15 @@ export default function TabGroupPanel({
     terminalTabs,
     worktreePath
   } = model
+
+  const handleSplit = useCallback(
+    (event: React.MouseEvent) => {
+      event.stopPropagation()
+      const direction = event.altKey ? 'down' : 'right'
+      commands.createSplitGroup(direction)
+    },
+    [commands]
+  )
 
   const tabBar = (
     <TabBar
@@ -138,7 +185,7 @@ export default function TabGroupPanel({
           per-group titles without making groups fight over one portal target. */}
       <div className="h-[42px] shrink-0 border-b border-border bg-card">
         <div
-          className={`flex h-full items-stretch${
+          className={`flex h-full items-stretch pr-1.5${
             reserveClosedExplorerToggleSpace && !rightSidebarOpen ? ' pr-10' : ''
           }`}
           style={{
@@ -158,6 +205,30 @@ export default function TabGroupPanel({
               width of that controls cluster instead of the old full sidebar
               width so tabs cap at the agent badge, not at the old divider. */}
           <div className="min-w-0 flex-1 h-full">{tabBar}</div>
+          {showSplitButton && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  aria-label={altHeld ? 'Split Editor Down' : 'Split Editor Right'}
+                  onClick={handleSplit}
+                  className="my-auto flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent/50 hover:text-foreground"
+                  style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+                >
+                  {altHeld ? <Rows2 size={16} /> : <Columns2 size={16} />}
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" sideOffset={4}>
+                <div className="flex flex-col">
+                  <span>Split Right</span>
+                  {/* Why: split-button modifier hints appear in a shared header UI,
+                      so the label must match the current platform's modifier
+                      vocabulary instead of always showing Mac glyphs. */}
+                  <span className="text-muted-foreground">[{isMac ? '⌥' : 'Alt'}] Split Down</span>
+                </div>
+              </TooltipContent>
+            </Tooltip>
+          )}
           {hasSplitGroups && (
             <button
               type="button"
@@ -167,7 +238,7 @@ export default function TabGroupPanel({
                 event.stopPropagation()
                 commands.closeGroup()
               }}
-              className="my-auto ml-1 mr-2 flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent/50 hover:text-foreground"
+              className="my-auto flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent/50 hover:text-foreground"
             >
               <X className="size-4" />
             </button>
