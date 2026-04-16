@@ -30,6 +30,10 @@ import BrowserPane, { destroyPersistentWebview } from './browser-pane/BrowserPan
 import { reconcileTabOrder } from './tab-bar/reconcile-order'
 import TabGroupSplitLayout from './tab-group/TabGroupSplitLayout'
 import { shouldAutoCreateInitialTerminal } from './terminal/initial-terminal'
+import {
+  getEffectiveLayoutForWorktree as getEffectiveLayout,
+  anyMountedWorktreeHasLayout as computeAnyMountedWorktreeHasLayout
+} from './terminal/split-group-mount'
 import CodexRestartChip from './CodexRestartChip'
 
 const EditorPanel = lazy(() => import('./editor/EditorPanel'))
@@ -106,18 +110,8 @@ function Terminal(): React.JSX.Element | null {
     ? (browserTabsByWorktree[activeWorktreeId] ?? [])
     : []
   const getEffectiveLayoutForWorktree = useCallback(
-    (worktreeId: string) => {
-      const layout = layoutByWorktree[worktreeId]
-      if (layout) {
-        return layout
-      }
-      const groups = groupsByWorktree[worktreeId] ?? []
-      const fallbackGroupId = activeGroupIdByWorktree[worktreeId] ?? groups[0]?.id ?? null
-      if (!fallbackGroupId) {
-        return undefined
-      }
-      return { type: 'leaf', groupId: fallbackGroupId } as const
-    },
+    (worktreeId: string) =>
+      getEffectiveLayout(worktreeId, layoutByWorktree, groupsByWorktree, activeGroupIdByWorktree),
     [activeGroupIdByWorktree, groupsByWorktree, layoutByWorktree]
   )
   const effectiveActiveLayout = activeWorktreeId
@@ -215,6 +209,13 @@ function Terminal(): React.JSX.Element | null {
       mountedWorktreeIdsRef.current.delete(id)
     }
   }
+  const anyMountedWorktreeHasLayout = computeAnyMountedWorktreeHasLayout(
+    allWorktrees.map((wt) => wt.id),
+    mountedWorktreeIdsRef.current,
+    layoutByWorktree,
+    groupsByWorktree,
+    activeGroupIdByWorktree
+  )
   // Auto-create first tab when worktree activates
   useEffect(() => {
     if (!workspaceSessionReady) {
@@ -826,8 +827,10 @@ function Terminal(): React.JSX.Element | null {
           — tab groups + terminal extend to the top of the window instead.
           The old summary label (workspace / active surface) is removed. */}
 
-      {effectiveActiveLayout ? (
-        <div className="relative flex flex-1 min-w-0 min-h-0 overflow-hidden">
+      {anyMountedWorktreeHasLayout ? (
+        <div
+          className={`relative flex flex-1 min-w-0 min-h-0 overflow-hidden${effectiveActiveLayout ? '' : ' hidden'}`}
+        >
           {/* Why: each mounted worktree surface is absolutely positioned so we
               can preserve hidden trees without reflowing the active one. Keep
               a relative anchor here so those panes size to the workspace body
