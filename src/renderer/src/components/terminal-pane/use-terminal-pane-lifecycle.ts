@@ -304,12 +304,33 @@ export function useTerminalPaneLifecycle({
         // Dismiss the rename dialog if it was open for the closed pane,
         // otherwise it would submit against a non-existent pane.
         setRenamingPaneId((prev) => (prev === paneId ? null : prev))
+        // Why: PaneManager.closePane() reassigns activePaneId directly without
+        // calling setActivePane(), so onActivePaneChange does not fire. Sync the
+        // tab title to the survivor's stored title here so the tab label doesn't
+        // stay stuck on the closed pane's last title.
+        const newActivePane = managerRef.current?.getActivePane()
+        if (newActivePane) {
+          const paneTitles = useAppStore.getState().runtimePaneTitlesByTabId[tabId] ?? {}
+          const activeTitle = paneTitles[newActivePane.id]
+          if (activeTitle) {
+            updateTabTitle(tabId, activeTitle)
+          }
+        }
         scheduleRuntimeGraphSync()
       },
-      onActivePaneChange: () => {
+      onActivePaneChange: (pane) => {
         scheduleRuntimeGraphSync()
         if (shouldPersistLayout) {
           persistLayoutSnapshot()
+        }
+        // Why: when the user switches focus between split panes, update the
+        // tab title to the newly active pane's last-known title so the tab
+        // label reflects the focused agent — not a stale title from the
+        // previously focused pane.
+        const paneTitles = useAppStore.getState().runtimePaneTitlesByTabId[tabId] ?? {}
+        const paneTitle = paneTitles[pane.id]
+        if (paneTitle) {
+          updateTabTitle(tabId, paneTitle)
         }
       },
       onLayoutChanged: () => {
