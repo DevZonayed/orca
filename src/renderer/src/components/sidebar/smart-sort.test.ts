@@ -1,7 +1,7 @@
 /* eslint-disable max-lines */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Repo, TerminalTab, Worktree } from '../../../../shared/types'
-import { buildWorktreeComparator, computeSmartScore, type RecentSortOverride } from './smart-sort'
+import { buildWorktreeComparator, computeSmartScore, type SmartSortOverride } from './smart-sort'
 
 const NOW = new Date('2026-03-27T12:00:00.000Z').getTime()
 
@@ -164,7 +164,7 @@ describe('buildWorktreeComparator', () => {
     vi.restoreAllMocks()
   })
 
-  it('sorts recent mode by ongoing work signals before alphabetical order', () => {
+  it('sorts smart mode by ongoing work signals before alphabetical order', () => {
     const active = makeWorktree({
       id: 'active',
       displayName: 'z-active',
@@ -183,7 +183,7 @@ describe('buildWorktreeComparator', () => {
 
     const worktrees = [recent, stale, active]
 
-    worktrees.sort(buildWorktreeComparator('recent', null, repoMap, null, NOW))
+    worktrees.sort(buildWorktreeComparator('smart', null, repoMap, null, NOW))
 
     expect(worktrees.map((worktree) => worktree.id)).toEqual(['active', 'recent', 'stale'])
   })
@@ -204,7 +204,7 @@ describe('buildWorktreeComparator', () => {
 
     const worktrees = [second, first]
 
-    worktrees.sort(buildWorktreeComparator('recent', null, repoMap, null, NOW))
+    worktrees.sort(buildWorktreeComparator('smart', null, repoMap, null, NOW))
 
     expect(worktrees.map((worktree) => worktree.id)).toEqual(['first', 'second'])
   })
@@ -225,7 +225,7 @@ describe('buildWorktreeComparator', () => {
 
     const worktrees = [beta, alpha]
 
-    worktrees.sort(buildWorktreeComparator('recent', null, repoMap, null, NOW))
+    worktrees.sort(buildWorktreeComparator('smart', null, repoMap, null, NOW))
 
     expect(worktrees.map((worktree) => worktree.id)).toEqual(['alpha', 'beta'])
   })
@@ -254,7 +254,7 @@ describe('buildWorktreeComparator', () => {
       }
     }
 
-    worktrees.sort(buildWorktreeComparator('recent', null, repoMap, prCache, NOW))
+    worktrees.sort(buildWorktreeComparator('smart', null, repoMap, prCache, NOW))
 
     expect(worktrees.map((worktree) => worktree.id)).toEqual(['live-pr', 'stale-linked'])
   })
@@ -273,7 +273,7 @@ describe('buildWorktreeComparator', () => {
     })
     const worktrees = [plain, coldCache]
 
-    worktrees.sort(buildWorktreeComparator('recent', null, repoMap, {}, NOW))
+    worktrees.sort(buildWorktreeComparator('smart', null, repoMap, {}, NOW))
 
     expect(worktrees.map((worktree) => worktree.id)).toEqual(['cold-cache', 'plain'])
   })
@@ -295,7 +295,7 @@ describe('buildWorktreeComparator', () => {
     const tabsByWorktree = {
       [background.id]: [makeTab({ worktreeId: background.id, title: 'Claude Code - working' })]
     }
-    const recentSortOverrides: Record<string, RecentSortOverride> = {
+    const smartSortOverrides: Record<string, SmartSortOverride> = {
       [activeAfterClick.id]: {
         worktree: activeBeforeClick,
         tabs: [],
@@ -304,7 +304,7 @@ describe('buildWorktreeComparator', () => {
     }
 
     worktrees.sort(
-      buildWorktreeComparator('recent', tabsByWorktree, repoMap, null, NOW, recentSortOverrides)
+      buildWorktreeComparator('smart', tabsByWorktree, repoMap, null, NOW, smartSortOverrides)
     )
 
     expect(worktrees.map((worktree) => worktree.id)).toEqual(['background', 'active'])
@@ -324,7 +324,7 @@ describe('buildWorktreeComparator', () => {
       lastActivityAt: NOW - 2 * 60_000
     })
     const worktrees = [background, activeAfterClick]
-    const recentSortOverrides: Record<string, RecentSortOverride> = {
+    const smartSortOverrides: Record<string, SmartSortOverride> = {
       [activeAfterClick.id]: {
         worktree: activeBeforeClick,
         tabs: [],
@@ -332,7 +332,7 @@ describe('buildWorktreeComparator', () => {
       }
     }
 
-    worktrees.sort(buildWorktreeComparator('recent', null, repoMap, null, NOW, recentSortOverrides))
+    worktrees.sort(buildWorktreeComparator('smart', null, repoMap, null, NOW, smartSortOverrides))
 
     expect(worktrees.map((worktree) => worktree.id)).toEqual(['active', 'background'])
   })
@@ -351,7 +351,7 @@ describe('buildWorktreeComparator', () => {
     })
     const worktrees = [background, activeAfterClick]
 
-    worktrees.sort(buildWorktreeComparator('recent', null, repoMap, null, NOW))
+    worktrees.sort(buildWorktreeComparator('smart', null, repoMap, null, NOW))
 
     expect(worktrees.map((worktree) => worktree.id)).toEqual(['active', 'background'])
   })
@@ -378,8 +378,64 @@ describe('buildWorktreeComparator', () => {
     }
     const worktrees = [shutdown, justCreated]
 
-    worktrees.sort(buildWorktreeComparator('recent', null, repoMap, prCache, NOW))
+    worktrees.sort(buildWorktreeComparator('smart', null, repoMap, prCache, NOW))
 
     expect(worktrees.map((worktree) => worktree.id)).toEqual(['new', 'shutdown'])
+  })
+})
+
+describe('buildWorktreeComparator — recent (sortOrder / creation time)', () => {
+  it('sorts by sortOrder descending (newest first)', () => {
+    const older = makeWorktree({
+      id: 'older',
+      displayName: 'Older',
+      sortOrder: 1000
+    })
+    const newer = makeWorktree({
+      id: 'newer',
+      displayName: 'Newer',
+      sortOrder: 2000
+    })
+    const worktrees = [older, newer]
+
+    worktrees.sort(buildWorktreeComparator('recent', null, repoMap, null, NOW))
+
+    expect(worktrees.map((w) => w.id)).toEqual(['newer', 'older'])
+  })
+
+  it('sorts worktrees with sortOrder 0 to the bottom', () => {
+    const created = makeWorktree({
+      id: 'created',
+      displayName: 'Created',
+      sortOrder: 1000
+    })
+    const legacy = makeWorktree({
+      id: 'legacy',
+      displayName: 'Legacy',
+      sortOrder: 0
+    })
+    const worktrees = [legacy, created]
+
+    worktrees.sort(buildWorktreeComparator('recent', null, repoMap, null, NOW))
+
+    expect(worktrees.map((w) => w.id)).toEqual(['created', 'legacy'])
+  })
+
+  it('falls back to alphabetical when sortOrder is equal', () => {
+    const bravo = makeWorktree({
+      id: 'bravo',
+      displayName: 'Bravo',
+      sortOrder: 1000
+    })
+    const alpha = makeWorktree({
+      id: 'alpha',
+      displayName: 'Alpha',
+      sortOrder: 1000
+    })
+    const worktrees = [bravo, alpha]
+
+    worktrees.sort(buildWorktreeComparator('recent', null, repoMap, null, NOW))
+
+    expect(worktrees.map((w) => w.id)).toEqual(['alpha', 'bravo'])
   })
 })
