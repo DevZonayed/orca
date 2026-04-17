@@ -656,7 +656,7 @@ export type OpenCodeStatusEvent = {
 
 export type WorktreeCardProperty = 'status' | 'unread' | 'ci' | 'issue' | 'pr' | 'comment'
 
-export type StatusBarItem = 'claude' | 'codex' | 'ssh'
+export type StatusBarItem = 'claude' | 'codex' | 'ssh' | 'sessions'
 
 export type PersistedUIState = {
   lastActiveRepoId: string | null

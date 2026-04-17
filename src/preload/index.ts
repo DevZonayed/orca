@@ -254,7 +254,16 @@ const api = {
       command?: string
       connectionId?: string | null
       worktreeId?: string
-    }): Promise<{ id: string }> => ipcRenderer.invoke('pty:spawn', opts),
+      sessionId?: string
+    }): Promise<{
+      id: string
+      snapshot?: string
+      snapshotCols?: number
+      snapshotRows?: number
+      isReattach?: boolean
+      isAlternateScreen?: boolean
+      coldRestore?: { scrollback: string; cwd: string }
+    }> => ipcRenderer.invoke('pty:spawn', opts),
 
     write: (id: string, data: string): void => {
       ipcRenderer.send('pty:write', { id, data })
@@ -264,7 +273,18 @@ const api = {
       ipcRenderer.send('pty:resize', { id, cols, rows })
     },
 
+    signal: (id: string, signal: string): void => {
+      ipcRenderer.send('pty:signal', { id, signal })
+    },
+
+    ackColdRestore: (id: string): void => {
+      ipcRenderer.send('pty:ackColdRestore', { id })
+    },
+
     kill: (id: string): Promise<void> => ipcRenderer.invoke('pty:kill', { id }),
+
+    listSessions: (): Promise<{ id: string; cwd: string; title: string }[]> =>
+      ipcRenderer.invoke('pty:listSessions'),
 
     /** Check if a PTY's shell has child processes (e.g. a running command).
      *  Returns false for an idle shell prompt. */
