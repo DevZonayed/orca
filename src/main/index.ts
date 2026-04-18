@@ -33,6 +33,7 @@ import { createMainWindow } from './window/createMainWindow'
 import { CodexAccountService } from './codex-accounts/service'
 import { CodexRuntimeHomeService } from './codex-accounts/runtime-home-service'
 import { openCodeHookService } from './opencode/hook-service'
+import { StarNagService } from './star-nag/service'
 
 let mainWindow: BrowserWindow | null = null
 /** Whether a manual app.quit() (Cmd+Q, etc.) is in progress. Shared with the
@@ -48,6 +49,7 @@ let codexRuntimeHome: CodexRuntimeHomeService | null = null
 let runtime: OrcaRuntimeService | null = null
 let rateLimits: RateLimitService | null = null
 let runtimeRpc: OrcaRuntimeRpcServer | null = null
+let starNag: StarNagService | null = null
 
 installUncaughtPipeErrorGuard()
 patchPackagedProcessPath()
@@ -137,6 +139,9 @@ app.whenReady().then(async () => {
   codexAccounts = new CodexAccountService(store, rateLimits, codexRuntimeHome)
   rateLimits.setCodexHomePathResolver(() => codexRuntimeHome!.prepareForRateLimitFetch())
   runtime = new OrcaRuntimeService(store, stats)
+  starNag = new StarNagService(store, stats)
+  starNag.start()
+  starNag.registerIpcHandlers()
   nativeTheme.themeSource = store.getSettings().theme ?? 'system'
   registerAppMenu({
     onCheckForUpdates: () => checkForUpdatesFromMenu(),
@@ -242,6 +247,7 @@ app.on('will-quit', () => {
   // so without this ordering, running agents would produce orphaned
   // agent_start events with no matching stops.
   openCodeHookService.stop()
+  starNag?.stop()
   stats?.flush()
   killAllPty()
   // Why: in daemon mode, killAllPty is a no-op (daemon sessions survive app

@@ -408,6 +408,17 @@ const api = {
     starOrca: (): Promise<boolean> => ipcRenderer.invoke('gh:starOrca')
   },
 
+  starNag: {
+    onShow: (callback: () => void): (() => void) => {
+      const listener = (_event: Electron.IpcRendererEvent): void => callback()
+      ipcRenderer.on('star-nag:show', listener)
+      return () => ipcRenderer.removeListener('star-nag:show', listener)
+    },
+    dismiss: (): Promise<void> => ipcRenderer.invoke('star-nag:dismiss'),
+    complete: (): Promise<void> => ipcRenderer.invoke('star-nag:complete'),
+    forceShow: (): Promise<void> => ipcRenderer.invoke('star-nag:forceShow')
+  },
+
   settings: {
     get: (): Promise<unknown> => ipcRenderer.invoke('settings:get'),
 

@@ -369,6 +369,12 @@ export type PreloadApi = {
     checkOrcaStarred: () => Promise<boolean | null>
     starOrca: () => Promise<boolean>
   }
+  starNag: {
+    onShow: (callback: () => void) => () => void
+    dismiss: () => Promise<void>
+    complete: () => Promise<void>
+    forceShow: () => Promise<void>
+  }
   settings: {
     get: () => Promise<GlobalSettings>
     set: (args: Partial<GlobalSettings>) => Promise<GlobalSettings>

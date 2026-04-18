@@ -24,6 +24,7 @@ import WorktreeJumpPalette from './components/WorktreeJumpPalette'
 import NewWorkspaceComposerModal from './components/NewWorkspaceComposerModal'
 import { StatusBar } from './components/status-bar/StatusBar'
 import { UpdateCard } from './components/UpdateCard'
+import { StarNagCard } from './components/StarNagCard'
 import { ZoomOverlay } from './components/ZoomOverlay'
 import { SshPassphraseDialog } from './components/settings/SshPassphraseDialog'
 import { useGitStatusPolling } from './components/right-sidebar/useGitStatusPolling'
@@ -884,6 +885,7 @@ function App(): React.JSX.Element {
       <QuickOpen />
       <WorktreeJumpPalette />
       <UpdateCard />
+      <StarNagCard />
       <ZoomOverlay />
       <SshPassphraseDialog />
       <Toaster closeButton toastOptions={{ className: 'font-sans text-sm' }} />
