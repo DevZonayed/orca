@@ -4,6 +4,7 @@ import { File } from 'lucide-react'
 import { useAppStore } from '@/store'
 import { detectLanguage } from '@/lib/language-detect'
 import { joinPath } from '@/lib/path'
+import { getConnectionId } from '@/lib/connection-context'
 import {
   CommandDialog,
   CommandInput,
@@ -79,6 +80,11 @@ export default function QuickOpen(): React.JSX.Element | null {
     return null
   }, [activeWorktreeId, worktreesByRepo])
 
+  const connectionId = useMemo(
+    () => getConnectionId(activeWorktreeId ?? null) ?? undefined,
+    [activeWorktreeId]
+  )
+
   // Load file list when opened
   useEffect(() => {
     if (!visible) {
@@ -97,7 +103,10 @@ export default function QuickOpen(): React.JSX.Element | null {
     setLoading(true)
 
     void window.api.fs
-      .listFiles({ rootPath: worktreePath })
+      // Why: quick-open shares the active worktree path model with file explorer
+      // and search, so remote worktrees must include connectionId. Without this,
+      // Windows resolves Linux roots (e.g. /home/*) as local C:\home\* paths.
+      .listFiles({ rootPath: worktreePath, connectionId })
       .then((result) => {
         if (!cancelled) {
           setFiles(result)
@@ -120,7 +129,7 @@ export default function QuickOpen(): React.JSX.Element | null {
     return () => {
       cancelled = true
     }
-  }, [visible, worktreePath])
+  }, [visible, worktreePath, connectionId])
 
   // Filter files by fuzzy match
   const filtered = useMemo(() => {
