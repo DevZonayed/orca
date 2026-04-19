@@ -129,6 +129,39 @@ function Terminal(): React.JSX.Element | null {
   // window (X button, Cmd+Q) while terminals with running processes exist.
   const [windowCloseDialogOpen, setWindowCloseDialogOpen] = useState(false)
 
+  // Why: when the main process requests a close while editor tabs are dirty, we
+  // must not call confirmWindowClose() until the user saves or discards. The
+  // global beforeunload guard still calls preventDefault() while any file is
+  // dirty, so an immediate confirm would leave the window open with no UI.
+  const windowCloseAfterDirtyRef = useRef<{ isQuitting: boolean } | null>(null)
+
+  const proceedToNativeWindowClose = useCallback((isQuitting: boolean) => {
+    // Why: defer this synthetic unload until we are actually ready to close so
+    // a dirty-tab preventDefault() does not fire during the initial quit IPC
+    // (that path can emit will-prevent-unload and clear isQuitting in main).
+    window.dispatchEvent(new Event('beforeunload'))
+
+    if (isQuitting) {
+      window.api.ui.confirmWindowClose()
+      return
+    }
+    const state = useAppStore.getState()
+    const allPtyIds = Object.values(state.ptyIdsByTabId).flat()
+    if (allPtyIds.length === 0) {
+      window.api.ui.confirmWindowClose()
+      return
+    }
+    void Promise.all(allPtyIds.map((id) => window.api.pty.hasChildProcesses(id))).then(
+      (results) => {
+        if (results.some(Boolean)) {
+          setWindowCloseDialogOpen(true)
+        } else {
+          window.api.ui.confirmWindowClose()
+        }
+      }
+    )
+  }, [])
+
   const handleCloseFile = useCallback(
     (fileId: string) => {
       const file = useAppStore.getState().openFiles.find((f) => f.id === fileId)
@@ -145,34 +178,113 @@ function Terminal(): React.JSX.Element | null {
     if (!saveDialogFileId) {
       return
     }
-    const file = useAppStore.getState().openFiles.find((f) => f.id === saveDialogFileId)
+    const fileId = saveDialogFileId
+    const pendingWindowClose = windowCloseAfterDirtyRef.current
+    const file = useAppStore.getState().openFiles.find((f) => f.id === fileId)
     if (!file) {
+      setSaveDialogFileId(null)
+      windowCloseAfterDirtyRef.current = null
       return
     }
+
+    if (pendingWindowClose) {
+      setSaveDialogFileId(null)
+      // Why: save-and-close must flush the latest draft even when the visible
+      // editor panel has already unmounted. The headless autosave controller
+      // owns that write path now, so the dialog signals it through a custom
+      // event instead of poking at editor component refs.
+      window.dispatchEvent(
+        new CustomEvent(ORCA_EDITOR_SAVE_AND_CLOSE_EVENT, { detail: { fileId } })
+      )
+
+      const waitForFileClosed = (timeoutMs: number): Promise<boolean> => {
+        if (!useAppStore.getState().openFiles.some((f) => f.id === fileId)) {
+          return Promise.resolve(true)
+        }
+        return new Promise((resolve) => {
+          let unsub: (() => void) | null = null
+          const timeoutId = window.setTimeout(() => {
+            unsub?.()
+            resolve(false)
+          }, timeoutMs)
+          unsub = useAppStore.subscribe((state) => {
+            if (!state.openFiles.some((f) => f.id === fileId)) {
+              window.clearTimeout(timeoutId)
+              unsub?.()
+              resolve(true)
+            }
+          })
+        })
+      }
+
+      const closed = await waitForFileClosed(10_000)
+      if (!closed) {
+        toast.error('Save timed out or failed. Fix errors before closing.')
+        setSaveDialogFileId(fileId)
+        return
+      }
+
+      const nextDirty = useAppStore.getState().openFiles.filter((f) => f.isDirty)
+      if (nextDirty.length > 0) {
+        setSaveDialogFileId(nextDirty[0].id)
+      } else {
+        const { isQuitting } = pendingWindowClose
+        windowCloseAfterDirtyRef.current = null
+        proceedToNativeWindowClose(isQuitting)
+      }
+      return
+    }
+
     // Why: save-and-close must flush the latest draft even when the visible
     // editor panel has already unmounted. The headless autosave controller
     // owns that write path now, so the dialog signals it through a custom
     // event instead of poking at editor component refs.
-    window.dispatchEvent(
-      new CustomEvent(ORCA_EDITOR_SAVE_AND_CLOSE_EVENT, { detail: { fileId: saveDialogFileId } })
-    )
+    window.dispatchEvent(new CustomEvent(ORCA_EDITOR_SAVE_AND_CLOSE_EVENT, { detail: { fileId } }))
     setSaveDialogFileId(null)
-  }, [saveDialogFileId])
+  }, [saveDialogFileId, proceedToNativeWindowClose])
 
   const handleSaveDialogDiscard = useCallback(async () => {
     if (!saveDialogFileId) {
       return
     }
+    const fileId = saveDialogFileId
+    const pendingWindowClose = windowCloseAfterDirtyRef.current
+
+    if (pendingWindowClose) {
+      // Why: autosave runs on a background timer. Wait for any pending/in-flight
+      // write to settle before honoring "Don't Save", otherwise the file can be
+      // written after the user explicitly chose to discard their edits.
+      try {
+        await requestEditorSaveQuiesce({ fileId })
+      } catch {
+        // Quiesce failed — proceed with discard anyway so the user isn't stuck.
+      }
+      setSaveDialogFileId(null)
+      markFileDirty(fileId, false)
+      closeFile(fileId)
+
+      const nextDirty = useAppStore.getState().openFiles.filter((f) => f.isDirty)
+      if (nextDirty.length > 0) {
+        setSaveDialogFileId(nextDirty[0].id)
+      } else {
+        const { isQuitting } = pendingWindowClose
+        windowCloseAfterDirtyRef.current = null
+        proceedToNativeWindowClose(isQuitting)
+      }
+      return
+    }
+
     // Why: autosave runs on a background timer. Wait for any pending/in-flight
     // write to settle before honoring "Don't Save", otherwise the file can be
     // written after the user explicitly chose to discard their edits.
-    await requestEditorSaveQuiesce({ fileId: saveDialogFileId })
-    markFileDirty(saveDialogFileId, false)
-    closeFile(saveDialogFileId)
+    await requestEditorSaveQuiesce({ fileId })
+    markFileDirty(fileId, false)
+    closeFile(fileId)
     setSaveDialogFileId(null)
-  }, [saveDialogFileId, closeFile, markFileDirty])
+  }, [saveDialogFileId, closeFile, markFileDirty, proceedToNativeWindowClose])
 
   const handleSaveDialogCancel = useCallback(() => {
+    windowCloseAfterDirtyRef.current = null
     setSaveDialogFileId(null)
   }, [])
 
@@ -702,6 +814,21 @@ function Terminal(): React.JSX.Element | null {
         window.api.ui.confirmWindowClose()
         return
       }
+
+      // Why: if a previous close request is already being handled (user is
+      // working through dirty-file dialogs), ignore duplicate quit signals
+      // to avoid overwriting the in-flight ref and losing the close sequence.
+      if (windowCloseAfterDirtyRef.current) {
+        return
+      }
+
+      const dirtyFiles = useAppStore.getState().openFiles.filter((f) => f.isDirty)
+      if (dirtyFiles.length > 0) {
+        windowCloseAfterDirtyRef.current = { isQuitting }
+        setSaveDialogFileId(dirtyFiles[0].id)
+        return
+      }
+
       // Why: capture terminal scrollback buffers while TerminalPane components
       // are still mounted. Dispatching beforeunload triggers the App.tsx
       // captureAndFlush handler which serializes each pane's xterm buffer
