@@ -132,7 +132,8 @@ export function createPaneDOM(
     serializeAddon,
     unicode11Addon,
     webLinksAddon,
-    webglAddon: null
+    webglAddon: null,
+    compositionHandler: null
   }
 
   // Focus handler: clicking a pane makes it active and explicitly focuses
@@ -181,6 +182,40 @@ export function openTerminal(pane: ManagedPaneInternal): void {
 
   // Activate unicode 11
   terminal.unicode.activeVersion = '11'
+
+  // Why: the OS reads the focused textarea's screen rect at compositionstart to
+  // decide where to display the IME candidate window. xterm.js only repositions
+  // the textarea on compositionupdate (via updateCompositionElements), not on
+  // compositionstart, so the window can appear at a stale cursor position. We
+  // force-sync the textarea position in a capture-phase listener so the OS sees
+  // the correct location before it opens the candidate window.
+  //
+  // Cell dimensions are derived from the public .xterm-screen element's bounds
+  // (xterm sizes that element to cols*cellWidth × rows*cellHeight) rather than
+  // poking `_core._renderService.dimensions` — keeps us on the public API
+  // surface so upgrades don't silently regress the fix.
+  if (terminal.element && terminal.textarea) {
+    const screenElement = terminal.element.querySelector<HTMLElement>('.xterm-screen')
+    const textarea = terminal.textarea
+    const handler = (): void => {
+      if (!screenElement) {
+        return
+      }
+      const rect = screenElement.getBoundingClientRect()
+      const cellWidth = rect.width / terminal.cols
+      const cellHeight = rect.height / terminal.rows
+      if (!(cellWidth > 0) || !(cellHeight > 0)) {
+        return
+      }
+      const buf = terminal.buffer.active
+      const x = Math.min(buf.cursorX, terminal.cols - 1)
+      textarea.style.top = `${buf.cursorY * cellHeight}px`
+      textarea.style.left = `${x * cellWidth}px`
+    }
+    terminal.element.addEventListener('compositionstart', handler, true)
+    // Store so disposePane() can remove it and avoid a memory leak.
+    pane.compositionHandler = handler
+  }
 
   if (pane.gpuRenderingEnabled) {
     attachWebgl(pane)
@@ -243,6 +278,10 @@ export function disposePane(
   pane: ManagedPaneInternal,
   panes: Map<number, ManagedPaneInternal>
 ): void {
+  if (pane.compositionHandler) {
+    pane.terminal.element?.removeEventListener('compositionstart', pane.compositionHandler, true)
+    pane.compositionHandler = null
+  }
   try {
     pane.webglAddon?.dispose()
   } catch {
