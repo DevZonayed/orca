@@ -5,6 +5,7 @@
  * - New tab works
  * - dragging tabs around to reorder them
  * - closing tabs works
+ * - double-click a tab to rename it inline
  */
 
 import { test, expect } from './helpers/orca-app'
