@@ -11,7 +11,7 @@ import type { PaneManagerOptions, ManagedPaneInternal } from './pane-manager-typ
 import type { DragReorderState } from './pane-drag-reorder'
 import type { DragReorderCallbacks } from './pane-drag-reorder'
 import { attachPaneDrag } from './pane-drag-reorder'
-import { safeFit } from './pane-tree-ops'
+import { safeFit, captureScrollState, restoreScrollState } from './pane-tree-ops'
 
 // ---------------------------------------------------------------------------
 // Pane creation, terminal open/close, addon management
@@ -133,7 +133,8 @@ export function createPaneDOM(
     unicode11Addon,
     webLinksAddon,
     webglAddon: null,
-    compositionHandler: null
+    compositionHandler: null,
+    pendingSplitScrollState: null
   }
 
   // Focus handler: clicking a pane makes it active and explicitly focuses
@@ -227,6 +228,17 @@ export function openTerminal(pane: ManagedPaneInternal): void {
   })
 }
 
+export function disposeWebgl(pane: ManagedPaneInternal): void {
+  if (pane.webglAddon) {
+    try {
+      pane.webglAddon.dispose()
+    } catch {
+      /* ignore */
+    }
+    pane.webglAddon = null
+  }
+}
+
 export function attachWebgl(pane: ManagedPaneInternal): void {
   if (!ENABLE_WEBGL_RENDERER || !pane.gpuRenderingEnabled) {
     pane.webglAddon = null
@@ -251,13 +263,20 @@ export function attachWebgl(pane: ManagedPaneInternal): void {
       // top of the terminal while only the most recent output is visible at
       // the bottom. Deferring to the next frame gives the DOM renderer time
       // to initialise before we ask it to repaint.
+      //
+      // Why content-match instead of wasAtBottom: context loss often fires
+      // during splitPane when a new WebGL canvas is created and Chromium
+      // reclaims the old one. The fit() here triggers a reflow that changes
+      // line numbering; the simple wasAtBottom check can't track partially-
+      // scrolled positions and would undo scroll restoration from splitPane.
       requestAnimationFrame(() => {
         try {
-          const buf = pane.terminal.buffer.active
-          const wasAtBottom = buf.viewportY >= buf.baseY
-          pane.fitAddon.fit()
-          if (wasAtBottom) {
-            pane.terminal.scrollToBottom()
+          if (pane.pendingSplitScrollState) {
+            pane.fitAddon.fit()
+          } else {
+            const scrollState = captureScrollState(pane.terminal)
+            pane.fitAddon.fit()
+            restoreScrollState(pane.terminal, scrollState)
           }
           pane.terminal.refresh(0, pane.terminal.rows - 1)
         } catch {
