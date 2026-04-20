@@ -295,28 +295,17 @@ function App(): React.JSX.Element {
     return () => window.removeEventListener('beforeunload', captureAndFlush)
   }, [])
 
-  // Periodically capture terminal scrollback buffers and persist to disk.
-  // Why: the shutdown path captures buffers in beforeunload, but periodic
-  // saves provide a safety net so scrollback is available on restart even
-  // if an unexpected exit (crash, force-kill) bypasses normal shutdown.
-  useEffect(() => {
-    const PERIODIC_SAVE_INTERVAL_MS = 3 * 60_000
-    const timer = window.setInterval(() => {
-      if (!useAppStore.getState().workspaceSessionReady || shutdownBufferCaptures.size === 0) {
-        return
-      }
-      for (const capture of shutdownBufferCaptures) {
-        try {
-          capture()
-        } catch {
-          // Don't let one pane's failure block the rest.
-        }
-      }
-      const state = useAppStore.getState()
-      void window.api.session.set(buildWorkspaceSessionPayload(state))
-    }, PERIODIC_SAVE_INTERVAL_MS)
-    return () => window.clearInterval(timer)
-  }, [])
+  // Why there is no periodic scrollback save: PR #461 added a 3-minute
+  // setInterval that re-serialized every mounted TerminalPane's scrollback
+  // so a crash wouldn't lose in-session output. With many panes of
+  // accumulated output, each tick blocked the renderer main thread for
+  // several seconds (serialize is synchronous and does a binary search on
+  // >512KB buffers), causing visible input lag across the whole app.
+  // The durable replacement is the out-of-process terminal daemon
+  // (PR #729), which preserves buffers across renderer crashes with no
+  // main-thread work. Non-daemon users lose in-session scrollback on an
+  // unexpected exit — an acceptable tradeoff vs. periodic UI stalls, and
+  // in line with how most terminal apps behave.
 
   useEffect(() => {
     if (!persistedUIReady) {
