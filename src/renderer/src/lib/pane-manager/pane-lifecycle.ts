@@ -135,7 +135,8 @@ export function createPaneDOM(
     webglAddon: null,
     compositionHandler: null,
     pendingSplitScrollState: null,
-    pendingDragScrollState: null
+    pendingDragScrollState: null,
+    pendingLayoutScrollState: null
   }
 
   // Focus handler: clicking a pane makes it active and explicitly focuses
@@ -277,6 +278,9 @@ export function attachWebgl(pane: ManagedPaneInternal): void {
           } else if (pane.pendingDragScrollState) {
             pane.fitAddon.fit()
             restoreScrollState(pane.terminal, pane.pendingDragScrollState)
+          } else if (pane.pendingLayoutScrollState) {
+            pane.fitAddon.fit()
+            restoreScrollState(pane.terminal, pane.pendingLayoutScrollState)
           } else {
             const scrollState = captureScrollState(pane.terminal)
             pane.fitAddon.fit()
@@ -341,4 +345,25 @@ export function disposePane(
     /* ignore */
   }
   panes.delete(pane.id)
+}
+
+export function suspendAllRendering(panes: Map<number, ManagedPaneInternal>): void {
+  for (const pane of panes.values()) {
+    disposeWebgl(pane)
+  }
+}
+
+export function resumeAllRendering(panes: Map<number, ManagedPaneInternal>): void {
+  for (const pane of panes.values()) {
+    if (pane.gpuRenderingEnabled && !pane.webglAddon) {
+      attachWebgl(pane)
+      // Why: fresh WebGL canvas from attachWebgl() has no painted content;
+      // without refresh the terminal appears frozen when dims are unchanged.
+      try {
+        pane.terminal.refresh(0, pane.terminal.rows - 1)
+      } catch {
+        /* ignore */
+      }
+    }
+  }
 }

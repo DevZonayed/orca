@@ -1,9 +1,11 @@
+/* oxlint-disable max-lines */
 import type {
   PaneManagerOptions,
   PaneStyleOptions,
   ManagedPane,
   ManagedPaneInternal,
-  DropZone
+  DropZone,
+  ScrollState
 } from './pane-manager-types'
 import {
   createDivider,
@@ -22,7 +24,9 @@ import {
   openTerminal,
   attachWebgl,
   disposeWebgl,
-  disposePane
+  disposePane,
+  suspendAllRendering,
+  resumeAllRendering
 } from './pane-lifecycle'
 import { shouldFollowMouseFocus } from './focus-follows-mouse'
 import {
@@ -35,7 +39,13 @@ import {
   captureScrollState,
   refitPanesUnder
 } from './pane-tree-ops'
-import { lockDragScroll, unlockDragScroll } from './pane-drag-scroll'
+import {
+  lockDragScroll,
+  unlockDragScroll,
+  captureAllPaneScrollStates,
+  lockAllPaneScrollStates,
+  unlockAllPaneScrollStates
+} from './pane-drag-scroll'
 import { scheduleSplitScrollRestore } from './pane-split-scroll'
 
 export type { PaneManagerOptions, PaneStyleOptions, ManagedPane, DropZone }
@@ -182,8 +192,25 @@ export class PaneManager {
     return Array.from(this.panes.values()).map((p) => this.toPublic(p))
   }
 
-  fitAllPanes(): void {
-    fitAllPanesInternal(this.panes)
+  fitAllPanes(preCapturedStates?: Map<number, ScrollState>): void {
+    fitAllPanesInternal(this.panes, preCapturedStates)
+  }
+
+  captureAllScrollStates(): Map<number, ScrollState> {
+    return captureAllPaneScrollStates(this.panes)
+  }
+
+  lockAllScrollStates(): void {
+    lockAllPaneScrollStates(this.panes)
+  }
+
+  unlockAllScrollStates(): void {
+    unlockAllPaneScrollStates(this.panes)
+  }
+
+  isPaneDragResizing(paneId: number): boolean {
+    const pane = this.panes.get(paneId)
+    return pane?.pendingDragScrollState != null
   }
 
   getActivePane(): ManagedPane | null {
@@ -236,32 +263,13 @@ export class PaneManager {
   }
 
   suspendRendering(): void {
-    for (const pane of this.panes.values()) {
-      disposeWebgl(pane)
-    }
+    suspendAllRendering(this.panes)
   }
 
   resumeRendering(): void {
-    for (const pane of this.panes.values()) {
-      if (pane.gpuRenderingEnabled && !pane.webglAddon) {
-        attachWebgl(pane)
-        // Why: the fitPanes() optimization skips panes whose dimensions are
-        // unchanged (common when a worktree goes hidden→visible at the same
-        // window size). But the fresh WebGL canvas created by attachWebgl()
-        // has no painted content — without an explicit refresh the terminal
-        // appears frozen until something forces a dimension change (e.g. a
-        // split). This mirrors the onContextLoss handler in attachWebgl which
-        // calls the same refresh after falling back to the DOM renderer.
-        try {
-          pane.terminal.refresh(0, pane.terminal.rows - 1)
-        } catch {
-          /* ignore — pane may not be fully initialised yet */
-        }
-      }
-    }
+    resumeAllRendering(this.panes)
   }
 
-  /** Move a pane from its current position to a new position relative to a target pane. */
   movePane(sourcePaneId: number, targetPaneId: number, zone: DropZone): void {
     handlePaneDrop(sourcePaneId, targetPaneId, zone, this.dragState, this.getDragCallbacks())
   }
@@ -276,10 +284,6 @@ export class PaneManager {
     this.activePaneId = null
   }
 
-  // -----------------------------------------------------------------------
-  // Internal helpers
-  // -----------------------------------------------------------------------
-
   private createPaneInternal(): ManagedPaneInternal {
     const id = this.nextPaneId++
     const pane = createPaneDOM(
@@ -289,12 +293,8 @@ export class PaneManager {
       this.getDragCallbacks(),
       (paneId) => {
         if (!this.destroyed) {
-          // Why: split-pane layout/focus callbacks can leave the manager's
-          // activePaneId temporarily in sync while the browser's real focused
-          // xterm textarea is still on a different pane. Clicking a pane must
-          // always re-focus its terminal, even if the manager already thinks
-          // that pane is active; otherwise input can keep going to the wrong
-          // split after vertical/horizontal splits.
+          // Why: always re-focus on click — activePaneId can be stale after
+          // splits, sending input to the wrong pane without an explicit focus.
           this.setActivePane(paneId, { focus: true })
         }
       },
@@ -306,16 +306,8 @@ export class PaneManager {
     return pane
   }
 
-  /**
-   * Focus-follows-mouse entry point. Collects gate inputs from the manager
-   * and delegates to the pure gate helper.
-   *
-   * Invariant for future contributors: modal overlays (context menus, close
-   * dialogs, command palette) must be rendered as portals/siblings OUTSIDE
-   * the pane container. If a future overlay is ever rendered inside a .pane
-   * element, mouseenter will still fire on the pane underneath and this
-   * handler will incorrectly switch focus. Keep overlays out of the pane.
-   */
+  // Why: modal overlays must be rendered OUTSIDE .pane elements, otherwise
+  // mouseenter fires on the pane underneath and incorrectly switches focus.
   private handlePaneMouseEnter(paneId: number, event: MouseEvent): void {
     if (
       shouldFollowMouseFocus({
@@ -356,7 +348,6 @@ export class PaneManager {
     }
   }
 
-  /** Build the callbacks object for drag-reorder functions. */
   private getDragCallbacks() {
     return {
       getPanes: () => this.panes,

@@ -1,7 +1,8 @@
 import type { PaneManager } from '@/lib/pane-manager/pane-manager'
+import type { ScrollState } from '@/lib/pane-manager/pane-manager-types'
 
-export function fitPanes(manager: PaneManager): void {
-  manager.fitAllPanes()
+export function fitPanes(manager: PaneManager, preCapturedStates?: Map<number, ScrollState>): void {
+  manager.fitAllPanes(preCapturedStates)
 }
 
 /**
@@ -33,8 +34,11 @@ export function focusActivePane(manager: PaneManager): void {
   activePane?.terminal.focus()
 }
 
-export function fitAndFocusPanes(manager: PaneManager): void {
-  fitPanes(manager)
+export function fitAndFocusPanes(
+  manager: PaneManager,
+  preCapturedStates?: Map<number, ScrollState>
+): void {
+  fitPanes(manager, preCapturedStates)
   focusActivePane(manager)
 }
 
