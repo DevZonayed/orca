@@ -139,10 +139,10 @@ function getTaskStatusTone(item: GitHubWorkItem): string {
   return 'border-cyan-500/30 bg-cyan-500/10 text-cyan-700 dark:text-cyan-200'
 }
 
-export default function NewWorkspacePage(): React.JSX.Element {
+export default function TaskPage(): React.JSX.Element {
   const settings = useAppStore((s) => s.settings)
-  const pageData = useAppStore((s) => s.newWorkspacePageData)
-  const closeNewWorkspacePage = useAppStore((s) => s.closeNewWorkspacePage)
+  const pageData = useAppStore((s) => s.taskPageData)
+  const closeTaskPage = useAppStore((s) => s.closeTaskPage)
   const activeModal = useAppStore((s) => s.activeModal)
   const repos = useAppStore((s) => s.repos)
   const activeRepoId = useAppStore((s) => s.activeRepoId)
@@ -150,6 +150,18 @@ export default function NewWorkspacePage(): React.JSX.Element {
   const updateSettings = useAppStore((s) => s.updateSettings)
   const fetchWorkItems = useAppStore((s) => s.fetchWorkItems)
   const getCachedWorkItems = useAppStore((s) => s.getCachedWorkItems)
+  // Why: in workspace view (a worktree is active) App.tsx hides its
+  // full-width titlebar, so this page renders its own 42px titlebar strip to
+  // keep the top band continuous with the sidebar header and tab rows. When
+  // the sidebar is also collapsed, App.tsx floats its titlebar-left controls
+  // (traffic lights, sidebar toggle, agent badge) over our strip — reserve
+  // the measured width of those controls on the left so our "Tasks" label
+  // never sits behind them. In non-workspace mode App.tsx already owns the
+  // top titlebar, so skip our strip to avoid a duplicate band.
+  const sidebarOpen = useAppStore((s) => s.sidebarOpen)
+  const activeWorktreeId = useAppStore((s) => s.activeWorktreeId)
+  const workspaceActive = activeWorktreeId !== null
+  const reserveCollapsedHeaderSpace = workspaceActive && !sidebarOpen
 
   const eligibleRepos = useMemo(() => repos.filter((repo) => isGitRepoKind(repo)), [repos])
 
@@ -489,27 +501,79 @@ export default function NewWorkspacePage(): React.JSX.Element {
       }
 
       event.preventDefault()
-      closeNewWorkspacePage()
+      closeTaskPage()
     }
 
     window.addEventListener('keydown', onKeyDown, { capture: true })
     return () => window.removeEventListener('keydown', onKeyDown, { capture: true })
-  }, [activeModal, closeNewWorkspacePage, drawerWorkItem, newIssueOpen])
+  }, [activeModal, closeTaskPage, drawerWorkItem, newIssueOpen])
 
   return (
     <div className="relative flex h-full min-h-0 flex-1 overflow-hidden bg-background text-foreground">
-      <div className="relative z-10 flex min-h-0 flex-1 flex-col">
-        {/* Why: left-aligned so it doesn't collide with the app sidebar on the
-            right edge. The GitHub preview is a modal sheet that overlays the
-            whole surface, so this button is hidden behind it while it's open. */}
-        <div className="flex-none flex items-center justify-start px-5 py-3 md:px-8 md:py-4">
+      {/* Why: no z-index here. App.tsx's floating titlebar-left (traffic lights
+          + sidebar-expand toggle + agent badge) is absolutely positioned at
+          z-10 in the root stacking context when the sidebar is collapsed. If
+          this wrapper also sits at z-10 it ties with titlebar-left on
+          z-index and wins on DOM order (later sibling), so even though our
+          top-left spacer is pointer-events-none, the click still lands on
+          this wrapper behind the spacer instead of falling through to the
+          sidebar toggle. Keeping this at z-auto lets titlebar-left's z-10
+          paint above our content and receive the click cleanly. */}
+      <div className="relative flex min-h-0 flex-1 flex-col">
+        {/* Why: in workspace view App.tsx suppresses its full-width titlebar,
+            so render a matching 42px strip here to keep the top band
+            continuous with the sidebar header and tab rows. When the sidebar
+            is collapsed, App.tsx floats its titlebar-left controls (traffic
+            lights, sidebar toggle, agent badge) over the top-left of this
+            page at z-10, and the page wrapper stays at z-auto so that float
+            always paints above our content. Keep the reserved region
+            transparent so the floating titlebar-left's own bg + border-bottom
+            is what the user sees on the left — the two segments then read as
+            one continuous band. The painted remainder is a drag-region so the
+            window stays movable here, matching other top chrome. Skipped in
+            non-workspace mode because App.tsx already owns the top titlebar
+            and a second strip would produce a duplicate band. */}
+        {workspaceActive ? (
+          <div className="flex-none flex h-[42px]">
+            {reserveCollapsedHeaderSpace ? (
+              // Why: the floating titlebar-left hosts real interactive chrome
+              // (sidebar-expand toggle, agent badge) under this segment. Both
+              // pointer-events-none AND WebkitAppRegion='no-drag' are needed:
+              // without pointer-events-none, this transparent div absorbs
+              // clicks before they reach the toggle; without no-drag, Electron
+              // marks the area as window-drag and still consumes clicks even
+              // when the element itself is click-through.
+              <div
+                aria-hidden
+                className="h-full shrink-0 pointer-events-none"
+                style={
+                  {
+                    width: 'var(--collapsed-sidebar-header-width)',
+                    WebkitAppRegion: 'no-drag'
+                  } as React.CSSProperties
+                }
+              />
+            ) : null}
+            <div
+              className="flex h-full flex-1 items-center border-b border-border bg-card px-4 text-sm font-medium text-muted-foreground"
+              style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
+            >
+              <span>Tasks</span>
+            </div>
+          </div>
+        ) : null}
+
+        {/* Why: Close sits in its own row below the titlebar strip so it can
+            never overlap the floating macOS traffic lights. Kept left-aligned
+            to stay out of the app sidebar on the right edge. */}
+        <div className="flex-none flex items-center justify-start px-5 pt-3 pb-1 md:px-8 md:pt-4">
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
                 variant="ghost"
                 size="icon"
-                className="size-8 rounded-full z-10"
-                onClick={closeNewWorkspacePage}
+                className="size-8 rounded-full"
+                onClick={closeTaskPage}
                 aria-label="Close tasks"
               >
                 <X className="size-4" />
