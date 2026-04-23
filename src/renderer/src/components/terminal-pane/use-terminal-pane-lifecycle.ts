@@ -29,6 +29,7 @@ import type { EffectiveMacOptionAsAlt } from '@/lib/keyboard-layout/detect-optio
 import { resolveEffectiveTerminalAppearance } from '@/lib/terminal-theme'
 import { connectPanePty } from './pty-connection'
 import type { PtyTransport } from './pty-transport'
+import type { ReplayingPanesRef } from './replay-guard'
 import { fitAndFocusPanes, fitPanes } from './pane-helpers'
 import { registerRuntimeTerminalTab, scheduleRuntimeGraphSync } from '@/runtime/sync-runtime-graph'
 import { e2eConfig } from '@/lib/e2e-config'
@@ -76,6 +77,7 @@ type UseTerminalPaneLifecycleDeps = {
   paneLastThemeModeRef: React.RefObject<Map<number, 'dark' | 'light'>>
   panePtyBindingsRef: React.RefObject<Map<number, IDisposable>>
   pendingWritesRef: React.RefObject<Map<number, string>>
+  replayingPanesRef: ReplayingPanesRef
   isActiveRef: React.RefObject<boolean>
   isVisibleRef: React.RefObject<boolean>
   onPtyExitRef: React.RefObject<(ptyId: string) => void>
@@ -154,6 +156,7 @@ export function useTerminalPaneLifecycle({
   paneLastThemeModeRef,
   panePtyBindingsRef,
   pendingWritesRef,
+  replayingPanesRef,
   isActiveRef,
   isVisibleRef,
   onPtyExitRef,
@@ -286,6 +289,7 @@ export function useTerminalPaneLifecycle({
       startup,
       paneTransportsRef,
       pendingWritesRef,
+      replayingPanesRef,
       isActiveRef,
       isVisibleRef,
       onPtyExitRef,
@@ -467,6 +471,7 @@ export function useTerminalPaneLifecycle({
         clearRuntimePaneTitle(tabId, paneId)
         paneFontSizesRef.current.delete(paneId)
         pendingWritesRef.current.delete(paneId)
+        replayingPanesRef.current.delete(paneId)
         // Clean up pane title state so closed panes don't leave stale entries.
         setPaneTitles((prev) => {
           if (!(paneId in prev)) {
@@ -567,7 +572,8 @@ export function useTerminalPaneLifecycle({
     restoreScrollbackBuffers(
       manager,
       initialLayoutRef.current.buffersByLeafId,
-      restoredPaneByLeafId
+      restoredPaneByLeafId,
+      replayingPanesRef
     )
 
     // Seed pane titles from the persisted snapshot using the same
