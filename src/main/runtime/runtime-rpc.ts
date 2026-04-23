@@ -254,6 +254,25 @@ export class OrcaRuntimeRpcServer {
       }
     }
 
+    if (request.method === 'terminal.resolveActive') {
+      try {
+        const params =
+          request.params && typeof request.params === 'object' && request.params !== null
+            ? (request.params as { worktree?: unknown })
+            : null
+        const worktree = typeof params?.worktree === 'string' ? params.worktree : undefined
+        const handle = await this.runtime.resolveActiveTerminal(worktree)
+        return {
+          id: request.id,
+          ok: true,
+          result: { handle },
+          _meta: { runtimeId: this.runtime.getRuntimeId() }
+        }
+      } catch (error) {
+        return this.runtimeErrorResponse(request.id, error)
+      }
+    }
+
     if (request.method === 'terminal.show') {
       try {
         const terminalHandle =
@@ -281,16 +300,33 @@ export class OrcaRuntimeRpcServer {
 
     if (request.method === 'terminal.read') {
       try {
-        const terminalHandle =
+        const params =
           request.params && typeof request.params === 'object' && request.params !== null
-            ? ((request.params as { terminal?: unknown }).terminal ?? null)
+            ? (request.params as { terminal?: unknown; cursor?: unknown })
             : null
 
+        const terminalHandle = params?.terminal ?? null
         if (typeof terminalHandle !== 'string' || terminalHandle.length === 0) {
           return this.errorResponse(request.id, 'invalid_argument', 'Missing terminal handle')
         }
 
-        const result = await this.runtime.readTerminal(terminalHandle)
+        if (
+          params?.cursor !== undefined &&
+          (!Number.isInteger(params.cursor) || (params.cursor as number) < 0)
+        ) {
+          return this.errorResponse(
+            request.id,
+            'invalid_argument',
+            'Cursor must be a non-negative integer'
+          )
+        }
+
+        const cursor =
+          typeof params?.cursor === 'number' && Number.isFinite(params.cursor)
+            ? params.cursor
+            : undefined
+
+        const result = await this.runtime.readTerminal(terminalHandle, { cursor })
         return {
           id: request.id,
           ok: true,
@@ -298,6 +334,41 @@ export class OrcaRuntimeRpcServer {
           _meta: {
             runtimeId: this.runtime.getRuntimeId()
           }
+        }
+      } catch (error) {
+        return this.runtimeErrorResponse(request.id, error)
+      }
+    }
+
+    if (request.method === 'terminal.rename') {
+      try {
+        const params =
+          request.params && typeof request.params === 'object' && request.params !== null
+            ? (request.params as { terminal?: unknown; title?: unknown })
+            : null
+        const terminalHandle = params?.terminal ?? null
+        if (typeof terminalHandle !== 'string' || terminalHandle.length === 0) {
+          return this.errorResponse(request.id, 'invalid_argument', 'Missing terminal handle')
+        }
+        const title =
+          params?.title === null
+            ? null
+            : typeof params?.title === 'string'
+              ? params.title
+              : undefined
+        if (title === undefined) {
+          return this.errorResponse(
+            request.id,
+            'invalid_argument',
+            'Missing --title (pass empty string or null to reset)'
+          )
+        }
+        const result = await this.runtime.renameTerminal(terminalHandle, title || null)
+        return {
+          id: request.id,
+          ok: true,
+          result: { rename: result },
+          _meta: { runtimeId: this.runtime.getRuntimeId() }
         }
       } catch (error) {
         return this.runtimeErrorResponse(request.id, error)
@@ -355,11 +426,12 @@ export class OrcaRuntimeRpcServer {
           return this.errorResponse(request.id, 'invalid_argument', 'Missing terminal handle')
         }
 
-        if (params?.for !== 'exit') {
+        const forCondition = params?.for
+        if (forCondition !== 'exit' && forCondition !== 'tui-idle') {
           return this.errorResponse(
             request.id,
-            'not_supported_in_v1',
-            'Only terminal wait --for exit is supported in focused v1'
+            'invalid_argument',
+            'Invalid --for value. Supported: exit, tui-idle'
           )
         }
 
@@ -368,7 +440,10 @@ export class OrcaRuntimeRpcServer {
             ? params.timeoutMs
             : undefined
 
-        const result = await this.runtime.waitForTerminal(terminalHandle, { timeoutMs })
+        const result = await this.runtime.waitForTerminal(terminalHandle, {
+          condition: forCondition,
+          timeoutMs
+        })
         return {
           id: request.id,
           ok: true,
@@ -671,6 +746,60 @@ export class OrcaRuntimeRpcServer {
           _meta: {
             runtimeId: this.runtime.getRuntimeId()
           }
+        }
+      } catch (error) {
+        return this.runtimeErrorResponse(request.id, error)
+      }
+    }
+
+    if (request.method === 'terminal.create') {
+      try {
+        const params =
+          request.params && typeof request.params === 'object' && request.params !== null
+            ? (request.params as { worktree?: unknown; command?: unknown; title?: unknown })
+            : null
+        const worktreeSelector =
+          typeof params?.worktree === 'string' && params.worktree.length > 0
+            ? params.worktree
+            : undefined
+        const result = await this.runtime.createTerminal(worktreeSelector, {
+          command: typeof params?.command === 'string' ? params.command : undefined,
+          title: typeof params?.title === 'string' ? params.title : undefined
+        })
+        return {
+          id: request.id,
+          ok: true,
+          result: { terminal: result },
+          _meta: { runtimeId: this.runtime.getRuntimeId() }
+        }
+      } catch (error) {
+        return this.runtimeErrorResponse(request.id, error)
+      }
+    }
+
+    if (request.method === 'terminal.split') {
+      try {
+        const params =
+          request.params && typeof request.params === 'object' && request.params !== null
+            ? (request.params as { terminal?: unknown; direction?: unknown; command?: unknown })
+            : null
+        const terminalHandle = params?.terminal
+        if (typeof terminalHandle !== 'string' || terminalHandle.length === 0) {
+          return this.errorResponse(request.id, 'invalid_argument', 'Missing terminal handle')
+        }
+        const direction =
+          params?.direction === 'vertical' || params?.direction === 'horizontal'
+            ? params.direction
+            : undefined
+        const result = await this.runtime.splitTerminal(terminalHandle, {
+          direction,
+          command: typeof params?.command === 'string' ? params.command : undefined
+        })
+        return {
+          id: request.id,
+          ok: true,
+          result: { split: result },
+          _meta: { runtimeId: this.runtime.getRuntimeId() }
         }
       } catch (error) {
         return this.runtimeErrorResponse(request.id, error)
@@ -1871,6 +2000,50 @@ export class OrcaRuntimeRpcServer {
       }
     }
 
+    if (request.method === 'terminal.focus') {
+      try {
+        const params =
+          request.params && typeof request.params === 'object' && request.params !== null
+            ? (request.params as { terminal?: unknown })
+            : null
+        const terminalHandle = params?.terminal
+        if (typeof terminalHandle !== 'string' || terminalHandle.length === 0) {
+          return this.errorResponse(request.id, 'invalid_argument', 'Missing terminal handle')
+        }
+        const result = await this.runtime.focusTerminal(terminalHandle)
+        return {
+          id: request.id,
+          ok: true,
+          result: { focus: result },
+          _meta: { runtimeId: this.runtime.getRuntimeId() }
+        }
+      } catch (error) {
+        return this.runtimeErrorResponse(request.id, error)
+      }
+    }
+
+    if (request.method === 'terminal.close') {
+      try {
+        const params =
+          request.params && typeof request.params === 'object' && request.params !== null
+            ? (request.params as { terminal?: unknown })
+            : null
+        const terminalHandle = params?.terminal
+        if (typeof terminalHandle !== 'string' || terminalHandle.length === 0) {
+          return this.errorResponse(request.id, 'invalid_argument', 'Missing terminal handle')
+        }
+        const result = await this.runtime.closeTerminal(terminalHandle)
+        return {
+          id: request.id,
+          ok: true,
+          result: { close: result },
+          _meta: { runtimeId: this.runtime.getRuntimeId() }
+        }
+      } catch (error) {
+        return this.runtimeErrorResponse(request.id, error)
+      }
+    }
+
     return this.errorResponse(request.id, 'method_not_found', `Unknown method: ${request.method}`)
   }
 
@@ -1938,6 +2111,9 @@ export class OrcaRuntimeRpcServer {
       message === 'selector_ambiguous' ||
       message === 'terminal_handle_stale' ||
       message === 'terminal_not_writable' ||
+      message === 'terminal_exited' ||
+      message === 'terminal_gone' ||
+      message === 'no_active_terminal' ||
       message === 'repo_not_found' ||
       message === 'timeout' ||
       message === 'invalid_limit'

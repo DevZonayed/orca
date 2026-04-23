@@ -32,6 +32,12 @@ import type { PtyTransport } from './pty-transport'
 import { fitAndFocusPanes, fitPanes } from './pane-helpers'
 import { registerRuntimeTerminalTab, scheduleRuntimeGraphSync } from '@/runtime/sync-runtime-graph'
 import { e2eConfig } from '@/lib/e2e-config'
+import {
+  SPLIT_TERMINAL_PANE_EVENT,
+  CLOSE_TERMINAL_PANE_EVENT,
+  type SplitTerminalPaneDetail,
+  type CloseTerminalPaneDetail
+} from '@/constants/terminal'
 
 type UseTerminalPaneLifecycleDeps = {
   tabId: string
@@ -668,7 +674,56 @@ export function useTerminalPaneLifecycle({
     persistLayoutSnapshot()
     scheduleRuntimeGraphSync()
 
+    // Why: CLI-driven splits go through splitPaneWithOneShotStartup so the
+    // startup command is delivered via the PTY connection path (which waits
+    // for shell readiness) instead of terminal.paste() which can lose input
+    // if the shell hasn't started reading stdin yet.
+    function onCliSplitPane(event: Event): void {
+      const detail = (event as CustomEvent<SplitTerminalPaneDetail>).detail
+      if (!detail?.tabId || detail.tabId !== tabId) {
+        return
+      }
+      const mgr = managerRef.current
+      if (!mgr) {
+        return
+      }
+      if (detail.command) {
+        splitPaneWithOneShotStartup(ptyDeps, { command: detail.command }, () =>
+          mgr.splitPane(detail.paneRuntimeId, detail.direction)
+        )
+      } else {
+        mgr.splitPane(detail.paneRuntimeId, detail.direction)
+      }
+    }
+    window.addEventListener(SPLIT_TERMINAL_PANE_EVENT, onCliSplitPane)
+
+    // Why: CLI-driven pane close dispatches a CustomEvent so PaneManager handles
+    // sibling promotion in split layouts. Falls back to closing the whole tab
+    // when the target pane is the only one remaining.
+    function onCliClosePane(event: Event): void {
+      const detail = (event as CustomEvent<CloseTerminalPaneDetail>).detail
+      if (!detail?.tabId || detail.tabId !== tabId) {
+        return
+      }
+      const mgr = managerRef.current
+      if (!mgr) {
+        return
+      }
+      if (mgr.getPanes().length <= 1) {
+        useAppStore.getState().closeTab(tabId)
+      } else {
+        mgr.closePane(detail.paneRuntimeId)
+        scheduleRuntimeGraphSync()
+        syncCanExpandState()
+        queueResizeAll(isActive)
+        persistLayoutSnapshot()
+      }
+    }
+    window.addEventListener(CLOSE_TERMINAL_PANE_EVENT, onCliClosePane)
+
     return () => {
+      window.removeEventListener(SPLIT_TERMINAL_PANE_EVENT, onCliSplitPane)
+      window.removeEventListener(CLOSE_TERMINAL_PANE_EVENT, onCliClosePane)
       const tabStillExists = Boolean(
         useAppStore
           .getState()
