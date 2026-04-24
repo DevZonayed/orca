@@ -18,6 +18,7 @@ import {
   X
 } from 'lucide-react'
 import { toast } from 'sonner'
+
 import { useAppStore } from '@/store'
 import { useRepoMap } from '@/store/selectors'
 import { Button } from '@/components/ui/button'
@@ -37,6 +38,7 @@ import {
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import RepoMultiCombobox from '@/components/ui/repo-multi-combobox'
 import RepoDotLabel from '@/components/repo/RepoDotLabel'
 import { stripRepoQualifiers } from '../../../shared/task-query'
@@ -47,6 +49,7 @@ import { getLinkedWorkItemSuggestedName, getTaskPresetQuery } from '@/lib/new-wo
 import type { LinkedWorkItemSummary } from '@/lib/new-workspace'
 import { launchWorkItemDirect } from '@/lib/launch-work-item-direct'
 import { isGitRepoKind } from '../../../shared/repo-kind'
+import { useTeamStates } from '@/hooks/useIssueMetadata'
 import type { GitHubWorkItem, LinearIssue, TaskViewPresetId } from '../../../shared/types'
 import { shouldSuppressEnterSubmit } from '@/lib/new-workspace-enter-guard'
 
@@ -164,8 +167,315 @@ const LINEAR_PRIORITY_LABELS: Record<number, string> = {
   4: 'Low'
 }
 
-function getLinearPriorityLabel(priority: number): string {
-  return LINEAR_PRIORITY_LABELS[priority] ?? 'None'
+function GHStatusCell({
+  item,
+  repoPath
+}: {
+  item: GitHubWorkItem
+  repoPath: string | null
+}): React.JSX.Element {
+  const patchWorkItem = useAppStore((s) => s.patchWorkItem)
+  const [localState, setLocalState] = useState(item.state)
+  const [open, setOpen] = useState(false)
+  const reqRef = useRef(0)
+
+  useEffect(() => {
+    setLocalState(item.state)
+  }, [item.state])
+
+  const handleStateChange = useCallback(
+    (newState: 'open' | 'closed') => {
+      if (newState === localState || !repoPath || item.type !== 'issue') {
+        return
+      }
+      reqRef.current += 1
+      const reqId = reqRef.current
+      setLocalState(newState)
+      patchWorkItem(item.id, { state: newState })
+      window.api.gh
+        .updateIssue({ repoPath, number: item.number, updates: { state: newState } })
+        .then((result) => {
+          if (reqId !== reqRef.current) {
+            return
+          }
+          const typed = result as { ok?: boolean; error?: string }
+          if (typed && typed.ok === false) {
+            setLocalState(newState === 'closed' ? 'open' : 'closed')
+            patchWorkItem(item.id, { state: newState === 'closed' ? 'open' : 'closed' })
+            toast.error(typed.error ?? 'Failed to update state')
+          }
+        })
+        .catch(() => {
+          if (reqId !== reqRef.current) {
+            return
+          }
+          setLocalState(newState === 'closed' ? 'open' : 'closed')
+          patchWorkItem(item.id, { state: newState === 'closed' ? 'open' : 'closed' })
+          toast.error('Failed to update state')
+        })
+    },
+    [item.id, item.number, item.type, localState, repoPath, patchWorkItem]
+  )
+
+  if (item.type !== 'issue' || !repoPath) {
+    return (
+      <span
+        className={cn(
+          'rounded-full border px-2 py-0.5 text-[10px] font-medium',
+          getTaskStatusTone(item)
+        )}
+      >
+        {getTaskStatusLabel(item)}
+      </span>
+    )
+  }
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          onClick={(e) => e.stopPropagation()}
+          className={cn(
+            'rounded-full border px-2 py-0.5 text-[10px] font-medium transition hover:opacity-80',
+            localState === 'closed'
+              ? 'border-rose-500/30 bg-rose-500/10 text-rose-600 dark:text-rose-300'
+              : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-300'
+          )}
+        >
+          {localState === 'closed' ? 'Closed' : 'Open'}
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="w-36 p-1" align="start" onClick={(e) => e.stopPropagation()}>
+        <button
+          type="button"
+          onClick={() => {
+            handleStateChange('open')
+            setOpen(false)
+          }}
+          className={cn(
+            'flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-[12px] hover:bg-accent',
+            localState === 'open' && 'bg-accent/50'
+          )}
+        >
+          <CircleDot className="size-3 text-emerald-500" />
+          Open
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            handleStateChange('closed')
+            setOpen(false)
+          }}
+          className={cn(
+            'flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-[12px] hover:bg-accent',
+            localState === 'closed' && 'bg-accent/50'
+          )}
+        >
+          <CircleDot className="size-3 text-rose-500" />
+          Closed
+        </button>
+      </PopoverContent>
+    </Popover>
+  )
+}
+
+function LinearStatusCell({ issue }: { issue: LinearIssue }): React.JSX.Element {
+  const patchLinearIssue = useAppStore((s) => s.patchLinearIssue)
+  const fetchLinearIssue = useAppStore((s) => s.fetchLinearIssue)
+  const [localState, setLocalState] = useState(issue.state)
+  const reqRef = useRef(0)
+
+  useEffect(() => {
+    setLocalState(issue.state)
+  }, [issue.state])
+
+  const teamId = issue.team?.id || null
+  const states = useTeamStates(teamId)
+
+  const handleStateChange = useCallback(
+    (stateId: string) => {
+      const newState = states.data.find((s) => s.id === stateId)
+      if (!newState) {
+        return
+      }
+
+      const stateValue = { name: newState.name, type: newState.type, color: newState.color }
+      reqRef.current += 1
+      const reqId = reqRef.current
+
+      setLocalState(stateValue)
+      patchLinearIssue(issue.id, { state: stateValue })
+      window.api.linear
+        .updateIssue({ id: issue.id, updates: { stateId } })
+        .then((result) => {
+          if (reqId !== reqRef.current) {
+            return
+          }
+          const typed = result as { ok?: boolean; error?: string }
+          if (typed && typed.ok === false) {
+            setLocalState(issue.state)
+            patchLinearIssue(issue.id, { state: issue.state })
+            toast.error(typed.error ?? 'Failed to update status')
+          } else {
+            fetchLinearIssue(issue.id)
+          }
+        })
+        .catch(() => {
+          if (reqId !== reqRef.current) {
+            return
+          }
+          setLocalState(issue.state)
+          patchLinearIssue(issue.id, { state: issue.state })
+          toast.error('Failed to update status')
+        })
+    },
+    [issue.id, issue.state, states.data, patchLinearIssue, fetchLinearIssue]
+  )
+
+  const currentStateId = states.data.find(
+    (s) => s.name === localState.name && s.type === localState.type
+  )?.id
+
+  const [open, setOpen] = useState(false)
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          onClick={(e) => e.stopPropagation()}
+          disabled={states.loading}
+          className="flex items-center gap-1.5 rounded-sm px-1 py-0.5 transition hover:bg-muted/60 disabled:opacity-50"
+        >
+          <span
+            className="inline-block size-2 shrink-0 rounded-full"
+            style={{ backgroundColor: localState.color }}
+          />
+          <span className="truncate text-xs text-muted-foreground">{localState.name}</span>
+        </button>
+      </PopoverTrigger>
+      <PopoverContent
+        className="popover-scroll-content scrollbar-sleek w-48 p-1"
+        align="start"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div>
+          {states.data.map((s) => (
+            <button
+              key={s.id}
+              type="button"
+              onClick={() => {
+                handleStateChange(s.id)
+                setOpen(false)
+              }}
+              className={cn(
+                'flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-[12px] hover:bg-accent',
+                currentStateId === s.id && 'bg-accent/50'
+              )}
+            >
+              <span
+                className="inline-block size-2 rounded-full"
+                style={{ backgroundColor: s.color }}
+              />
+              {s.name}
+            </button>
+          ))}
+        </div>
+      </PopoverContent>
+    </Popover>
+  )
+}
+
+function LinearPriorityCell({ issue }: { issue: LinearIssue }): React.JSX.Element {
+  const patchLinearIssue = useAppStore((s) => s.patchLinearIssue)
+  const fetchLinearIssue = useAppStore((s) => s.fetchLinearIssue)
+  const [localPriority, setLocalPriority] = useState(issue.priority)
+  const [pending, setPending] = useState(false)
+  const reqRef = useRef(0)
+
+  useEffect(() => {
+    setLocalPriority(issue.priority)
+  }, [issue.priority])
+
+  const handlePriorityChange = useCallback(
+    (priority: number) => {
+      if (priority === localPriority) {
+        return
+      }
+      reqRef.current += 1
+      const reqId = reqRef.current
+      setLocalPriority(priority)
+      patchLinearIssue(issue.id, { priority })
+      setPending(true)
+      window.api.linear
+        .updateIssue({ id: issue.id, updates: { priority } })
+        .then((result) => {
+          if (reqId !== reqRef.current) {
+            return
+          }
+          const typed = result as { ok?: boolean; error?: string }
+          if (typed && typed.ok === false) {
+            setLocalPriority(issue.priority)
+            patchLinearIssue(issue.id, { priority: issue.priority })
+            toast.error(typed.error ?? 'Failed to update priority')
+          } else {
+            fetchLinearIssue(issue.id)
+          }
+        })
+        .catch(() => {
+          if (reqId !== reqRef.current) {
+            return
+          }
+          setLocalPriority(issue.priority)
+          patchLinearIssue(issue.id, { priority: issue.priority })
+          toast.error('Failed to update priority')
+        })
+        .finally(() => {
+          if (reqId !== reqRef.current) {
+            return
+          }
+          setPending(false)
+        })
+    },
+    [issue.id, issue.priority, localPriority, patchLinearIssue, fetchLinearIssue]
+  )
+
+  const [open, setOpen] = useState(false)
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          onClick={(e) => e.stopPropagation()}
+          disabled={pending}
+          className="rounded-sm px-1 py-0.5 text-xs text-muted-foreground transition hover:bg-muted/60 disabled:opacity-50"
+        >
+          {LINEAR_PRIORITY_LABELS[localPriority] ?? `P${localPriority}`}
+          {pending && <LoaderCircle className="ml-1 inline size-3 animate-spin" />}
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="w-36 p-1" align="start" onClick={(e) => e.stopPropagation()}>
+        {[0, 1, 2, 3, 4].map((p) => (
+          <button
+            key={p}
+            type="button"
+            onClick={() => {
+              handlePriorityChange(p)
+              setOpen(false)
+            }}
+            className={cn(
+              'flex w-full items-center rounded-sm px-2 py-1.5 text-[12px] hover:bg-accent',
+              localPriority === p && 'bg-accent/50'
+            )}
+          >
+            {LINEAR_PRIORITY_LABELS[p]}
+          </button>
+        ))}
+      </PopoverContent>
+    </Popover>
+  )
 }
 
 export default function TaskPage(): React.JSX.Element {
@@ -330,13 +640,70 @@ export default function TaskPage(): React.JSX.Element {
   // Why: clicking a GitHub row opens this drawer for a read-only preview.
   // Drawer's "Use" button routes through the same direct-launch flow as the
   // row-level "Use" CTA so behavior is consistent regardless of entry point.
-  const [drawerWorkItem, setDrawerWorkItem] = useState<GitHubWorkItem | null>(null)
+  const [drawerWorkItemId, setDrawerWorkItemId] = useState<string | null>(null)
+  const [drawerWorkItemFallback, setDrawerWorkItemFallback] = useState<GitHubWorkItem | null>(null)
+
+  const workItemsCache = useAppStore((s) => s.workItemsCache)
+  const linearIssueCache = useAppStore((s) => s.linearIssueCache)
+  const linearSearchCache = useAppStore((s) => s.linearSearchCache)
+
+  // Why: derive the drawer's work item from the store cache so it reflects
+  // optimistic patches (e.g. table-cell status toggle). Falls back to the
+  // snapshot stored at click time for newly-created stubs not yet in the cache.
+  const drawerWorkItem = useMemo(() => {
+    if (!drawerWorkItemId) {
+      return null
+    }
+    for (const entry of Object.values(workItemsCache)) {
+      const found = entry?.data?.find((wi) => wi.id === drawerWorkItemId)
+      if (found) {
+        return found
+      }
+    }
+    return drawerWorkItemFallback
+  }, [drawerWorkItemId, workItemsCache, drawerWorkItemFallback])
+
+  const setDrawerWorkItem = useCallback((item: GitHubWorkItem | null) => {
+    setDrawerWorkItemId(item?.id ?? null)
+    setDrawerWorkItemFallback(item)
+  }, [])
   const [newIssueOpen, setNewIssueOpen] = useState(false)
   const [newIssueTitle, setNewIssueTitle] = useState('')
   const [newIssueBody, setNewIssueBody] = useState('')
   const [newIssueSubmitting, setNewIssueSubmitting] = useState(false)
 
-  const [drawerLinearIssue, setDrawerLinearIssue] = useState<LinearIssue | null>(null)
+  const [drawerLinearIssueId, setDrawerLinearIssueId] = useState<string | null>(null)
+  const [drawerLinearIssueFallback, setDrawerLinearIssueFallback] = useState<LinearIssue | null>(
+    null
+  )
+
+  // Why: the Linear table keeps its own fetched array, while cell edits patch
+  // the shared caches. Deriving the drawer item from those caches prevents a
+  // stale row snapshot from mounting in the drawer after status/priority edits.
+  const drawerLinearIssue = useMemo(() => {
+    if (!drawerLinearIssueId) {
+      return null
+    }
+
+    const cachedIssue = linearIssueCache[drawerLinearIssueId]?.data
+    if (cachedIssue) {
+      return cachedIssue
+    }
+
+    for (const entry of Object.values(linearSearchCache)) {
+      const found = entry?.data?.find((issue) => issue.id === drawerLinearIssueId)
+      if (found) {
+        return found
+      }
+    }
+
+    return drawerLinearIssueFallback
+  }, [drawerLinearIssueId, linearIssueCache, linearSearchCache, drawerLinearIssueFallback])
+
+  const setDrawerLinearIssue = useCallback((issue: LinearIssue | null) => {
+    setDrawerLinearIssueId(issue?.id ?? null)
+    setDrawerLinearIssueFallback(issue)
+  }, [])
 
   // Linear tab state
   const [linearIssues, setLinearIssues] = useState<LinearIssue[]>([])
@@ -607,7 +974,14 @@ export default function TaskPage(): React.JSX.Element {
     } finally {
       setNewIssueSubmitting(false)
     }
-  }, [isSingleRepo, newIssueBody, newIssueSubmitting, newIssueTitle, primaryRepo])
+  }, [
+    isSingleRepo,
+    newIssueBody,
+    newIssueSubmitting,
+    newIssueTitle,
+    primaryRepo,
+    setDrawerWorkItem
+  ])
 
   useEffect(() => {
     // Why: when a modal is open, let it own Esc dismissal.
@@ -1279,14 +1653,7 @@ export default function TaskPage(): React.JSX.Element {
                         </div>
 
                         <div className="flex items-center">
-                          <span
-                            className={cn(
-                              'rounded-full border px-2 py-0.5 text-[10px] font-medium',
-                              getTaskStatusTone(item)
-                            )}
-                          >
-                            {getTaskStatusLabel(item)}
-                          </span>
+                          <GHStatusCell item={item} repoPath={itemRepo?.path ?? null} />
                         </div>
 
                         <Tooltip>
@@ -1329,7 +1696,7 @@ export default function TaskPage(): React.JSX.Element {
                               </button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
-                              <DropdownMenuItem onSelect={() => window.open(item.url, '_blank')}>
+                              <DropdownMenuItem onSelect={() => window.api.shell.openUrl(item.url)}>
                                 <ExternalLink className="size-4" />
                                 Open in browser
                               </DropdownMenuItem>
@@ -1479,21 +1846,12 @@ export default function TaskPage(): React.JSX.Element {
                         <span className="truncate">{issue.team.name}</span>
                       </div>
 
-                      <div className="flex items-center gap-1.5">
-                        {/* Why: render the status dot using the color Linear
-                              provides per-state so users recognise their workflow
-                              colours without a separate legend. */}
-                        <span
-                          className="inline-block size-2 shrink-0 rounded-full"
-                          style={{ backgroundColor: issue.state.color }}
-                        />
-                        <span className="truncate text-xs text-muted-foreground">
-                          {issue.state.name}
-                        </span>
+                      <div className="flex items-center">
+                        <LinearStatusCell issue={issue} />
                       </div>
 
-                      <div className="flex items-center text-xs text-muted-foreground">
-                        {getLinearPriorityLabel(issue.priority)}
+                      <div className="flex items-center">
+                        <LinearPriorityCell issue={issue} />
                       </div>
 
                       <Tooltip>
@@ -1530,8 +1888,8 @@ export default function TaskPage(): React.JSX.Element {
                               <EllipsisVertical className="size-4" />
                             </button>
                           </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem onSelect={() => window.open(issue.url, '_blank')}>
+                          <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+                            <DropdownMenuItem onSelect={() => window.api.shell.openUrl(issue.url)}>
                               <ExternalLink className="size-4" />
                               Open in browser
                             </DropdownMenuItem>
