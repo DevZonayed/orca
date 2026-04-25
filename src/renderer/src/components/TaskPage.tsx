@@ -47,6 +47,7 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import RepoMultiCombobox from '@/components/ui/repo-multi-combobox'
+import TeamMultiCombobox from '@/components/ui/team-multi-combobox'
 import RepoDotLabel from '@/components/repo/RepoDotLabel'
 import { stripRepoQualifiers } from '../../../shared/task-query'
 import GitHubItemDrawer from '@/components/GitHubItemDrawer'
@@ -735,6 +736,50 @@ export default function TaskPage(): React.JSX.Element {
   const [linearSearchInput, setLinearSearchInput] = useState('')
   const [activeLinearPreset, setActiveLinearPreset] = useState<LinearPresetId>('all')
   const [linearRefreshNonce, setLinearRefreshNonce] = useState(0)
+
+  // Why: fetch the full team list from the Linear API so the selector shows
+  // all teams the user belongs to, not just teams with issues in the current
+  // fetch window. Fetched once when the Linear tab is active and connected.
+  const [availableTeams, setAvailableTeams] = useState<{ id: string; name: string; key: string }[]>(
+    []
+  )
+
+  useEffect(() => {
+    if (taskSource !== 'linear' || !linearStatus.connected) {
+      return
+    }
+    void window.api.linear
+      .listTeams()
+      .then(setAvailableTeams)
+      .catch(() => {
+        console.warn('[TaskPage] Failed to fetch Linear teams')
+      })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [taskSource, linearStatus.connected])
+
+  const defaultLinearTeamSelection = settings?.defaultLinearTeamSelection
+  const [linearTeamSelection, setLinearTeamSelection] = useState<ReadonlySet<string>>(() => {
+    if (!defaultLinearTeamSelection) {
+      return new Set<string>()
+    }
+    return new Set(defaultLinearTeamSelection)
+  })
+
+  // Why: in sticky-all mode, auto-include all teams once the list arrives.
+  // In explicit-selection mode, the set is already correct from the initializer.
+  useEffect(() => {
+    if (availableTeams.length === 0) {
+      return
+    }
+    if (!defaultLinearTeamSelection) {
+      setLinearTeamSelection(new Set(availableTeams.map((t) => t.id)))
+    }
+  }, [availableTeams, defaultLinearTeamSelection])
+
+  const filteredLinearIssues = useMemo(
+    () => linearIssues.filter((issue) => linearTeamSelection.has(issue.team.id)),
+    [linearIssues, linearTeamSelection]
+  )
   const [linearConnectOpen, setLinearConnectOpen] = useState(false)
   const [linearApiKeyDraft, setLinearApiKeyDraft] = useState('')
   const [linearConnectState, setLinearConnectState] = useState<'idle' | 'connecting' | 'error'>(
@@ -1289,31 +1334,47 @@ export default function TaskPage(): React.JSX.Element {
                       )
                     })}
                   </div>
-                  {/* Why: Linear issues are not repo-scoped, so the repo
-                      selector is only relevant for the GitHub tab. */}
-                  <div className={cn('w-[200px]', taskSource !== 'github' && 'invisible')}>
-                    <RepoMultiCombobox
-                      repos={eligibleRepos}
-                      selected={repoSelection}
-                      onChange={(next) => {
-                        setRepoSelection(next)
-                        // Why: persist the curated subset so the same set reopens
-                        // next launch. Sticky-all uses onSelectAll instead.
-                        void updateSettings({ defaultRepoSelection: [...next] }).catch(() => {
-                          toast.error('Failed to save repo selection.')
-                        })
-                      }}
-                      onSelectAll={() => {
-                        const allIds = new Set(eligibleRepos.map((r) => r.id))
-                        setRepoSelection(allIds)
-                        // Why: persist `null` so new repos added later are
-                        // automatically included — a frozen array would exclude them.
-                        void updateSettings({ defaultRepoSelection: null }).catch(() => {
-                          toast.error('Failed to save repo selection.')
-                        })
-                      }}
-                      triggerClassName="h-8 w-full rounded-md border border-border/50 bg-muted/50 px-2 text-xs font-medium shadow-sm transition hover:bg-muted/50 focus:ring-2 focus:ring-ring/20 focus:outline-none"
-                    />
+                  <div className="w-[200px]">
+                    {taskSource === 'github' ? (
+                      <RepoMultiCombobox
+                        repos={eligibleRepos}
+                        selected={repoSelection}
+                        onChange={(next) => {
+                          setRepoSelection(next)
+                          void updateSettings({ defaultRepoSelection: [...next] }).catch(() => {
+                            toast.error('Failed to save repo selection.')
+                          })
+                        }}
+                        onSelectAll={() => {
+                          const allIds = new Set(eligibleRepos.map((r) => r.id))
+                          setRepoSelection(allIds)
+                          void updateSettings({ defaultRepoSelection: null }).catch(() => {
+                            toast.error('Failed to save repo selection.')
+                          })
+                        }}
+                        triggerClassName="h-8 w-full rounded-md border border-border/50 bg-muted/50 px-2 text-xs font-medium shadow-sm transition hover:bg-muted/50 focus:ring-2 focus:ring-ring/20 focus:outline-none"
+                      />
+                    ) : availableTeams.length > 0 ? (
+                      <TeamMultiCombobox
+                        teams={availableTeams}
+                        selected={linearTeamSelection}
+                        onChange={(next) => {
+                          setLinearTeamSelection(next)
+                          void updateSettings({ defaultLinearTeamSelection: [...next] }).catch(
+                            () => {
+                              toast.error('Failed to save team selection.')
+                            }
+                          )
+                        }}
+                        onSelectAll={() => {
+                          setLinearTeamSelection(new Set(availableTeams.map((t) => t.id)))
+                          void updateSettings({ defaultLinearTeamSelection: null }).catch(() => {
+                            toast.error('Failed to save team selection.')
+                          })
+                        }}
+                        triggerClassName="h-8 w-full rounded-md border border-border/50 bg-muted/50 px-2 text-xs font-medium shadow-sm transition hover:bg-muted/50 focus:ring-2 focus:ring-ring/20 focus:outline-none"
+                      />
+                    ) : null}
                   </div>
                 </div>
 
@@ -1819,8 +1880,19 @@ export default function TaskPage(): React.JSX.Element {
                   </div>
                 ) : null}
 
+                {!linearLoading && linearIssues.length > 0 && filteredLinearIssues.length === 0 ? (
+                  <div className="px-4 py-10 text-center">
+                    <p className="text-base font-medium text-foreground">
+                      No issues match the selected teams
+                    </p>
+                    <p className="mt-2 text-sm text-muted-foreground">
+                      Try selecting more teams or click &ldquo;All teams&rdquo;.
+                    </p>
+                  </div>
+                ) : null}
+
                 <div className="divide-y divide-border/50">
-                  {linearIssues.map((issue) => (
+                  {filteredLinearIssues.map((issue) => (
                     <div
                       key={issue.id}
                       role="button"
