@@ -83,6 +83,7 @@ function createSettings(overrides: Partial<GlobalSettings> = {}): GlobalSettings
     experimentalTerminalDaemonNoticeShown: false,
     terminalForceHyperlink: true,
     terminalWindowsShell: 'powershell.exe',
+    enableGitHubAttribution: true,
     ...overrides
   }
 }
