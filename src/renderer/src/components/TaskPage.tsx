@@ -507,7 +507,7 @@ export default function TaskPage(): React.JSX.Element {
   // keep the top band continuous with the sidebar header and tab rows. When
   // the sidebar is also collapsed, App.tsx floats its titlebar-left controls
   // (traffic lights, sidebar toggle, agent badge) over our strip — reserve
-  // the measured width of those controls on the left so our "Tasks" label
+  // the measured width of those controls on the left so the titlebar strip
   // never sits behind them. In non-workspace mode App.tsx already owns the
   // top titlebar, so skip our strip to avoid a duplicate band.
   const sidebarOpen = useAppStore((s) => s.sidebarOpen)
@@ -594,7 +594,8 @@ export default function TaskPage(): React.JSX.Element {
   const defaultTaskViewPreset = settings?.defaultTaskViewPreset ?? 'all'
   const initialTaskQuery = getTaskPresetQuery(defaultTaskViewPreset)
 
-  const [taskSource, setTaskSource] = useState<TaskSource>(pageData.taskSource ?? 'github')
+  const defaultTaskSource = settings?.defaultTaskSource ?? 'github'
+  const [taskSource, setTaskSource] = useState<TaskSource>(pageData.taskSource ?? defaultTaskSource)
 
   // Why: pageData.taskSource changes when the user clicks a specific source
   // icon in the sidebar while the task page is already open. useState only
@@ -604,6 +605,15 @@ export default function TaskPage(): React.JSX.Element {
       setTaskSource(pageData.taskSource)
     }
   }, [pageData.taskSource])
+
+  // Why: settings load asynchronously — the useState initializer may capture
+  // null settings on fast navigation. Sync once settings arrive, but only
+  // when no explicit source was passed via sidebar icon click.
+  useEffect(() => {
+    if (!pageData.taskSource && settings?.defaultTaskSource) {
+      setTaskSource(settings.defaultTaskSource)
+    }
+  }, [settings?.defaultTaskSource, pageData.taskSource])
 
   const [taskSearchInput, setTaskSearchInput] = useState(initialTaskQuery)
   const [appliedTaskSearch, setAppliedTaskSearch] = useState(initialTaskQuery)
@@ -1213,11 +1223,9 @@ export default function TaskPage(): React.JSX.Element {
               />
             ) : null}
             <div
-              className="flex h-full flex-1 items-center border-b border-border bg-card px-4 text-sm font-medium text-muted-foreground"
+              className="flex h-full flex-1 items-center border-b border-border bg-card"
               style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
-            >
-              <span>Tasks</span>
-            </div>
+            />
           </div>
         ) : null}
 
@@ -1256,7 +1264,12 @@ export default function TaskPage(): React.JSX.Element {
                             <button
                               type="button"
                               disabled={source.disabled}
-                              onClick={() => setTaskSource(source.id)}
+                              onClick={() => {
+                                setTaskSource(source.id)
+                                void updateSettings({ defaultTaskSource: source.id }).catch(() => {
+                                  toast.error('Failed to save default task source.')
+                                })
+                              }}
                               aria-label={source.label}
                               className={cn(
                                 'group flex h-8 w-8 items-center justify-center rounded-md border transition',
