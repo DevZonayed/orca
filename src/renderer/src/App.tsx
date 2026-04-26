@@ -932,11 +932,12 @@ function App(): React.JSX.Element {
           <div className="relative flex flex-1 min-w-0 min-h-0 overflow-hidden">
             {/* Why: right sidebar toggle floats at the top-right of the center
                 column so it's always accessible whether the right sidebar is
-                open or closed. Its height matches the 42px workspace strip
-                used by the sidebar and tab rows. */}
+                open or closed. Offset by the 8px drag strip so it aligns with
+                the tab row's 34px band instead of overlapping the draggable
+                window surface above. */}
             {workspaceActive && !rightSidebarOpen && (
               <div
-                className="absolute top-0 right-0 z-10 flex items-center h-[42px]"
+                className="absolute top-2 right-0 z-10 flex items-center h-[34px]"
                 style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
               >
                 {rightSidebarToggle}
