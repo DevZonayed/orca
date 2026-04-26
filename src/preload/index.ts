@@ -278,6 +278,8 @@ const api = {
       snapshotRows?: number
       isReattach?: boolean
       isAlternateScreen?: boolean
+      replay?: string
+      sessionExpired?: boolean
       coldRestore?: { scrollback: string; cwd: string }
     }> => ipcRenderer.invoke('pty:spawn', opts),
 
@@ -316,6 +318,13 @@ const api = {
         callback(data)
       ipcRenderer.on('pty:data', listener)
       return () => ipcRenderer.removeListener('pty:data', listener)
+    },
+
+    onReplay: (callback: (data: { id: string; data: string }) => void): (() => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, data: { id: string; data: string }) =>
+        callback(data)
+      ipcRenderer.on('pty:replay', listener)
+      return () => ipcRenderer.removeListener('pty:replay', listener)
     },
 
     onExit: (callback: (data: { id: string; code: number }) => void): (() => void) => {

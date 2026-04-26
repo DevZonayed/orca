@@ -170,6 +170,17 @@ export type TerminalSlice = {
   /** Scan all tabs and seed cache timers for any idle Claude sessions that don't
    *  already have a timer. Called when the feature is enabled mid-session. */
   seedCacheTimersForIdleTabs: () => void
+  /** SSH target IDs that require a passphrase — deferred to on-demand
+   *  reconnect when the user focuses an affected terminal tab. */
+  deferredSshReconnectTargets: string[]
+  /** Maps tabId → remote PTY session ID for tabs whose SSH target was
+   *  deferred (passphrase-protected). Persisted across the startup clear
+   *  of pendingReconnectPtyIdByTabId because the deferred reconnect runs
+   *  later, on tab focus. */
+  deferredSshSessionIdsByTabId: Record<string, string>
+  setDeferredSshReconnectTargets: (targetIds: string[]) => void
+  removeDeferredSshReconnectTarget: (targetId: string) => void
+  removeDeferredSshSessionId: (tabId: string) => void
   hydrateWorkspaceSession: (session: WorkspaceSessionState) => void
   reconnectPersistedTerminals: (signal?: AbortSignal) => Promise<void>
 }
@@ -197,6 +208,8 @@ export const createTerminalSlice: StateCreator<AppState, [], [], TerminalSlice> 
   pendingReconnectPtyIdByTabId: {},
   pendingSnapshotByPtyId: {},
   pendingColdRestoreByPtyId: {},
+  deferredSshReconnectTargets: [],
+  deferredSshSessionIdsByTabId: {},
   cacheTimerByKey: {},
 
   setCacheTimerStartedAt: (key, ts) => {
@@ -251,6 +264,21 @@ export const createTerminalSlice: StateCreator<AppState, [], [], TerminalSlice> 
       }))
     }
   },
+
+  setDeferredSshReconnectTargets: (targetIds) => set({ deferredSshReconnectTargets: targetIds }),
+  removeDeferredSshReconnectTarget: (targetId) =>
+    set((s) => ({
+      deferredSshReconnectTargets: s.deferredSshReconnectTargets.filter((id) => id !== targetId)
+    })),
+  removeDeferredSshSessionId: (tabId) =>
+    set((s) => {
+      if (!s.deferredSshSessionIdsByTabId[tabId]) {
+        return {}
+      }
+      const next = { ...s.deferredSshSessionIdsByTabId }
+      delete next[tabId]
+      return { deferredSshSessionIdsByTabId: next }
+    }),
 
   createTab: (worktreeId, targetGroupId) => {
     const id = globalThis.crypto.randomUUID()
@@ -1253,6 +1281,18 @@ export const createTerminalSlice: StateCreator<AppState, [], [], TerminalSlice> 
         }
       }
 
+      // Why: this runs outside the daemonEnabled guard because remote PTY
+      // reattach uses the relay's pty.attach RPC, not the local terminal
+      // daemon. SSH-backed tabs need their session IDs regardless of the
+      // experimentalTerminalDaemon setting. The existing loop above correctly
+      // skips SSH repos (connectionId check), so there is no overlap.
+      const remoteSessionIds = session.remoteSessionIdsByTabId ?? {}
+      for (const [tabId, sessionId] of Object.entries(remoteSessionIds)) {
+        if (validTabIds.has(tabId)) {
+          pendingReconnectPtyIdByTabId[tabId] = sessionId
+        }
+      }
+
       // Why: restore per-worktree active terminal tab from session.
       // If the session has the map, validate that each tab ID still exists.
       // Otherwise, derive it: the active worktree gets activeTabId, others
@@ -1348,7 +1388,16 @@ export const createTerminalSlice: StateCreator<AppState, [], [], TerminalSlice> 
         .flat()
         .find((entry) => entry.id === worktreeId)
       const repo = worktree ? get().repos.find((entry) => entry.id === worktree.repoId) : null
-      const supportsDeferredReattach = !repo?.connectionId
+      // Why: SSH-backed tabs were previously always skipped because the SSH
+      // connection wasn't re-established on startup. Now that we auto-reconnect
+      // SSH targets before this loop runs, we allow deferred reattach when the
+      // SSH connection is active. Without the active-connection check, we'd try
+      // to reattach to a relay that isn't connected yet (the deferred/passphrase
+      // targets), which would fail.
+      const sshConnected =
+        repo?.connectionId != null &&
+        get().sshConnectionStates.get(repo.connectionId)?.status === 'connected'
+      const supportsDeferredReattach = !repo?.connectionId || sshConnected
       const targetTabIds = pendingReconnectTabByWorktree[worktreeId] ?? []
       const tabsToReconnect: TerminalTab[] =
         targetTabIds.length > 0
@@ -1403,11 +1452,38 @@ export const createTerminalSlice: StateCreator<AppState, [], [], TerminalSlice> 
       }
     }
 
+    // Why: deferred SSH targets (passphrase-protected) haven't connected
+    // yet, so their tabs' ptyIds were never restored above. Stash the
+    // session IDs in a separate map that survives this cleanup so the
+    // deferred reconnect code in pty-connection.ts can find them.
+    const deferredSshSessionIdsByTabId: Record<string, string> = {}
+    for (const worktreeId of ids) {
+      const worktree = Object.values(get().worktreesByRepo)
+        .flat()
+        .find((entry) => entry.id === worktreeId)
+      const repo = worktree ? get().repos.find((entry) => entry.id === worktree.repoId) : null
+      if (!repo?.connectionId) {
+        continue
+      }
+      const sshConnected = get().sshConnectionStates.get(repo.connectionId)?.status === 'connected'
+      if (sshConnected) {
+        continue
+      }
+      const tabs = tabsByWorktree[worktreeId] ?? []
+      for (const tab of tabs) {
+        const sessionId = pendingReconnectPtyIdByTabId[tab.id]
+        if (sessionId) {
+          deferredSshSessionIdsByTabId[tab.id] = sessionId
+        }
+      }
+    }
+
     set({
       workspaceSessionReady: true,
       pendingReconnectWorktreeIds: [],
       pendingReconnectTabByWorktree: {},
-      pendingReconnectPtyIdByTabId: {}
+      pendingReconnectPtyIdByTabId: {},
+      deferredSshSessionIdsByTabId
     })
   }
 })

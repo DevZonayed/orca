@@ -347,6 +347,8 @@ export type PreloadApi = {
       snapshotRows?: number
       isReattach?: boolean
       isAlternateScreen?: boolean
+      replay?: string
+      sessionExpired?: boolean
       coldRestore?: { scrollback: string; cwd: string }
     }>
     write: (id: string, data: string) => void
@@ -358,6 +360,7 @@ export type PreloadApi = {
     getForegroundProcess: (id: string) => Promise<string | null>
     listSessions: () => Promise<{ id: string; cwd: string; title: string }[]>
     onData: (callback: (data: { id: string; data: string }) => void) => () => void
+    onReplay: (callback: (data: { id: string; data: string }) => void) => () => void
     onExit: (callback: (data: { id: string; code: number }) => void) => () => void
   }
   feedback: {
