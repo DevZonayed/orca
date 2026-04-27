@@ -130,8 +130,8 @@ export function MatchResultRow({
   // Highlight the matched text within the line
   const parts = useMemo(() => {
     const content = match.lineContent
-    const col = match.column - 1 // convert to 0-indexed
-    const len = match.matchLength
+    const col = (match.displayColumn ?? match.column) - 1 // convert to 0-indexed
+    const len = match.displayMatchLength ?? match.matchLength
 
     if (col >= 0 && col + len <= content.length) {
       // Why: left-truncate the pre-match text so the highlight stays visible at
@@ -153,7 +153,13 @@ export function MatchResultRow({
 
     // Fallback
     return { before: content, match: '', after: '' }
-  }, [match.lineContent, match.column, match.matchLength])
+  }, [
+    match.lineContent,
+    match.column,
+    match.matchLength,
+    match.displayColumn,
+    match.displayMatchLength
+  ])
 
   return (
     <ContextMenu>
