@@ -11,6 +11,7 @@ import type {
   CreateWorktreeResult,
   DirEntry,
   FsChangedPayload,
+  GhosttyImportPreview,
   GlobalSettings,
   GitBranchCompareResult,
   GitConflictOperation,
@@ -479,6 +480,7 @@ export type PreloadApi = {
     get: () => Promise<GlobalSettings>
     set: (args: Partial<GlobalSettings>) => Promise<GlobalSettings>
     listFonts: () => Promise<string[]>
+    previewGhosttyImport: () => Promise<GhosttyImportPreview>
   }
   codexAccounts: {
     list: () => Promise<CodexRateLimitAccountsState>

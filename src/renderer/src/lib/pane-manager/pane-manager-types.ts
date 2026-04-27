@@ -34,6 +34,8 @@ export type PaneStyleOptions = {
   // separate style vs behavior types is a refactor worth its own change
   // when a second behavior flag lands. See docs/focus-follows-mouse-design.md.
   focusFollowsMouse?: boolean
+  paddingX?: number
+  paddingY?: number
 }
 
 export type ManagedPane = {
