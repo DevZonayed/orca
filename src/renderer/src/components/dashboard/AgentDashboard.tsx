@@ -167,163 +167,164 @@ const AgentDashboard = React.memo(function AgentDashboard() {
         </div>
       ) : (
         <>
-      <div className="flex shrink-0 flex-col gap-1.5 border-b border-border/40 px-2 py-1.5">
-        <div className="relative flex items-center">
-          <Search className="absolute left-2 size-3.5 text-muted-foreground pointer-events-none" />
-          <Input
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search..."
-            className="h-7 pl-7 pr-7 text-[11px] border-none bg-muted/50 shadow-none focus-visible:ring-1 focus-visible:ring-ring/30"
-          />
-          {searchActive && (
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              onClick={handleClearSearch}
-              className="absolute right-1 size-5"
-              aria-label="Clear search"
-            >
-              <X className="size-3" />
-            </Button>
-          )}
-        </div>
-        <div className="flex items-center justify-center">
-          <DashboardFilterBar value={filter} onChange={setFilter} />
-        </div>
-      </div>
-
-      <div className="flex-1 overflow-y-auto scrollbar-sleek">
-        {hasResults ? (
-          <div className="flex flex-col">
-            {filteredGroups.map((group, groupIdx) => {
-              const isCollapsed = collapsedRepos.has(group.repo.id)
-              // Why: per-repo stats replace the global stats strip that used
-              // to sit above the whole dashboard. Counts live at the scope
-              // of the grouping so the user sees per-repo agent load instead
-              // of a rollup that hides which repo is busy. Counts come from
-              // useDashboardFilter's memo so this doesn't re-walk every agent
-              // in every worktree on each `now` tick or search change.
-              const { running: groupRunning, blocked: groupBlocked, done: groupDone } = group
-              const Icon = isCollapsed ? ChevronRight : ChevronDown
-              return (
-                <div
-                  key={group.repo.id}
-                  // Why: the entire repo group tints on hover (children and
-                  // all) so the user sees a clear visual container for the
-                  // repo — mirroring the worktree → agent pattern where the
-                  // whole worktree tints when hovered and its nested agent
-                  // rows tint more strongly on top. No card chrome, just an
-                  // ambient hover.
-                  className={cn(
-                    // Why: light-mode needs to darken the surface (not add
-                    // a pale accent to near-white) for the container tint
-                    // to register. Use a subtle black alpha in light, keep
-                    // the original alpha-on-accent in dark (which already
-                    // reads as a faint lift on the dark surface).
-                    'transition-colors duration-100 hover:bg-black/[0.02] dark:hover:bg-accent/10',
-                    groupIdx !== filteredGroups.length - 1 && 'border-b border-border'
-                  )}
+          <div className="flex shrink-0 flex-col gap-1.5 border-b border-border/40 px-2 py-1.5">
+            <div className="relative flex items-center">
+              <Search className="absolute left-2 size-3.5 text-muted-foreground pointer-events-none" />
+              <Input
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search..."
+                className="h-7 pl-7 pr-7 text-[11px] border-none bg-muted/50 shadow-none focus-visible:ring-1 focus-visible:ring-ring/30"
+              />
+              {searchActive && (
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  onClick={handleClearSearch}
+                  className="absolute right-1 size-5"
+                  aria-label="Clear search"
                 >
-                  {/* Why: the repo header is a lightweight row, not a card —
+                  <X className="size-3" />
+                </Button>
+              )}
+            </div>
+            <div className="flex items-center justify-center">
+              <DashboardFilterBar value={filter} onChange={setFilter} />
+            </div>
+          </div>
+
+          <div className="flex-1 overflow-y-auto scrollbar-sleek">
+            {hasResults ? (
+              <div className="flex flex-col">
+                {filteredGroups.map((group, groupIdx) => {
+                  const isCollapsed = collapsedRepos.has(group.repo.id)
+                  // Why: per-repo stats replace the global stats strip that used
+                  // to sit above the whole dashboard. Counts live at the scope
+                  // of the grouping so the user sees per-repo agent load instead
+                  // of a rollup that hides which repo is busy. Counts come from
+                  // useDashboardFilter's memo so this doesn't re-walk every agent
+                  // in every worktree on each `now` tick or search change.
+                  const { running: groupRunning, blocked: groupBlocked, done: groupDone } = group
+                  const Icon = isCollapsed ? ChevronRight : ChevronDown
+                  return (
+                    <div
+                      key={group.repo.id}
+                      // Why: the entire repo group tints on hover (children and
+                      // all) so the user sees a clear visual container for the
+                      // repo — mirroring the worktree → agent pattern where the
+                      // whole worktree tints when hovered and its nested agent
+                      // rows tint more strongly on top. No card chrome, just an
+                      // ambient hover.
+                      className={cn(
+                        // Why: light-mode needs to darken the surface (not add
+                        // a pale accent to near-white) for the container tint
+                        // to register. Use a subtle black alpha in light, keep
+                        // the original alpha-on-accent in dark (which already
+                        // reads as a faint lift on the dark surface).
+                        'transition-colors duration-100 hover:bg-black/[0.02] dark:hover:bg-accent/10',
+                        groupIdx !== filteredGroups.length - 1 && 'border-b border-border'
+                      )}
+                    >
+                      {/* Why: the repo header is a lightweight row, not a card —
                       no background fill, no border box. It stays an
                       expand/collapse control so users can hide repos they
                       aren't watching, but it doesn't wrap the children in
                       chrome that duplicates the worktree row's own borders. */}
-                  <button
-                    type="button"
-                    onClick={() => toggleCollapse(group.repo.id)}
-                    className={cn(
-                      'flex w-full items-center gap-1.5 px-2.5 pt-1.5 pb-1',
-                      'text-left text-[11px] text-muted-foreground/80'
-                    )}
-                    aria-expanded={!isCollapsed}
-                  >
-                    <Icon className="size-3 shrink-0 text-muted-foreground/60" />
-                    {/* Why: mirror the sidebar's worktree list — repos are
+                      <button
+                        type="button"
+                        onClick={() => toggleCollapse(group.repo.id)}
+                        className={cn(
+                          'flex w-full items-center gap-1.5 px-2.5 pt-1.5 pb-1',
+                          'text-left text-[11px] text-muted-foreground/80'
+                        )}
+                        aria-expanded={!isCollapsed}
+                      >
+                        <Icon className="size-3 shrink-0 text-muted-foreground/60" />
+                        {/* Why: mirror the sidebar's worktree list — repos are
                         keyed by the FolderGit2 glyph colored with the repo's
                         own badgeColor, so the dashboard header reads as the
                         same repo entity a user scans for in the sidebar. */}
-                    <FolderGit2
-                      className="size-3 shrink-0"
-                      style={{ color: group.repo.badgeColor }}
-                      aria-hidden
-                    />
-                    <span className="truncate font-medium text-foreground/80">
-                      {group.repo.displayName}
-                    </span>
-                    <span className="ml-auto flex shrink-0 items-center gap-2 text-[10px] text-muted-foreground">
-                      {groupRunning > 0 && (
-                        <span>
-                          <span className="font-semibold text-emerald-500">{groupRunning}</span>{' '}
-                          active
+                        <FolderGit2
+                          className="size-3 shrink-0"
+                          style={{ color: group.repo.badgeColor }}
+                          aria-hidden
+                        />
+                        <span className="truncate font-medium text-foreground/80">
+                          {group.repo.displayName}
                         </span>
-                      )}
-                      {groupBlocked > 0 && (
-                        <span>
-                          <span className="font-semibold text-amber-500">{groupBlocked}</span>{' '}
-                          blocked
+                        <span className="ml-auto flex shrink-0 items-center gap-2 text-[10px] text-muted-foreground">
+                          {groupRunning > 0 && (
+                            <span>
+                              <span className="font-semibold text-emerald-500">{groupRunning}</span>{' '}
+                              active
+                            </span>
+                          )}
+                          {groupBlocked > 0 && (
+                            <span>
+                              <span className="font-semibold text-amber-500">{groupBlocked}</span>{' '}
+                              blocked
+                            </span>
+                          )}
+                          {groupDone > 0 && (
+                            <span>
+                              <span className="font-semibold text-sky-500/80">{groupDone}</span>{' '}
+                              done
+                            </span>
+                          )}
                         </span>
-                      )}
-                      {groupDone > 0 && (
-                        <span>
-                          <span className="font-semibold text-sky-500/80">{groupDone}</span> done
-                        </span>
-                      )}
-                    </span>
-                  </button>
-                  {!isCollapsed &&
-                    group.worktrees.map((card, i) => (
-                      <DashboardWorktreeCard
-                        key={card.worktree.id}
-                        card={card}
-                        isActive={activeWorktreeId === card.worktree.id}
-                        onFocus={handleCardFocus}
-                        onDismissAgent={handleDismissAgent}
-                        onActivateAgentTab={handleActivateAgentTab}
-                        isLast={i === group.worktrees.length - 1}
-                        now={now}
-                      />
-                    ))}
-                </div>
-              )
-            })}
-          </div>
-        ) : (
-          <div className="flex flex-col items-center pt-4 pb-6 gap-2">
-            <div className="text-[11px] text-muted-foreground/60">
-              {showNoResults
-                ? 'No matches.'
-                : filter === 'active'
-                  ? 'No active agents.'
-                  : filter === 'blocked'
-                    ? 'No agents are blocked.'
-                    : filter === 'done'
-                      ? 'No completed agents to show.'
-                      : 'No agent activity yet.'}
-            </div>
-            {showNoResults ? (
-              <button
-                type="button"
-                onClick={handleClearSearch}
-                className="text-[11px] text-primary/70 hover:text-primary hover:underline"
-              >
-                Clear search
-              </button>
+                      </button>
+                      {!isCollapsed &&
+                        group.worktrees.map((card, i) => (
+                          <DashboardWorktreeCard
+                            key={card.worktree.id}
+                            card={card}
+                            isActive={activeWorktreeId === card.worktree.id}
+                            onFocus={handleCardFocus}
+                            onDismissAgent={handleDismissAgent}
+                            onActivateAgentTab={handleActivateAgentTab}
+                            isLast={i === group.worktrees.length - 1}
+                            now={now}
+                          />
+                        ))}
+                    </div>
+                  )
+                })}
+              </div>
             ) : (
-              filter !== 'all' && (
-                <button
-                  type="button"
-                  onClick={() => setFilter('all')}
-                  className="text-[11px] text-primary/70 hover:text-primary hover:underline"
-                >
-                  Show all
-                </button>
-              )
+              <div className="flex flex-col items-center pt-4 pb-6 gap-2">
+                <div className="text-[11px] text-muted-foreground/60">
+                  {showNoResults
+                    ? 'No matches.'
+                    : filter === 'active'
+                      ? 'No active agents.'
+                      : filter === 'blocked'
+                        ? 'No agents are blocked.'
+                        : filter === 'done'
+                          ? 'No completed agents to show.'
+                          : 'No agent activity yet.'}
+                </div>
+                {showNoResults ? (
+                  <button
+                    type="button"
+                    onClick={handleClearSearch}
+                    className="text-[11px] text-primary/70 hover:text-primary hover:underline"
+                  >
+                    Clear search
+                  </button>
+                ) : (
+                  filter !== 'all' && (
+                    <button
+                      type="button"
+                      onClick={() => setFilter('all')}
+                      className="text-[11px] text-primary/70 hover:text-primary hover:underline"
+                    >
+                      Show all
+                    </button>
+                  )
+                )}
+              </div>
             )}
           </div>
-        )}
-      </div>
         </>
       )}
     </div>

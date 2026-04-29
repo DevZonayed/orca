@@ -6,14 +6,14 @@ import type {
   PRComment
 } from '../../shared/types'
 import { mapIssueInfo } from './mappers'
-import { ghExecFileAsync, acquire, release, getOwnerRepo, classifyGhError } from './gh-utils'
+import { ghExecFileAsync, acquire, release, getIssueOwnerRepo, classifyGhError } from './gh-utils'
 
 /**
  * Get a single issue by number.
  * Uses gh api --cache so 304 Not Modified responses don't count against the rate limit.
  */
 export async function getIssue(repoPath: string, issueNumber: number): Promise<IssueInfo | null> {
-  const ownerRepo = await getOwnerRepo(repoPath)
+  const ownerRepo = await getIssueOwnerRepo(repoPath)
   await acquire()
   try {
     if (ownerRepo) {
@@ -48,7 +48,7 @@ export async function getIssue(repoPath: string, issueNumber: number): Promise<I
  * Uses gh api --cache so 304 Not Modified responses don't count against the rate limit.
  */
 export async function listIssues(repoPath: string, limit = 20): Promise<IssueInfo[]> {
-  const ownerRepo = await getOwnerRepo(repoPath)
+  const ownerRepo = await getIssueOwnerRepo(repoPath)
   await acquire()
   try {
     if (ownerRepo) {
@@ -92,7 +92,7 @@ export async function createIssue(
   if (!trimmedTitle) {
     return { ok: false, error: 'Title is required' }
   }
-  const ownerRepo = await getOwnerRepo(repoPath)
+  const ownerRepo = await getIssueOwnerRepo(repoPath)
   if (!ownerRepo) {
     return { ok: false, error: 'Could not resolve GitHub owner/repo for this repository' }
   }
@@ -137,7 +137,7 @@ export async function updateIssue(
   issueNumber: number,
   updates: GitHubIssueUpdate
 ): Promise<{ ok: true } | { ok: false; error: string }> {
-  const ownerRepo = await getOwnerRepo(repoPath)
+  const ownerRepo = await getIssueOwnerRepo(repoPath)
   if (!ownerRepo) {
     return { ok: false, error: 'Could not resolve GitHub owner/repo for this repository' }
   }
@@ -212,7 +212,7 @@ export async function addIssueComment(
   issueNumber: number,
   body: string
 ): Promise<GitHubCommentResult> {
-  const ownerRepo = await getOwnerRepo(repoPath)
+  const ownerRepo = await getIssueOwnerRepo(repoPath)
   if (!ownerRepo) {
     return { ok: false, error: 'Could not resolve GitHub owner/repo for this repository' }
   }
@@ -255,7 +255,7 @@ export async function addIssueComment(
 }
 
 export async function listLabels(repoPath: string): Promise<string[]> {
-  const ownerRepo = await getOwnerRepo(repoPath)
+  const ownerRepo = await getIssueOwnerRepo(repoPath)
   if (!ownerRepo) {
     return []
   }
@@ -283,7 +283,7 @@ export async function listLabels(repoPath: string): Promise<string[]> {
 }
 
 export async function listAssignableUsers(repoPath: string): Promise<GitHubAssignableUser[]> {
-  const ownerRepo = await getOwnerRepo(repoPath)
+  const ownerRepo = await getIssueOwnerRepo(repoPath)
   if (!ownerRepo) {
     return []
   }

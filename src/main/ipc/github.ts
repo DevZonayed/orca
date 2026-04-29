@@ -29,6 +29,7 @@ import {
 } from '../github/client'
 import { getWorkItemDetails, getPRFileContents } from '../github/work-item-details'
 import type { GitHubPRFile } from '../../shared/types'
+import { dispatchWorkItem, type WorkItemArgs } from './github-work-item-args'
 
 // Why: returns the full Repo object instead of just the path string so that
 // callers have access to repo.id for stat tracking and other context.
@@ -90,15 +91,12 @@ export function registerGitHubHandlers(store: Store, stats: StatsCollector): voi
     return countWorkItems(repo.path, args.query)
   })
 
-  ipcMain.handle('gh:workItem', (_event, args: { repoPath: string; number: number }) => {
-    const repo = assertRegisteredRepo(args.repoPath, store)
-    return getWorkItem(repo.path, args.number)
-  })
-
-  ipcMain.handle('gh:workItemDetails', (_event, args: { repoPath: string; number: number }) => {
-    const repo = assertRegisteredRepo(args.repoPath, store)
-    return getWorkItemDetails(repo.path, args.number)
-  })
+  ipcMain.handle('gh:workItem', (_event, args: WorkItemArgs) =>
+    dispatchWorkItem(args, assertRegisteredRepo(args.repoPath, store).path, getWorkItem)
+  )
+  ipcMain.handle('gh:workItemDetails', (_event, args: WorkItemArgs) =>
+    dispatchWorkItem(args, assertRegisteredRepo(args.repoPath, store).path, getWorkItemDetails)
+  )
 
   ipcMain.handle(
     'gh:prFileContents',

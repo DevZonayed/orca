@@ -19,7 +19,9 @@ import {
   acquire,
   release,
   getOwnerRepo,
-  classifyGhError
+  getIssueOwnerRepo,
+  classifyGhError,
+  type OwnerRepo
 } from './gh-utils'
 export { _resetOwnerRepoCache } from './gh-utils'
 export {
@@ -221,9 +223,59 @@ function mapPullRequestWorkItem(
   }
 }
 
+async function fetchIssueWorkItem(
+  repoPath: string,
+  ownerRepo: OwnerRepo | null,
+  number: number
+): Promise<MainWorkItem | null> {
+  if (ownerRepo) {
+    const { stdout } = await ghExecFileAsync(
+      ['api', `repos/${ownerRepo.owner}/${ownerRepo.repo}/issues/${number}`],
+      { cwd: repoPath }
+    )
+    const item = JSON.parse(stdout) as Record<string, unknown>
+    if ('pull_request' in item) {
+      return null
+    }
+    return mapIssueWorkItem(item)
+  }
+
+  const { stdout } = await ghExecFileAsync(
+    ['issue', 'view', String(number), '--json', 'number,title,state,url,labels,updatedAt,author'],
+    { cwd: repoPath }
+  )
+  return mapIssueWorkItem(JSON.parse(stdout) as Record<string, unknown>)
+}
+
+async function fetchPullRequestWorkItem(
+  repoPath: string,
+  ownerRepo: OwnerRepo | null,
+  number: number
+): Promise<MainWorkItem> {
+  if (ownerRepo) {
+    const { stdout } = await ghExecFileAsync(
+      ['api', `repos/${ownerRepo.owner}/${ownerRepo.repo}/pulls/${number}`],
+      { cwd: repoPath }
+    )
+    return mapPullRequestWorkItem(JSON.parse(stdout) as Record<string, unknown>, ownerRepo.owner)
+  }
+
+  const { stdout } = await ghExecFileAsync(
+    [
+      'pr',
+      'view',
+      String(number),
+      '--json',
+      'number,title,state,url,labels,updatedAt,author,isDraft,headRefName,baseRefName,headRepositoryOwner'
+    ],
+    { cwd: repoPath }
+  )
+  return mapPullRequestWorkItem(JSON.parse(stdout) as Record<string, unknown>)
+}
+
 function buildWorkItemListArgs(args: {
   kind: 'issue' | 'pr'
-  ownerRepo: { owner: string; repo: string } | null
+  ownerRepo: OwnerRepo | null
   limit: number
   query: ParsedTaskQuery
   before?: string
@@ -291,29 +343,58 @@ function buildWorkItemListArgs(args: {
 
 async function listRecentWorkItems(
   repoPath: string,
-  ownerRepo: { owner: string; repo: string } | null,
+  issueOwnerRepo: OwnerRepo | null,
+  prOwnerRepo: OwnerRepo | null,
   limit: number
 ): Promise<MainWorkItem[]> {
-  if (ownerRepo) {
+  if (issueOwnerRepo || prOwnerRepo) {
     const [issuesResult, prsResult] = await Promise.all([
-      ghExecFileAsync(
-        [
-          'api',
-          '--cache',
-          '120s',
-          `repos/${ownerRepo.owner}/${ownerRepo.repo}/issues?per_page=${limit}&state=open&sort=updated&direction=desc`
-        ],
-        { cwd: repoPath }
-      ),
-      ghExecFileAsync(
-        [
-          'api',
-          '--cache',
-          '120s',
-          `repos/${ownerRepo.owner}/${ownerRepo.repo}/pulls?per_page=${limit}&state=open&sort=updated&direction=desc`
-        ],
-        { cwd: repoPath }
-      )
+      issueOwnerRepo
+        ? ghExecFileAsync(
+            [
+              'api',
+              '--cache',
+              '120s',
+              `repos/${issueOwnerRepo.owner}/${issueOwnerRepo.repo}/issues?per_page=${limit}&state=open&sort=updated&direction=desc`
+            ],
+            { cwd: repoPath }
+          )
+        : ghExecFileAsync(
+            [
+              'issue',
+              'list',
+              '--limit',
+              String(limit),
+              '--state',
+              'open',
+              '--json',
+              'number,title,state,url,labels,updatedAt,author'
+            ],
+            { cwd: repoPath }
+          ),
+      prOwnerRepo
+        ? ghExecFileAsync(
+            [
+              'api',
+              '--cache',
+              '120s',
+              `repos/${prOwnerRepo.owner}/${prOwnerRepo.repo}/pulls?per_page=${limit}&state=open&sort=updated&direction=desc`
+            ],
+            { cwd: repoPath }
+          )
+        : ghExecFileAsync(
+            [
+              'pr',
+              'list',
+              '--limit',
+              String(limit),
+              '--state',
+              'open',
+              '--json',
+              'number,title,state,url,labels,updatedAt,author,isDraft,headRefName,baseRefName,headRepositoryOwner'
+            ],
+            { cwd: repoPath }
+          )
     ])
 
     const issues = (JSON.parse(issuesResult.stdout) as Record<string, unknown>[])
@@ -324,7 +405,7 @@ async function listRecentWorkItems(
       .map(mapIssueWorkItem)
 
     const prs = (JSON.parse(prsResult.stdout) as Record<string, unknown>[]).map((item) =>
-      mapPullRequestWorkItem(item, ownerRepo.owner)
+      mapPullRequestWorkItem(item, prOwnerRepo?.owner ?? null)
     )
 
     return sortWorkItemsByUpdatedAt([...issues, ...prs]).slice(0, limit)
@@ -371,7 +452,8 @@ async function listRecentWorkItems(
 
 async function listQueriedWorkItems(
   repoPath: string,
-  ownerRepo: { owner: string; repo: string } | null,
+  issueOwnerRepo: OwnerRepo | null,
+  prOwnerRepo: OwnerRepo | null,
   query: ParsedTaskQuery,
   limit: number,
   before?: string
@@ -383,7 +465,13 @@ async function listQueriedWorkItems(
   if (issueScope) {
     fetchers.push(
       (async () => {
-        const args = buildWorkItemListArgs({ kind: 'issue', ownerRepo, limit, query, before })
+        const args = buildWorkItemListArgs({
+          kind: 'issue',
+          ownerRepo: issueOwnerRepo,
+          limit,
+          query,
+          before
+        })
         try {
           const { stdout } = await ghExecFileAsync(args, { cwd: repoPath })
           return (JSON.parse(stdout) as Record<string, unknown>[]).map(mapIssueWorkItem)
@@ -397,11 +485,17 @@ async function listQueriedWorkItems(
   if (prScope) {
     fetchers.push(
       (async () => {
-        const args = buildWorkItemListArgs({ kind: 'pr', ownerRepo, limit, query, before })
+        const args = buildWorkItemListArgs({
+          kind: 'pr',
+          ownerRepo: prOwnerRepo,
+          limit,
+          query,
+          before
+        })
         try {
           const { stdout } = await ghExecFileAsync(args, { cwd: repoPath })
           return (JSON.parse(stdout) as Record<string, unknown>[]).map((item) =>
-            mapPullRequestWorkItem(item, ownerRepo?.owner ?? null)
+            mapPullRequestWorkItem(item, prOwnerRepo?.owner ?? null)
           )
         } catch {
           return []
@@ -420,7 +514,10 @@ export async function listWorkItems(
   query?: string,
   before?: string
 ): Promise<MainWorkItem[]> {
-  const ownerRepo = await getOwnerRepo(repoPath)
+  const [issueOwnerRepo, prOwnerRepo] = await Promise.all([
+    getIssueOwnerRepo(repoPath),
+    getOwnerRepo(repoPath)
+  ])
   const trimmedQuery = query?.trim() ?? ''
   await acquire()
   try {
@@ -429,11 +526,18 @@ export async function listWorkItems(
     // catch-all here would make an auth/network failure indistinguishable from
     // an empty result and silently under-report per-repo failures.
     if (!trimmedQuery) {
-      return await listRecentWorkItems(repoPath, ownerRepo, limit)
+      return await listRecentWorkItems(repoPath, issueOwnerRepo, prOwnerRepo, limit)
     }
 
     const parsedQuery = parseTaskQuery(trimmedQuery)
-    return await listQueriedWorkItems(repoPath, ownerRepo, parsedQuery, limit, before)
+    return await listQueriedWorkItems(
+      repoPath,
+      issueOwnerRepo,
+      prOwnerRepo,
+      parsedQuery,
+      limit,
+      before
+    )
   } finally {
     release()
   }
@@ -480,36 +584,107 @@ function buildSearchQueryString(
   return parts.join(' ')
 }
 
+async function countWorkItemsForQuery(
+  repoPath: string,
+  ownerRepo: OwnerRepo,
+  query: ParsedTaskQuery
+): Promise<number> {
+  const searchQ = buildSearchQueryString(ownerRepo, query)
+  const { stdout } = await ghExecFileAsync(
+    [
+      'api',
+      '--cache',
+      '120s',
+      `search/issues?q=${encodeURIComponent(searchQ)}&per_page=1`,
+      '--jq',
+      '.total_count'
+    ],
+    { cwd: repoPath }
+  )
+  return parseInt(stdout.trim(), 10) || 0
+}
+
+function sameOwnerRepo(left: OwnerRepo | null, right: OwnerRepo | null): boolean {
+  // Why: GitHub treats owner and repo names as case-insensitive, so remotes
+  // with different casing (StablyAI/Orca vs stablyai/orca) point at the same
+  // repo and should not split into two search queries.
+  return (
+    left?.owner.toLowerCase() === right?.owner.toLowerCase() &&
+    left?.repo.toLowerCase() === right?.repo.toLowerCase()
+  )
+}
+
+function defaultOpenWorkItemQuery(): ParsedTaskQuery {
+  return {
+    scope: 'all',
+    state: 'open',
+    draft: false,
+    assignee: null,
+    author: null,
+    reviewRequested: null,
+    reviewedBy: null,
+    labels: [],
+    freeText: ''
+  }
+}
+
 // Why: uses GitHub's search API to get total_count without fetching items.
 // This powers the pagination bar so the user sees total pages upfront.
 // Cached for 120s to avoid burning the search rate limit (30 req/min).
 export async function countWorkItems(repoPath: string, query?: string): Promise<number> {
-  const ownerRepo = await getOwnerRepo(repoPath)
+  const [issueOwnerRepo, prOwnerRepo] = await Promise.all([
+    getIssueOwnerRepo(repoPath),
+    getOwnerRepo(repoPath)
+  ])
+  const ownerRepo = prOwnerRepo ?? issueOwnerRepo
   if (!ownerRepo) {
     return 0
   }
 
   const trimmedQuery = query?.trim() ?? ''
   const parsedQuery = trimmedQuery ? parseTaskQuery(trimmedQuery) : null
-
-  const searchQ = parsedQuery
-    ? buildSearchQueryString(ownerRepo, parsedQuery)
-    : `repo:${ownerRepo.owner}/${ownerRepo.repo} is:open`
+  const effectiveQuery = parsedQuery ?? defaultOpenWorkItemQuery()
 
   await acquire()
   try {
-    const { stdout } = await ghExecFileAsync(
-      [
-        'api',
-        '--cache',
-        '120s',
-        `search/issues?q=${encodeURIComponent(searchQ)}&per_page=1`,
-        '--jq',
-        '.total_count'
-      ],
-      { cwd: repoPath }
-    )
-    return parseInt(stdout.trim(), 10) || 0
+    if (sameOwnerRepo(issueOwnerRepo, prOwnerRepo)) {
+      return await countWorkItemsForQuery(repoPath, ownerRepo, effectiveQuery)
+    }
+
+    const counts: Promise<number>[] = []
+    // Why: `draft`, `reviewRequested`, and `reviewedBy` are PR-only predicates.
+    // When present, the issue half would always return 0 and wastes a search
+    // API call — skip the issue half entirely in that case.
+    const hasPrOnlyFilter =
+      effectiveQuery.draft ||
+      effectiveQuery.reviewRequested !== null ||
+      effectiveQuery.reviewedBy !== null
+    if (
+      effectiveQuery.scope !== 'pr' &&
+      effectiveQuery.state !== 'merged' &&
+      !hasPrOnlyFilter &&
+      issueOwnerRepo
+    ) {
+      counts.push(
+        countWorkItemsForQuery(repoPath, issueOwnerRepo, { ...effectiveQuery, scope: 'issue' })
+      )
+    }
+    if (effectiveQuery.scope !== 'issue' && prOwnerRepo) {
+      counts.push(countWorkItemsForQuery(repoPath, prOwnerRepo, { ...effectiveQuery, scope: 'pr' }))
+    }
+    // Why: allSettled so a single failing search (e.g. transient network, rate
+    // limit on one side) doesn't silently zero out the total; sum only the
+    // fulfilled halves instead.
+    const results = await Promise.allSettled(counts)
+    let total = 0
+    for (const r of results) {
+      if (r.status === 'fulfilled') {
+        total += r.value
+      } else {
+        console.warn('countWorkItems partial failure:', r.reason)
+      }
+    }
+    return total
   } catch (err) {
     console.warn('countWorkItems failed:', err)
     return 0
@@ -524,165 +699,38 @@ export async function getRepoSlug(
   return getOwnerRepo(repoPath)
 }
 
-export async function getWorkItem(repoPath: string, number: number): Promise<MainWorkItem | null> {
+export async function getWorkItem(
+  repoPath: string,
+  number: number,
+  type?: 'issue' | 'pr'
+): Promise<MainWorkItem | null> {
   await acquire()
   try {
-    const ownerRepo = await getOwnerRepo(repoPath)
-    if (ownerRepo) {
-      const { stdout } = await ghExecFileAsync(
-        ['api', `repos/${ownerRepo.owner}/${ownerRepo.repo}/issues/${number}`],
-        { cwd: repoPath }
-      )
-      const item = JSON.parse(stdout) as Record<string, unknown>
-      if ('pull_request' in item) {
-        const prResult = await ghExecFileAsync(
-          ['api', `repos/${ownerRepo.owner}/${ownerRepo.repo}/pulls/${number}`],
-          { cwd: repoPath }
-        )
-        const pr = JSON.parse(prResult.stdout) as Record<string, unknown>
-        const prHeadOwner = extractHeadOwnerLogin(pr)
-        return {
-          id: `pr:${String(pr.number)}`,
-          type: 'pr',
-          number: Number(pr.number),
-          title: String(pr.title ?? ''),
-          state:
-            pr.state === 'closed'
-              ? pr.merged_at
-                ? 'merged'
-                : 'closed'
-              : pr.draft
-                ? 'draft'
-                : 'open',
-          url: String(pr.html_url ?? pr.url ?? ''),
-          labels: Array.isArray(pr.labels)
-            ? pr.labels
-                .map((label) =>
-                  typeof label === 'object' && label !== null && 'name' in label
-                    ? String((label as { name?: unknown }).name ?? '')
-                    : ''
-                )
-                .filter(Boolean)
-            : [],
-          updatedAt: String(pr.updated_at ?? ''),
-          author:
-            typeof pr.user === 'object' && pr.user !== null && 'login' in pr.user
-              ? String((pr.user as { login?: unknown }).login ?? '')
-              : null,
-          branchName:
-            typeof pr.head === 'object' && pr.head !== null && 'ref' in pr.head
-              ? String((pr.head as { ref?: unknown }).ref ?? '')
-              : undefined,
-          baseRefName:
-            typeof pr.base === 'object' && pr.base !== null && 'ref' in pr.base
-              ? String((pr.base as { ref?: unknown }).ref ?? '')
-              : undefined,
-          // Why: only emit isCrossRepository when we actually know the head
-          // owner. Falsely claiming "not a fork" would let the picker try a
-          // normal-PR fetch against a fork head and fail.
-          ...(prHeadOwner !== null ? { isCrossRepository: prHeadOwner !== ownerRepo.owner } : {})
-        }
-      }
-
-      return {
-        id: `issue:${String(item.number)}`,
-        type: 'issue',
-        number: Number(item.number),
-        title: String(item.title ?? ''),
-        state: String(item.state ?? 'open') === 'closed' ? 'closed' : 'open',
-        url: String(item.html_url ?? item.url ?? ''),
-        labels: Array.isArray(item.labels)
-          ? item.labels
-              .map((label) =>
-                typeof label === 'object' && label !== null && 'name' in label
-                  ? String((label as { name?: unknown }).name ?? '')
-                  : ''
-              )
-              .filter(Boolean)
-          : [],
-        updatedAt: String(item.updated_at ?? ''),
-        author:
-          typeof item.user === 'object' && item.user !== null && 'login' in item.user
-            ? String((item.user as { login?: unknown }).login ?? '')
-            : null
-      }
+    if (type === 'issue') {
+      return await fetchIssueWorkItem(repoPath, await getIssueOwnerRepo(repoPath), number)
+    }
+    if (type === 'pr') {
+      return await fetchPullRequestWorkItem(repoPath, await getOwnerRepo(repoPath), number)
     }
 
     try {
-      const { stdout } = await ghExecFileAsync(
-        [
-          'issue',
-          'view',
-          String(number),
-          '--json',
-          'number,title,state,url,labels,updatedAt,author'
-        ],
-        { cwd: repoPath }
-      )
-      const item = JSON.parse(stdout) as Record<string, unknown>
-      return {
-        id: `issue:${String(item.number)}`,
-        type: 'issue',
-        number: Number(item.number),
-        title: String(item.title ?? ''),
-        state: String(item.state ?? 'open') === 'closed' ? 'closed' : 'open',
-        url: String(item.url ?? ''),
-        labels: Array.isArray(item.labels)
-          ? item.labels
-              .map((label) =>
-                typeof label === 'object' && label !== null && 'name' in label
-                  ? String((label as { name?: unknown }).name ?? '')
-                  : ''
-              )
-              .filter(Boolean)
-          : [],
-        updatedAt: String(item.updatedAt ?? ''),
-        author:
-          typeof item.author === 'object' && item.author !== null && 'login' in item.author
-            ? String((item.author as { login?: unknown }).login ?? '')
-            : null
+      const issue = await fetchIssueWorkItem(repoPath, await getIssueOwnerRepo(repoPath), number)
+      if (issue) {
+        return issue
       }
-    } catch {
-      const { stdout } = await ghExecFileAsync(
-        [
-          'pr',
-          'view',
-          String(number),
-          '--json',
-          'number,title,state,url,labels,updatedAt,author,isDraft,headRefName,baseRefName,headRepositoryOwner'
-        ],
-        { cwd: repoPath }
-      )
-      const item = JSON.parse(stdout) as Record<string, unknown>
-      return {
-        id: `pr:${String(item.number)}`,
-        type: 'pr',
-        number: Number(item.number),
-        title: String(item.title ?? ''),
-        state: item.isDraft ? 'draft' : String(item.state ?? 'open') === 'open' ? 'open' : 'closed',
-        url: String(item.url ?? ''),
-        labels: Array.isArray(item.labels)
-          ? item.labels
-              .map((label) =>
-                typeof label === 'object' && label !== null && 'name' in label
-                  ? String((label as { name?: unknown }).name ?? '')
-                  : ''
-              )
-              .filter(Boolean)
-          : [],
-        updatedAt: String(item.updatedAt ?? ''),
-        author:
-          typeof item.author === 'object' && item.author !== null && 'login' in item.author
-            ? String((item.author as { login?: unknown }).login ?? '')
-            : null,
-        branchName: String(item.headRefName ?? ''),
-        baseRefName: String(item.baseRefName ?? '')
-        // Why: ownerRepo is null on this path so we can't compare head vs base
-        // owners. Leave isCrossRepository undefined rather than guessing —
-        // falsely claiming "not a fork" would let the picker try a normal-PR
-        // fetch against a fork head and fail.
+    } catch (err) {
+      // Why: the issue lookup now targets `upstream` while the PR lookup targets `origin`,
+      // so a transient upstream failure (5xx, rate limit, network flake) on issue #N would
+      // silently fall through to origin's PR #N — potentially a completely unrelated item.
+      // Only fall through when the issue genuinely doesn't exist (404); re-throw everything
+      // else so the outer catch returns null and the caller sees a real failure instead of
+      // a wrong item. classifyGhError centralizes the 404/"not found" pattern-matching.
+      const stderr = err instanceof Error ? err.message : String(err)
+      if (classifyGhError(stderr).type !== 'not_found') {
+        throw err
       }
     }
+    return await fetchPullRequestWorkItem(repoPath, await getOwnerRepo(repoPath), number)
   } catch {
     return null
   } finally {
