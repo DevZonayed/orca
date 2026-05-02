@@ -3,7 +3,9 @@
 tightly coupled PTY lifecycle logic (scan → ready → write → exit cleanup) across
 files without a cleaner ownership seam. */
 import { basename } from 'path'
+import { win32 as pathWin32 } from 'path'
 import { resolveWindowsShellLaunchArgs } from './windows-shell-args'
+import { resolveEffectiveWindowsPowerShell } from './windows-powershell'
 import { resolveProcessCwd } from './process-cwd'
 import { existsSync } from 'fs'
 import * as pty from 'node-pty'
@@ -100,6 +102,8 @@ export type LocalPtyProviderOptions = {
    *  IPC layer inject the persisted setting without coupling the provider to the
    *  settings store. Returns undefined when no preference is set. */
   getWindowsShell?: () => string | undefined
+  getWindowsPowerShellImplementation?: () => 'auto' | 'powershell.exe' | 'pwsh.exe' | undefined
+  pwshAvailable?: () => boolean
   onSpawned?: (id: string) => void
   onExit?: (id: string, code: number) => void
   onData?: (id: string, data: string, timestamp: number) => void
@@ -139,11 +143,35 @@ export class LocalPtyProvider implements IPtyProvider {
       // Why: shellOverride lets a single tab open in a different shell than the
       // persisted default (e.g. "New WSL terminal" from the "+" submenu) without
       // changing the user's setting. It takes priority over the setting.
-      shellPath =
+      const shellFamily =
         args.shellOverride ||
         this.opts.getWindowsShell?.() ||
         process.env.COMSPEC ||
         'powershell.exe'
+      const normalizedShellFamily = pathWin32.basename(shellFamily).toLowerCase()
+      // Why: shell selection can arrive either as a canonical setting value
+      // ('powershell.exe') or as a concrete PowerShell executable path from a
+      // one-off override. Normalize both forms back to the PowerShell family so
+      // the shared resolver can still fall back to inbox powershell.exe when
+      // pwsh.exe was requested but is unavailable.
+      const powerShellImplementation = this.opts.getWindowsPowerShellImplementation?.()
+      const shouldResolvePowerShellFamily =
+        powerShellImplementation !== undefined || pathWin32.basename(shellFamily) === shellFamily
+      shellPath = shouldResolvePowerShellFamily
+        ? (resolveEffectiveWindowsPowerShell({
+            shellFamily:
+              normalizedShellFamily === 'powershell.exe' || normalizedShellFamily === 'pwsh.exe'
+                ? 'powershell.exe'
+                : normalizedShellFamily === 'cmd.exe' || normalizedShellFamily === 'wsl.exe'
+                  ? normalizedShellFamily
+                  : undefined,
+            implementation: powerShellImplementation,
+            pwshAvailable: this.opts.pwshAvailable?.() ?? false
+          }) ?? shellFamily)
+        : shellFamily
+      // Why: one-off overrides and persisted shell-family selection keep the
+      // same priority, while the shared resolver chooses which PowerShell
+      // executable is safe to run right now if that family is selected.
       // Why: both this path and the daemon-subprocess path must derive the
       // same shellArgs for the same (shell, cwd) pair. The helper keeps CJK
       // UTF-8 setup (chcp 65001), PowerShell $PROFILE dot-sourcing, and the
