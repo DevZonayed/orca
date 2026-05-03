@@ -6,6 +6,7 @@ import type {
   BrowserSessionProfile,
   BrowserSessionProfileScope,
   BrowserSessionProfileSource,
+  BrowserViewportOverride,
   ClaudeRateLimitAccountsState,
   CodexRateLimitAccountsState,
   CreateWorktreeArgs,
@@ -127,6 +128,10 @@ export type BrowserApi = {
   }) => Promise<void>
   unregisterGuest: (args: { browserPageId: string }) => Promise<void>
   openDevTools: (args: { browserPageId: string }) => Promise<boolean>
+  setViewportOverride: (args: {
+    browserPageId: string
+    override: BrowserViewportOverride | null
+  }) => Promise<boolean>
   onGuestLoadFailed: (
     callback: (args: { browserPageId: string; loadError: BrowserLoadError }) => void
   ) => () => void

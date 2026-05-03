@@ -8,6 +8,7 @@ import type {
   BrowserLoadError,
   BrowserPage,
   BrowserSessionProfile,
+  BrowserViewportPresetId,
   BrowserWorkspace,
   WorkspaceSessionState
 } from '../../../../shared/types'
@@ -81,6 +82,10 @@ export type BrowserSlice = {
   updateBrowserPageState: (pageId: string, updates: BrowserTabPageState) => void
   setBrowserTabUrl: (pageId: string, url: string) => void
   setBrowserPageUrl: (pageId: string, url: string) => void
+  setBrowserPageViewportPreset: (
+    pageId: string,
+    viewportPresetId: BrowserViewportPresetId | null
+  ) => void
   hydrateBrowserSession: (session: WorkspaceSessionState) => void
   switchBrowserTabProfile: (workspaceId: string, profileId: string | null) => void
   browserSessionProfiles: BrowserSessionProfile[]
@@ -984,6 +989,31 @@ export const createBrowserSlice: StateCreator<AppState, [], [], BrowserSlice> = 
           [workspace.worktreeId]: (s.browserTabsByWorktree[workspace.worktreeId] ?? []).map((tab) =>
             tab.id === workspace.id ? nextWorkspace : tab
           )
+        }
+      }
+    }),
+
+  // viewportPresetId is a per-page setting on BrowserPage and is intentionally not
+  // mirrored onto BrowserWorkspace: the outer tab strip doesn't surface the preset,
+  // so there's no UI consumer at the workspace layer. Keeping it page-local avoids
+  // cross-layer plumbing; do NOT add mirrorWorkspaceFromActivePage here.
+  setBrowserPageViewportPreset: (pageId, viewportPresetId) =>
+    set((s) => {
+      const page = findPage(s.browserPagesByWorkspace, pageId)
+      if (!page) {
+        return s
+      }
+      const workspace = findWorkspace(s.browserTabsByWorktree, page.workspaceId)
+      if (!workspace) {
+        return s
+      }
+      const nextPages = (s.browserPagesByWorkspace[workspace.id] ?? []).map((entry) =>
+        entry.id === pageId ? { ...entry, viewportPresetId } : entry
+      )
+      return {
+        browserPagesByWorkspace: {
+          ...s.browserPagesByWorkspace,
+          [workspace.id]: nextPages
         }
       }
     }),

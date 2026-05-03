@@ -38,6 +38,10 @@ import {
   normalizeExternalBrowserUrl
 } from '../../../../shared/browser-url'
 import {
+  browserViewportPresetToOverride,
+  getBrowserViewportPreset
+} from '../../../../shared/browser-viewport-presets'
+import {
   consumeEvictedBrowserTab,
   markEvictedBrowserTab,
   rememberLiveBrowserUrl
@@ -298,6 +302,12 @@ function BrowserPagePane({
   const initialBrowserUrlRef = useRef(browserTab.url)
   const browserTabUrlRef = useRef(browserTab.url)
   const activeLoadFailureRef = useRef<BrowserLoadError | null>(browserTab.loadError)
+  // Why: CDP viewport emulation does not survive all renderer process swaps
+  // (cross-origin navigations, crashes). We reapply on every dom-ready from
+  // this ref so the persisted preset survives reloads without re-running the
+  // webview lifecycle effect whenever the preset changes.
+  const viewportPresetIdRef = useRef(browserTab.viewportPresetId ?? null)
+  viewportPresetIdRef.current = browserTab.viewportPresetId ?? null
   const trackNextLoadingEventRef = useRef(false)
   // Why: tracks the most recent URL the webview has navigated to or been
   // observed at, from any source (navigation events, address bar, initial
@@ -946,6 +956,21 @@ function BrowserPagePane({
       if (keepAddressBarFocusRef.current) {
         focusAddressBarNow()
       }
+      // Why: CDP Emulation.setDeviceMetricsOverride and related overrides are
+      // scoped to the guest's debugger session and do not survive all
+      // cross-origin navigations (renderer swaps). Reapplying on dom-ready is
+      // idempotent, so users who picked a viewport preset keep it after
+      // reloads, SPA navigations, and persisted-session restoration.
+      const presetId = viewportPresetIdRef.current
+      const preset = getBrowserViewportPreset(presetId)
+      // Why: always reapply on dom-ready (including null) because
+      // Emulation.setDeviceMetricsOverride can persist across same-origin navigations
+      // within the same renderer. Sending null ensures CDP matches the store state
+      // instead of showing a stale emulated viewport after the user picks "Default".
+      void window.api.browser.setViewportOverride({
+        browserPageId: browserTab.id,
+        override: preset ? browserViewportPresetToOverride(preset) : null
+      })
     }
 
     const handleDidStartLoading = (): void => {
@@ -1776,6 +1801,8 @@ function BrowserPagePane({
         <BrowserToolbarMenu
           currentProfileId={sessionProfileId}
           workspaceId={workspaceId}
+          browserPageId={browserTab.id}
+          viewportPresetId={browserTab.viewportPresetId ?? null}
           onDestroyWebview={() => destroyPersistentWebview(browserTab.id)}
         />
       </div>
