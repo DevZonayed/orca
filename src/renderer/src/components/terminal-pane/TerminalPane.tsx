@@ -33,10 +33,10 @@ import { getPaneIdsForPty, onOverrideChange } from '@/lib/pane-manager/mobile-fi
 import { getDriverForPty, onDriverChange } from '@/lib/pane-manager/mobile-driver-state'
 import { safeFit } from '@/lib/pane-manager/pane-tree-ops'
 
-/** Global set of buffer-capture callbacks, one per mounted TerminalPane.
- *  The beforeunload handler in App.tsx invokes every callback to populate
- *  Zustand with serialized buffers before flushing the session to disk. */
-export const shutdownBufferCaptures = new Set<() => void>()
+// Why: registry lives in a leaf module so the store slice can import it
+// without re-entering the `slice → TerminalPane → store → slice` cycle
+// that otherwise leaves createTerminalSlice undefined at store-init time.
+import { shutdownBufferCaptures } from './shutdown-buffer-captures'
 
 const MAX_BUFFER_BYTES = 512 * 1024
 
@@ -887,9 +887,13 @@ export default function TerminalPane({
       }
       setTabLayout(tabId, layout)
     }
-    shutdownBufferCaptures.add(captureBuffers)
+    shutdownBufferCaptures.set(tabId, captureBuffers)
     return () => {
-      shutdownBufferCaptures.delete(captureBuffers)
+      // Why: only remove if the entry still points at this closure. A
+      // remount could have replaced it before the prior cleanup ran.
+      if (shutdownBufferCaptures.get(tabId) === captureBuffers) {
+        shutdownBufferCaptures.delete(tabId)
+      }
     }
   }, [tabId, setTabLayout])
 

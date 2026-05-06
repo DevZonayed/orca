@@ -16,7 +16,7 @@ import { useIpcEvents } from './hooks/useIpcEvents'
 import RetainedAgentsSyncGate from './components/dashboard/RetainedAgentsSyncGate'
 import Sidebar from './components/Sidebar'
 import Terminal from './components/Terminal'
-import { shutdownBufferCaptures } from './components/terminal-pane/TerminalPane'
+import { shutdownBufferCaptures } from './components/terminal-pane/shutdown-buffer-captures'
 import RightSidebar from './components/right-sidebar'
 import { StatusBar } from './components/status-bar/StatusBar'
 import { UpdateCard } from './components/UpdateCard'
@@ -435,7 +435,7 @@ function App(): React.JSX.Element {
       if (!useAppStore.getState().workspaceSessionReady) {
         return
       }
-      for (const capture of shutdownBufferCaptures) {
+      for (const capture of shutdownBufferCaptures.values()) {
         try {
           capture()
         } catch {
