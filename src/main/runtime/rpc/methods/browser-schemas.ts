@@ -60,6 +60,7 @@ export const Screenshot = BrowserTarget.extend({
 export const FullScreenshot = BrowserTarget.extend({
   format: z
     .unknown()
+    .optional()
     .transform((v) => (v === 'jpeg' ? 'jpeg' : 'png'))
     .pipe(z.enum(['png', 'jpeg']))
 })
@@ -166,6 +167,7 @@ export const Check = BrowserTarget.extend({
   element: requiredString('Missing required --element'),
   checked: z
     .unknown()
+    .optional()
     .transform((v) => v !== false)
     .pipe(z.boolean())
 })
