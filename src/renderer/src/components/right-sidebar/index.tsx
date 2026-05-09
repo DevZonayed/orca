@@ -346,7 +346,7 @@ function RightSidebarInner(): React.JSX.Element {
       {activityBarPosition === 'side' && (
         <ContextMenu>
           <ContextMenuTrigger asChild>
-            <div className="flex flex-col items-center w-10 min-w-[40px] bg-sidebar border-l border-border">
+            <div className="flex flex-col items-center w-10 min-w-[40px] bg-sidebar border-l border-border side-activity-bar-windows-inset">
               <TooltipProvider delayDuration={400}>{activityBarIcons}</TooltipProvider>
             </div>
           </ContextMenuTrigger>

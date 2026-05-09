@@ -406,7 +406,7 @@
 }
 
 /* Why: small identity anchor on Windows where the native window chrome is
-   hidden. Sized to sit comfortably in the 42px titlebar with a little
+   hidden. Sized to sit comfortably in the 36px titlebar with a little
    horizontal breathing room. The SVG fill is white; light mode inverts it to
    black so it reads on the light titlebar background. */
 .titlebar-logo {
@@ -476,6 +476,15 @@
    behind the overlay. --window-controls-width is 0px on non-Windows. */
 .right-sidebar-header-inset {
   padding-right: var(--window-controls-width, 0px);
+}
+
+/* Why: in side-bar activity-bar mode the icon strip sits flush against the
+   right window edge. The fixed-position window-controls overlay (height 36px,
+   width 138px) covers the top-right corner, so the topmost sidebar icons are
+   unreachable without this offset. --window-controls-height is 0px on
+   non-Windows so this rule is a no-op there. */
+.side-activity-bar-windows-inset {
+  padding-top: var(--window-controls-height, 0px);
 }
 
 .sidebar-toggle {

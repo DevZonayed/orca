@@ -990,7 +990,10 @@ function App(): React.JSX.Element {
           // Why: consumed by anything that needs to avoid the fixed-position
           // window-controls overlay on Windows (floating sidebar toggle, right
           // sidebar header, etc.) without hardcoding 138px in multiple places.
-          '--window-controls-width': isWindows ? '138px' : '0px'
+          '--window-controls-width': isWindows ? '138px' : '0px',
+          // Why: consumed by the side-position activity bar to push icons below
+          // the fixed-position window-controls overlay on Windows.
+          '--window-controls-height': isWindows ? '36px' : '0px'
         } as React.CSSProperties
       }
     >
