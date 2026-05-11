@@ -1217,10 +1217,7 @@ describe('AgentHookServer ingestRemote', () => {
     }
     const listener = vi.fn()
     server.setListener(listener)
-    server.ingestRemote(
-      { paneKey: PANE, tabId: 'tab-1', worktreeId: 'wt-1', payload },
-      'conn-1'
-    )
+    server.ingestRemote({ paneKey: PANE, tabId: 'tab-1', worktreeId: 'wt-1', payload }, 'conn-1')
     expect(listener).toHaveBeenCalledTimes(1)
     expect(listener).toHaveBeenCalledWith({
       paneKey: PANE,
@@ -1279,10 +1276,7 @@ describe('AgentHookServer ingestRemote', () => {
     }
     const listener = vi.fn()
     server.setListener(listener)
-    server.ingestRemote(
-      { paneKey: PANE, tabId: 'tab-1', worktreeId: 'wt-1', payload },
-      ''
-    )
+    server.ingestRemote({ paneKey: PANE, tabId: 'tab-1', worktreeId: 'wt-1', payload }, '')
     expect(listener).not.toHaveBeenCalled()
   })
 
@@ -1296,10 +1290,7 @@ describe('AgentHookServer ingestRemote', () => {
     }
     const listener = vi.fn()
     server.setListener(listener)
-    server.ingestRemote(
-      { paneKey: PANE, tabId: 'tab-1', worktreeId: 'wt-1', payload },
-      '   '
-    )
+    server.ingestRemote({ paneKey: PANE, tabId: 'tab-1', worktreeId: 'wt-1', payload }, '   ')
     expect(listener).not.toHaveBeenCalled()
   })
 
@@ -1330,10 +1321,7 @@ describe('AgentHookServer ingestRemote', () => {
     }
     const listener = vi.fn()
     server.setListener(listener)
-    server.ingestRemote(
-      { paneKey: '   ', tabId: 'tab-1', worktreeId: 'wt-1', payload },
-      'conn-1'
-    )
+    server.ingestRemote({ paneKey: '   ', tabId: 'tab-1', worktreeId: 'wt-1', payload }, 'conn-1')
     expect(listener).not.toHaveBeenCalled()
   })
 
