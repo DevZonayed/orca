@@ -867,6 +867,8 @@ export type CreateWorktreeArgs = {
   baseBranch?: string
   setupDecision?: SetupDecision
   sparseCheckout?: CreateSparseCheckoutRequest
+  linkedIssue?: number
+  linkedPR?: number
   /** Telemetry-only: which UI surface initiated this create. Threaded from
    *  the renderer entry point so main can emit `workspace_created` with the
    *  correct `source`. `unknown` is a valid wire value — an unrecognized
