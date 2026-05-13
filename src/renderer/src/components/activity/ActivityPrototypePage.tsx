@@ -13,8 +13,13 @@ import {
   TerminalSquare
 } from 'lucide-react'
 
+import { AgentStateDot, agentStateLabel } from '@/components/AgentStateDot'
 import { AgentIcon } from '@/lib/agent-catalog'
-import { agentTypeToIconAgent, formatAgentTypeLabel } from '@/lib/agent-status'
+import {
+  agentTypeToIconAgent,
+  formatAgentTypeLabel,
+  isExplicitAgentStatusFresh
+} from '@/lib/agent-status'
 import { activateTabAndFocusPane } from '@/lib/activate-tab-and-focus-pane'
 import { activateAndRevealWorktree } from '@/lib/worktree-activation'
 import { useAppStore } from '@/store'
@@ -38,15 +43,17 @@ import {
   type ActivityTerminalPortalTarget
 } from './activity-terminal-portal'
 import type { Repo, TerminalTab, Worktree } from '../../../../shared/types'
-import type {
-  AgentStateHistoryEntry,
-  AgentStatusEntry,
-  AgentStatusState,
-  AgentType
+import {
+  AGENT_STATUS_STALE_AFTER_MS,
+  type AgentStateHistoryEntry,
+  type AgentStatusEntry,
+  type AgentStatusState,
+  type AgentType
 } from '../../../../shared/agent-status-types'
 
 type ThreadReadFilter = 'all' | 'unread'
 type ActivityEventState = Extract<AgentStatusState, 'done' | 'blocked' | 'waiting'>
+type ActivityLiveAgentState = Extract<AgentStatusState, 'working' | 'blocked' | 'waiting'>
 
 type ActivityEvent = {
   id: string
@@ -70,6 +77,7 @@ type AgentPaneThread = {
   worktree: Worktree
   repo: Repo | null
   agentType: AgentType
+  currentAgentState: ActivityLiveAgentState | null
   latestEvent: ActivityEvent
   events: ActivityEvent[]
   unread: boolean
@@ -309,6 +317,20 @@ function isActivityEventState(state: AgentStatusState): state is ActivityEventSt
   return state === 'done' || state === 'blocked' || state === 'waiting'
 }
 
+function isActivityLiveAgentState(state: AgentStatusState): state is ActivityLiveAgentState {
+  return state === 'working' || state === 'blocked' || state === 'waiting'
+}
+
+function freshActivityLiveAgentState(
+  entry: AgentStatusEntry,
+  now: number
+): ActivityLiveAgentState | null {
+  if (!isActivityLiveAgentState(entry.state)) {
+    return null
+  }
+  return isExplicitAgentStatusFresh(entry, now, AGENT_STATUS_STALE_AFTER_MS) ? entry.state : null
+}
+
 // Why: per-pane cap guarantees each agent appears in the left list even when one pane has a long history.
 const EVENTS_PER_PANE_CAP = 5
 
@@ -405,10 +427,15 @@ export function buildActivityEvents(args: {
   worktreeMap: Map<string, Worktree>
   repoMap: Map<string, Repo>
   acknowledgedAgentsByPaneKey: Record<string, number>
-}): ActivityEvent[] {
+  now: number
+}): {
+  events: ActivityEvent[]
+  liveAgentStateByPaneKey: Record<string, ActivityLiveAgentState>
+} {
   const events: ActivityEvent[] = []
   const seenEventIds = new Set<string>()
   const tabContext = new Map<string, { worktree: Worktree; tab: TerminalTab }>()
+  const liveAgentStateByPaneKey: Record<string, ActivityLiveAgentState> = {}
 
   for (const worktree of args.worktreeMap.values()) {
     const tabs = args.tabsByWorktree[worktree.id] ?? []
@@ -428,6 +455,14 @@ export function buildActivityEvents(args: {
       continue
     }
     const ackAt = args.acknowledgedAgentsByPaneKey[paneKey] ?? 0
+    // Why: live state is a per-pane overlay computed once from the live entry,
+    // not a property duplicated onto every event in the thread. Retained-only
+    // panes don't contribute here — the agent is gone, so there is no live
+    // state to overlay.
+    const liveState = freshActivityLiveAgentState(entry, args.now)
+    if (liveState) {
+      liveAgentStateByPaneKey[paneKey] = liveState
+    }
     appendActivityEventsForEntry({
       events,
       seenEventIds,
@@ -475,10 +510,13 @@ export function buildActivityEvents(args: {
       break
     }
   }
-  return capped
+  return { events: capped, liveAgentStateByPaneKey }
 }
 
-function buildAgentPaneThreads(events: ActivityEvent[]): AgentPaneThread[] {
+function buildAgentPaneThreads(
+  events: ActivityEvent[],
+  liveAgentStateByPaneKey: Record<string, ActivityLiveAgentState>
+): AgentPaneThread[] {
   const byPaneKey = new Map<string, AgentPaneThread>()
   for (const event of events) {
     const paneKey = event.entry.paneKey
@@ -490,6 +528,9 @@ function buildAgentPaneThreads(events: ActivityEvent[]): AgentPaneThread[] {
         worktree: event.worktree,
         repo: event.repo,
         agentType: event.agentType,
+        // Why: live status is a per-pane overlay from the hook stream, looked
+        // up once by paneKey rather than merged across historical events.
+        currentAgentState: liveAgentStateByPaneKey[paneKey] ?? null,
         latestEvent: event,
         events: [event],
         unread: event.unread
@@ -548,6 +589,35 @@ function EventRepoBadge({ repo }: { repo: Repo | null }): React.JSX.Element | nu
   )
 }
 
+function threadAgentState(thread: AgentPaneThread): AgentStatusState {
+  return thread.currentAgentState ?? thread.latestEvent.state
+}
+
+function threadAgentStateLabel(thread: AgentPaneThread): string {
+  const state = threadAgentState(thread)
+  if (!thread.currentAgentState && state === 'done' && thread.latestEvent.entry.interrupted) {
+    return 'Interrupted'
+  }
+  return agentStateLabel(state)
+}
+
+function ThreadAgentStateIndicator({ thread }: { thread: AgentPaneThread }): React.JSX.Element {
+  const state = threadAgentState(thread)
+  const label = threadAgentStateLabel(thread)
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className="inline-flex size-4 shrink-0 items-center justify-center">
+          <AgentStateDot state={state} size="md" />
+        </span>
+      </TooltipTrigger>
+      <TooltipContent side="top" sideOffset={4}>
+        {label}
+      </TooltipContent>
+    </Tooltip>
+  )
+}
+
 function ThreadRow({
   thread,
   selected,
@@ -602,18 +672,21 @@ function ThreadRow({
           full-width for the repo badge + branch name, which used to get
           truncated when the right cluster ate horizontal space. */}
       <div className="flex min-w-0 items-start gap-2">
-        <span className="inline-flex shrink-0 pt-[3px]">
-          <AgentIcon agent={agentTypeToIconAgent(thread.agentType)} size={14} />
+        <span className="inline-flex shrink-0 items-start gap-1">
+          <ThreadAgentStateIndicator thread={thread} />
+          <span className="inline-flex shrink-0 pt-px">
+            <AgentIcon agent={agentTypeToIconAgent(thread.agentType)} size={14} />
+          </span>
         </span>
         <span
           className={cn(
-            'line-clamp-3 min-w-0 flex-1 break-words text-[11px] leading-snug',
+            'line-clamp-3 min-w-0 flex-1 break-words text-xs leading-snug',
             thread.unread ? 'font-semibold text-foreground' : 'font-medium text-foreground'
           )}
         >
           {thread.paneTitle}
         </span>
-        <span className="inline-flex shrink-0 items-center gap-1.5 pt-[3px]">
+        <span className="inline-flex shrink-0 items-center gap-1.5 pt-px">
           {/* Why (bell matches WorktreeCard pattern): unread → amber filled
               bell as a static, non-interactive cue (selecting the thread
               auto-marks it read, so a Mark-read button would be redundant);
@@ -735,10 +808,34 @@ export default function ActivityPrototypePage(): React.JSX.Element {
       unacknowledgeAgents: s.unacknowledgeAgents
     }))
   )
+  // Why: agentStatusEpoch is included in the dependency array (but not in the
+  // computation itself) so the memo recomputes when freshness boundaries expire,
+  // even if no new PTY data arrives.
+  const agentStatusEpoch = useAppStore((s) => s.agentStatusEpoch)
 
-  const allEvents = useMemo(() => buildActivityEvents(storeData), [storeData])
+  const { events: allEvents, liveAgentStateByPaneKey } = useMemo(
+    () =>
+      buildActivityEvents({
+        agentStatusByPaneKey: storeData.agentStatusByPaneKey,
+        retainedAgentsByPaneKey: storeData.retainedAgentsByPaneKey,
+        tabsByWorktree: storeData.tabsByWorktree,
+        worktreeMap: storeData.worktreeMap,
+        repoMap: storeData.repoMap,
+        acknowledgedAgentsByPaneKey: storeData.acknowledgedAgentsByPaneKey,
+        // Why: Date.now() is read inside the memo (not as a dep) so stale-decay
+        // recalculates whenever agentStatusEpoch ticks. The epoch bumps when the
+        // freshness boundary crosses, driving re-evaluation without coupling to
+        // wall-clock time directly.
+        now: Date.now()
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [storeData, agentStatusEpoch]
+  )
 
-  const allThreads = useMemo(() => buildAgentPaneThreads(allEvents), [allEvents])
+  const allThreads = useMemo(
+    () => buildAgentPaneThreads(allEvents, liveAgentStateByPaneKey),
+    [allEvents, liveAgentStateByPaneKey]
+  )
 
   const visibleThreads = useMemo(() => {
     const trimmedQuery = query.trim().toLowerCase()
@@ -753,8 +850,9 @@ export default function ActivityPrototypePage(): React.JSX.Element {
         return true
       }
       const latest = thread.latestEvent
+      const stateLabel = threadAgentStateLabel(thread)
       const text =
-        `${thread.paneTitle} ${thread.worktree.displayName} ${thread.repo?.displayName ?? ''} ${agentTitle(latest)} ${agentSummary(latest)} ${agentMeta(latest)}`.toLowerCase()
+        `${thread.paneTitle} ${thread.worktree.displayName} ${thread.repo?.displayName ?? ''} ${stateLabel} ${agentTitle(latest)} ${agentSummary(latest)} ${agentMeta(latest)}`.toLowerCase()
       return text.includes(trimmedQuery)
     })
   }, [allThreads, readFilter, query, selectedPaneKey])
@@ -1020,7 +1118,7 @@ export default function ActivityPrototypePage(): React.JSX.Element {
                         type="button"
                         variant="outline"
                         size="sm"
-                        className="size-8 shrink-0 p-0 text-muted-foreground hover:text-foreground"
+                        className="size-8 shrink-0 border-input bg-transparent p-0 text-muted-foreground shadow-xs hover:bg-accent hover:text-accent-foreground dark:bg-transparent dark:hover:bg-accent dark:hover:text-accent-foreground"
                         aria-label="Thread list options"
                       >
                         <MoreVertical className="size-3.5" />
@@ -1085,8 +1183,14 @@ export default function ActivityPrototypePage(): React.JSX.Element {
               <div className="flex shrink-0 items-start gap-4 border-b border-border px-4 pt-2 pb-3">
                 <div className="min-w-0">
                   <div className="flex min-w-0 items-start gap-2">
-                    <span className="inline-flex shrink-0 pt-[3px]">
-                      <AgentIcon agent={agentTypeToIconAgent(selectedThread.agentType)} size={16} />
+                    <span className="inline-flex shrink-0 items-start gap-1">
+                      <ThreadAgentStateIndicator thread={selectedThread} />
+                      <span className="inline-flex shrink-0 pt-[3px]">
+                        <AgentIcon
+                          agent={agentTypeToIconAgent(selectedThread.agentType)}
+                          size={16}
+                        />
+                      </span>
                     </span>
                     <h2 className="line-clamp-3 break-words text-sm font-semibold leading-snug">
                       {selectedThread.paneTitle}
