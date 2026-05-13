@@ -612,7 +612,10 @@ function App(): React.JSX.Element {
     activeWorktreeId !== null &&
     !hasTabBar &&
     effectiveActiveTabExpanded
-  const showSidebar = activeView !== 'settings'
+  // Why: Activity is a full-page navigation surface — same treatment as
+  // Settings — so the worktree sidebar is removed for that view, letting the
+  // thread list + agent terminal span edge-to-edge.
+  const showSidebar = activeView !== 'settings' && activeView !== 'activity'
   // Why: only the terminal workspace replaces the full-width titlebar with
   // split-column chrome. Full-page navigation views keep the draggable app
   // titlebar so their page-level controls can live in that window strip.
@@ -881,7 +884,9 @@ function App(): React.JSX.Element {
       </div>
       {/* Why: Back/Forward traverse mixed worktree + Tasks history, so the
           cluster is shown wherever the history shortcut is live (terminal or
-          tasks). Hidden in Settings to keep that view modal-ish. */}
+          tasks). Hidden in Settings to keep that view modal-ish, and in
+          Activity since that page owns its own back-out via the Close button
+          in ActivityTitlebarControls. */}
       {(activeView === 'terminal' || activeView === 'tasks') && (
         <div className="ml-auto mr-3 flex items-center">
           <Tooltip>
