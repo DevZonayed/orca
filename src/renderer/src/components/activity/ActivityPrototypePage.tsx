@@ -799,6 +799,7 @@ export default function ActivityPrototypePage(): React.JSX.Element {
         target: activePortalTargetEl,
         worktreeId: visibleThread.worktree.id,
         tabId: visibleThread.latestEvent.tab.id,
+        paneId: paneIdFromPaneKey(visibleThread.paneKey),
         active: true
       })
     }
@@ -808,6 +809,7 @@ export default function ActivityPrototypePage(): React.JSX.Element {
         target: inactivePortalTargetEl,
         worktreeId: stagedThread.worktree.id,
         tabId: stagedThread.latestEvent.tab.id,
+        paneId: paneIdFromPaneKey(stagedThread.paneKey),
         active: false
       })
     }

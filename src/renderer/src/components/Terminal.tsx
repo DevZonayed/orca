@@ -1314,6 +1314,10 @@ function Terminal(): React.JSX.Element | null {
                           // Keeping `isVisible` true for the portaled tab lets
                           // xterm fit and stream foreground output in-place.
                           isVisible={isActiveTerminalTab || isActivityPortalTab}
+                          // Why: when portaled to Activity for a specific agent
+                          // pane, isolate that leaf so split siblings stay
+                          // hidden. Workspace renders pass null → no override.
+                          isolatedPaneId={activityTerminalPortal?.paneId ?? null}
                           onPtyExit={(ptyId) => handlePtyExit(tab.id, ptyId)}
                           onCloseTab={() => handleCloseTab(tab.id)}
                         />

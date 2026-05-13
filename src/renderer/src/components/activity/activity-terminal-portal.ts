@@ -5,6 +5,11 @@ export type ActivityTerminalPortalTarget = {
   target: HTMLElement
   worktreeId: string
   tabId: string
+  // Why: each Activity thread is keyed on a single agent pane within a tab.
+  // Carrying paneId here lets TerminalPane isolate that pane visually
+  // (hiding split siblings) without touching the user-facing expanded-pane
+  // state or the persisted layout snapshot.
+  paneId: number | null
   active: boolean
 }
 

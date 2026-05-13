@@ -381,6 +381,10 @@ export default function TabGroupPanel({
                 // tab must still be visible so xterm fits against the activity
                 // pane and continues foreground output scheduling.
                 isVisible={isVisibleTerminalTab || isActivityPortalTab}
+                // Why: when portaled to Activity for a specific agent pane,
+                // isolate that leaf so split siblings stay hidden. Workspace
+                // renders pass null → no override.
+                isolatedPaneId={activityTerminalPortal?.paneId ?? null}
                 onPtyExit={(ptyId) => {
                   if (commands.consumeSuppressedPtyExit(ptyId)) {
                     return
