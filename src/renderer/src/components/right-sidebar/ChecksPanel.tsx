@@ -14,7 +14,7 @@ import {
   MergeConflictNotice,
   ChecksList,
   PRCommentsList
-} from './checks-helpers'
+} from './checks-panel-content'
 import { ENTRY_REFRESH_GRACE_MS, shouldEntryRefresh } from './checks-entry-refresh'
 import type { PRInfo, PRCheckDetail, PRComment } from '../../../../shared/types'
 
@@ -43,6 +43,7 @@ export default function ChecksPanel(): React.JSX.Element {
   const [commentsLoading, setCommentsLoading] = useState(false)
   const [emptyRefreshing, setEmptyRefreshing] = useState(false)
   const [isRefreshing, setIsRefreshing] = useState(false)
+  const [conflictDetailsRefreshing, setConflictDetailsRefreshing] = useState(false)
   const [editingTitle, setEditingTitle] = useState(false)
   const [titleDraft, setTitleDraft] = useState('')
   const [titleSaving, setTitleSaving] = useState(false)
@@ -67,6 +68,7 @@ export default function ChecksPanel(): React.JSX.Element {
     setTitleSaving(false)
     setIsRefreshing(false)
     setEmptyRefreshing(false)
+    setConflictDetailsRefreshing(false)
     conflictSummaryRefreshKeyRef.current = null
   }
 
@@ -108,6 +110,7 @@ export default function ChecksPanel(): React.JSX.Element {
   useEffect(() => {
     if (!repo || isFolder || !branch || !pr || pr.mergeable !== 'CONFLICTING') {
       conflictSummaryRefreshKeyRef.current = null
+      setConflictDetailsRefreshing(false)
       return
     }
 
@@ -121,7 +124,17 @@ export default function ChecksPanel(): React.JSX.Element {
     // them so we don't keep rendering cached branch summaries or empty file
     // lists from an older payload.
     conflictSummaryRefreshKeyRef.current = refreshKey
-    void fetchPRForBranch(repo.path, branch, { force: true, linkedPRNumber: linkedPR })
+    setConflictDetailsRefreshing(true)
+    void fetchPRForBranch(repo.path, branch, { force: true, linkedPRNumber: linkedPR }).finally(
+      () => {
+        // Why: fetchPRForBranch updates the PR cache before resolving, which
+        // can rerun this effect. Only the current refresh key may clear the
+        // spinner so stale requests don't race newer worktrees/branches.
+        if (conflictSummaryRefreshKeyRef.current === refreshKey) {
+          setConflictDetailsRefreshing(false)
+        }
+      }
+    )
   }, [repo, isFolder, branch, pr, linkedPR, fetchPRForBranch])
 
   // Fetch checks via cached store method
@@ -580,7 +593,10 @@ export default function ChecksPanel(): React.JSX.Element {
       </div>
 
       <ConflictingFilesSection pr={pr} />
-      <MergeConflictNotice pr={pr} />
+      <MergeConflictNotice
+        pr={pr}
+        isRefreshingConflictDetails={isRefreshing || conflictDetailsRefreshing}
+      />
       {/* Why: when the PR has merge conflicts and no checks have been fetched,
           showing "No checks configured" is misleading — checks may exist but
           simply cannot run until conflicts are resolved. Hide the empty state. */}

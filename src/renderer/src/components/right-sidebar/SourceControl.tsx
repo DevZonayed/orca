@@ -92,7 +92,7 @@ import {
   requestEditorSaveQuiesce
 } from '@/components/editor/editor-autosave'
 import { getConnectionId } from '@/lib/connection-context'
-import { PullRequestIcon } from './checks-helpers'
+import { PullRequestIcon } from './checks-panel-content'
 import type {
   DiffComment,
   GitBranchChangeEntry,

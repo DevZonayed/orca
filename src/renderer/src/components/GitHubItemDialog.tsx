@@ -50,7 +50,7 @@ import CommentMarkdown from '@/components/sidebar/CommentMarkdown'
 import { detectLanguage } from '@/lib/language-detect'
 import { cn } from '@/lib/utils'
 import { buildDiffTree, type DiffTreeNode } from '@/components/pr-diff-tree'
-import { CHECK_COLOR, CHECK_ICON } from '@/components/right-sidebar/checks-helpers'
+import { CHECK_COLOR, CHECK_ICON } from '@/components/right-sidebar/checks-panel-content'
 import {
   filterPRCommentsByAudience,
   getPRCommentAudienceCounts,

@@ -101,7 +101,13 @@ export function ConflictingFilesSection({ pr }: { pr: PRInfo }): React.JSX.Eleme
 }
 
 /** Fallback shown when GitHub reports merge conflicts but no file list is available yet. */
-export function MergeConflictNotice({ pr }: { pr: PRInfo }): React.JSX.Element | null {
+export function MergeConflictNotice({
+  pr,
+  isRefreshingConflictDetails
+}: {
+  pr: PRInfo
+  isRefreshingConflictDetails: boolean
+}): React.JSX.Element | null {
   if (pr.mergeable !== 'CONFLICTING' || (pr.conflictSummary?.files.length ?? 0) > 0) {
     return null
   }
@@ -111,7 +117,11 @@ export function MergeConflictNotice({ pr }: { pr: PRInfo }): React.JSX.Element |
       <div className="text-[11px] font-medium text-foreground">
         This branch has conflicts that must be resolved
       </div>
-      <div className="mt-1 text-[11px] text-muted-foreground">Refreshing conflict details…</div>
+      <div className="mt-1 text-[11px] text-muted-foreground">
+        {isRefreshingConflictDetails
+          ? 'Refreshing conflict details…'
+          : 'Conflict file details are unavailable'}
+      </div>
     </div>
   )
 }
