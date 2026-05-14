@@ -18,10 +18,13 @@ import { SshFilesystemProvider } from '../providers/ssh-filesystem-provider'
 import { SshGitProvider } from '../providers/ssh-git-provider'
 import { agentHookServer } from '../agent-hooks/server'
 import {
+  AGENT_HOOK_INSTALL_PLUGINS_METHOD,
   AGENT_HOOK_NOTIFICATION_METHOD,
   AGENT_HOOK_REQUEST_REPLAY_METHOD,
   isRemoteAgentHooksEnabled
 } from '../../shared/agent-hook-relay'
+import { _internals as openCodeInternals } from '../opencode/hook-service'
+import { getPiAgentStatusExtensionSource } from '../pi/agent-status-extension-source'
 import {
   registerSshPtyProvider,
   unregisterSshPtyProvider,
@@ -52,6 +55,11 @@ export class SshRelaySession {
   private mux: SshChannelMultiplexer | null = null
   private abortController: AbortController | null = null
   private muxDisposeCleanup: (() => void) | null = null
+  // Why: store the notification-handler disposer so teardownProviders can
+  // release it on reconnect/shutdown. Symmetric with muxDisposeCleanup; while
+  // the old mux's handler array is GC'd along with the mux today, holding the
+  // disposer is cheap insurance against future code that retains the old mux.
+  private muxNotificationCleanup: (() => void) | null = null
   // Why: when the relay exec channel closes but the SSH connection stays
   // up, the onStateChange reconnect path never fires. This callback lets
   // ssh.ts wire up relay-level reconnect from outside the session.
@@ -152,7 +160,13 @@ export class SshRelaySession {
       // here fails fast so doConnect() can report the real error.
       await mux.request('session.resolveHome', { path: '~' })
 
-      await this.registerProviders(mux)
+      const registered = await this.registerProviders(mux, ownsAttempt)
+      if (!registered) {
+        if (!mux.isDisposed()) {
+          mux.dispose()
+        }
+        throw new Error('Session disposed during establish')
+      }
 
       // Why: the mux's transport can close during registerProviders (e.g.
       // the --connect bridge exits). registerRelayRoots swallows mux errors
@@ -405,6 +419,11 @@ export class SshRelaySession {
       return false
     }
 
+    await this.installPluginsOnRelay(mux)
+    if (shouldContinue && !shouldContinue()) {
+      return false
+    }
+
     const ptyProvider = new SshPtyProvider(this.targetId, mux)
     registerSshPtyProvider(this.targetId, ptyProvider)
 
@@ -417,6 +436,47 @@ export class SshRelaySession {
     this.wireUpPtyEvents(ptyProvider)
     this.wireUpAgentHookEvents(mux)
     return true
+  }
+
+  // Why: ship the OpenCode plugin / Pi extension source bodies to the relay
+  // so it can materialize per-PTY overlay dirs and inject OPENCODE_CONFIG_DIR
+  // / PI_CODING_AGENT_DIR into spawn env. The strings change as we add agent
+  // events (recent additions: cursor, pi); pinning them to the relay binary
+  // would force a relay redeploy on every Orca update. See
+  // docs/design/agent-status-over-ssh.md §4 + §8 (commit #7).
+  //
+  // Best-effort: a -32601 from an older relay (no handler installed) is
+  // swallowed; the user just doesn't get OpenCode/Pi status reporting until
+  // they upgrade. Hook-script-based agents use a separate explicit remote
+  // installer flow because that mutates user-owned agent config files.
+  private async installPluginsOnRelay(mux: SshChannelMultiplexer): Promise<void> {
+    if (!isRemoteAgentHooksEnabled()) {
+      return
+    }
+    try {
+      await mux.request(AGENT_HOOK_INSTALL_PLUGINS_METHOD, {
+        opencodePluginSource: openCodeInternals.getOpenCodePluginSource(),
+        piExtensionSource: getPiAgentStatusExtensionSource()
+      })
+    } catch (err) {
+      // Why: -32601 = older relay without the handler (treat as soft skip).
+      // CONNECTION_LOST / DISPOSED come from the multiplexer when it tears
+      // down mid-flight (routine on session shutdown / reconnect race) — not
+      // a real failure to surface; suppress to avoid log spam on every clean
+      // disconnect.
+      const code = (err as { code?: unknown })?.code
+      if (code === -32601 || code === 'CONNECTION_LOST' || code === 'DISPOSED') {
+        return
+      }
+      if (mux.isDisposed()) {
+        return
+      }
+      console.warn(
+        `[ssh-relay-session] agent_hook.installPlugins failed for ${this.targetId}: ${
+          err instanceof Error ? err.message : String(err)
+        }`
+      )
+    }
   }
 
   // Why: route the relay's `agent.hook` JSON-RPC notification into Orca's
@@ -433,7 +493,13 @@ export class SshRelaySession {
     if (!isRemoteAgentHooksEnabled()) {
       return
     }
-    mux.onNotification((method, params) => {
+    // Why: capture the disposer so teardownProviders can release the
+    // notification handler symmetrically with muxDisposeCleanup. Even though
+    // the disposed mux's handler array is GC'd along with it today, retaining
+    // the disposer makes "registerProviders called twice on the same mux"
+    // safe by future-proofing against duplicate handler registration.
+    this.muxNotificationCleanup?.()
+    this.muxNotificationCleanup = mux.onNotification((method, params) => {
       if (method !== AGENT_HOOK_NOTIFICATION_METHOD) {
         return
       }
@@ -470,10 +536,14 @@ export class SshRelaySession {
     // *after* the handler is wired so the request-driven replay shape
     // strictly trails our subscription on the dispatcher's single write
     // callback. Best-effort: a relay that does not know the method
-    // (e.g. older relay binary) returns -32601, which we swallow.
+    // (e.g. older relay binary) returns -32601; CONNECTION_LOST / DISPOSED
+    // arise from mux teardown mid-flight on routine reconnect/shutdown.
     void mux.request(AGENT_HOOK_REQUEST_REPLAY_METHOD).catch((err) => {
       const code = (err as { code?: unknown })?.code
-      if (code === -32601) {
+      if (code === -32601 || code === 'CONNECTION_LOST' || code === 'DISPOSED') {
+        return
+      }
+      if (mux.isDisposed()) {
         return
       }
       // Why: a normal disconnect/teardown rejects the in-flight request with
@@ -493,6 +563,8 @@ export class SshRelaySession {
   private teardownProviders(reason: 'shutdown' | 'connection_lost'): void {
     this.muxDisposeCleanup?.()
     this.muxDisposeCleanup = null
+    this.muxNotificationCleanup?.()
+    this.muxNotificationCleanup = null
     if (this.mux && !this.mux.isDisposed()) {
       this.mux.dispose(reason)
     }
