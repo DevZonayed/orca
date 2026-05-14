@@ -158,6 +158,7 @@ export default function WorktreeJumpPalette(): React.JSX.Element | null {
   const ptyIdsByTabId = useAppStore((s) => s.ptyIdsByTabId)
   const prCache = useAppStore((s) => s.prCache)
   const issueCache = useAppStore((s) => s.issueCache)
+  const agentStatusByPaneKey = useAppStore((s) => s.agentStatusByPaneKey)
   const activeWorktreeId = useAppStore((s) => s.activeWorktreeId)
   const activeTabType = useAppStore((s) => s.activeTabType)
   const activeBrowserTabId = useAppStore((s) => s.activeBrowserTabId)
@@ -233,8 +234,8 @@ export default function WorktreeJumpPalette(): React.JSX.Element | null {
             visibleWorktrees,
             tabsByWorktree,
             repoMap,
-            prCache,
-            undefined,
+            agentStatusByPaneKey,
+            runtimePaneTitlesByTabId,
             ptyIdsByTabId
           )
         : switchableWorktreesForRows,
@@ -244,7 +245,8 @@ export default function WorktreeJumpPalette(): React.JSX.Element | null {
       switchableWorktreesForRows,
       tabsByWorktree,
       repoMap,
-      prCache,
+      agentStatusByPaneKey,
+      runtimePaneTitlesByTabId,
       ptyIdsByTabId
     ]
   )
@@ -260,11 +262,18 @@ export default function WorktreeJumpPalette(): React.JSX.Element | null {
       allWorktrees,
       tabsByWorktree,
       repoMap,
-      prCache,
-      undefined,
+      agentStatusByPaneKey,
+      runtimePaneTitlesByTabId,
       ptyIdsByTabId
     )
-  }, [allWorktrees, tabsByWorktree, repoMap, prCache, ptyIdsByTabId])
+  }, [
+    allWorktrees,
+    tabsByWorktree,
+    repoMap,
+    agentStatusByPaneKey,
+    runtimePaneTitlesByTabId,
+    ptyIdsByTabId
+  ])
 
   // Why: browser rows need worktree lookups for repo badge colors, and browser
   // search intentionally includes archived worktrees. This map must cover all
