@@ -106,6 +106,15 @@ export type GitWorktreeInfo = {
 }
 
 // ─── Worktree (app-level, enriched) ──────────────────────────────────
+export type WorkspaceStatus = string
+
+export type WorkspaceStatusDefinition = {
+  id: WorkspaceStatus
+  label: string
+  color?: string
+  icon?: string
+}
+
 export type Worktree = {
   id: string // `${repoId}::${path}`
   repoId: string
@@ -147,6 +156,7 @@ export type Worktree = {
   baseRef?: string
   /** Remote/branch Orca should publish review commits to when it created this worktree. */
   pushTarget?: GitPushTarget
+  workspaceStatus?: WorkspaceStatus
   diffComments?: DiffComment[]
 } & GitWorktreeInfo
 
@@ -183,6 +193,8 @@ export type WorktreeMeta = {
   baseRef?: string
   /** See {@link Worktree.pushTarget}. Persisted so refreshed worktree lists keep the target. */
   pushTarget?: GitPushTarget
+  /** User-assigned workspace board status for manual sidebar organization. */
+  workspaceStatus?: WorkspaceStatus
   diffComments?: DiffComment[]
 }
 
@@ -1571,6 +1583,9 @@ export type PersistedUIState = {
   uiZoomLevel: number
   editorFontZoomLevel: number
   worktreeCardProperties: WorktreeCardProperty[]
+  workspaceStatuses?: WorkspaceStatusDefinition[]
+  workspaceBoardOpacity?: number
+  workspaceBoardCompact?: boolean
   statusBarItems: StatusBarItem[]
   statusBarVisible: boolean
   dismissedUpdateVersion: string | null
