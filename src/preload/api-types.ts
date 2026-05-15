@@ -1214,6 +1214,17 @@ export type PreloadApi = {
       message: string
       connectionId?: string
     }) => Promise<{ success: boolean; error?: string }>
+    generateCommitMessage: (args: {
+      worktreePath: string
+      connectionId?: string
+    }) => Promise<
+      | { success: true; message: string; agentLabel?: string }
+      | { success: false; error: string; canceled?: boolean }
+    >
+    cancelGenerateCommitMessage: (args: {
+      worktreePath: string
+      connectionId?: string
+    }) => Promise<void>
     stage: (args: {
       worktreePath: string
       filePath: string

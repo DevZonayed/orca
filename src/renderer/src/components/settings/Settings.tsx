@@ -43,6 +43,8 @@ import ghosttyIcon from '../../../../../resources/ghostty.svg'
 import { RepositoryPane, getRepositoryPaneSearchEntries } from './RepositoryPane'
 import { getTerminalPaneSearchEntries } from './terminal-search'
 import { GitPane, GIT_PANE_SEARCH_ENTRIES } from './GitPane'
+import { CommitMessageAiPane } from './CommitMessageAiPane'
+import { COMMIT_MESSAGE_AI_PANE_SEARCH_ENTRIES } from './commit-message-ai-search'
 import { NotificationsPane, NOTIFICATIONS_PANE_SEARCH_ENTRIES } from './NotificationsPane'
 import { VoicePane } from './VoicePane'
 import { VOICE_PANE_SEARCH_ENTRIES } from './voice-pane-search'
@@ -424,9 +426,12 @@ function Settings(): React.JSX.Element {
       {
         id: 'git',
         title: 'Git',
-        description: 'Branch naming and local ref behavior.',
+        description: 'Branch naming, local ref behavior, and AI commit messages.',
         icon: GitBranch,
-        searchEntries: GIT_PANE_SEARCH_ENTRIES
+        // Why: the AI commit messages pane is rendered inside the Git section,
+        // so its search entries belong to Git too — that way a query like
+        // "claude" or "thinking" still surfaces the section.
+        searchEntries: [...GIT_PANE_SEARCH_ENTRIES, ...COMMIT_MESSAGE_AI_PANE_SEARCH_ENTRIES]
       },
       {
         id: 'appearance',
@@ -759,14 +764,18 @@ function Settings(): React.JSX.Element {
                 <SettingsSection
                   id="git"
                   title="Git"
-                  description="Branch naming and local ref behavior."
-                  searchEntries={GIT_PANE_SEARCH_ENTRIES}
+                  description="Branch naming, local ref behavior, and AI commit messages."
+                  searchEntries={[
+                    ...GIT_PANE_SEARCH_ENTRIES,
+                    ...COMMIT_MESSAGE_AI_PANE_SEARCH_ENTRIES
+                  ]}
                 >
                   <GitPane
                     settings={settings}
                     updateSettings={updateSettings}
                     displayedGitUsername={displayedGitUsername}
                   />
+                  <CommitMessageAiPane settings={settings} updateSettings={updateSettings} />
                 </SettingsSection>
 
                 <SettingsSection
