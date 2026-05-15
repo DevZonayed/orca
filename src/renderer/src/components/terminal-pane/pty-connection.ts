@@ -26,6 +26,7 @@ import {
   waitForTerminalOutputParsed,
   writeTerminalOutput
 } from '@/lib/pane-manager/pane-terminal-output-scheduler'
+import { createTerminalCommandLifecycle } from './terminal-command-lifecycle'
 
 const pendingSpawnByPaneKey = new Map<string, Promise<string | null>>()
 const SSH_SESSION_EXPIRED_ERROR = 'SSH_SESSION_EXPIRED'
@@ -149,6 +150,19 @@ export function connectPanePty(
   // can track each Claude session independently without overwriting each other.
   const cacheKey = `${deps.tabId}:${pane.id}`
   const pendingSpawnKey = `${deps.tabId}:${paneLeafId(pane.id)}`
+  const commandLifecycle = createTerminalCommandLifecycle({
+    onCommandFinished: () => {
+      const state = useAppStore.getState()
+      const entry = state.agentStatusByPaneKey[cacheKey]
+      // Why: OSC 133 D marks the foreground shell command exiting. Remove the
+      // row without retaining a done snapshot; this section represents a live
+      // agent process, and the shell prompt means that process is gone.
+      if (entry) {
+        state.dropAgentStatus(cacheKey)
+      }
+    }
+  })
+  commandLifecycle.attachXtermConsumer(pane.terminal)
 
   const onExit = (ptyId: string): void => {
     deps.syncPanePtyLayoutBinding(pane.id, null)
@@ -299,17 +313,10 @@ export function connectPanePty(
     // the agent has exited. Clear any running cache timer so the sidebar doesn't
     // show a stale countdown for a tab that no longer has an active Claude session.
     deps.setCacheTimerStartedAt(cacheKey, null)
-    // Why: the agent process is gone, so its explicit status is no longer meaningful.
-    // Remove the entry so the hover UI does not show stale "working" for a dead agent.
-    //
-    // TODO(#1167): this path only fires on idle→shell title transitions, which
-    // means Ctrl+C'd `working` rows (Codex, Gemini, OpenCode — agents with no
-    // interrupt hook) linger until the 30-min AGENT_STATUS_STALE_AFTER_MS TTL
-    // decays them to idle or the pane/tab is closed. PR #1167 replaces this
-    // heuristic with authoritative foreground-process tracking in main so the
-    // row drops within 2s of the CLI process exiting. See branch
-    // brennanb2025/foreground-process-agent-exit.
-    useAppStore.getState().removeAgentStatus(cacheKey)
+    // Why: do not let terminal-title reversion own agent-status lifecycle.
+    // Explicit hooks and OSC 133 command-finished marks are the reliable
+    // signals; title changes can race normal "done" states and make agents
+    // look like they vanished as soon as they finished responding.
   }
   // Why: inject ORCA_PANE_KEY so global Claude/Codex hooks can attribute their
   // callbacks to the correct Orca pane without resolving worktrees from cwd.
@@ -641,6 +648,7 @@ export function connectPanePty(
     }
 
     const dataCallback = (data: string): void => {
+      commandLifecycle.handlePtyData(data)
       if (terminalOutputPrefersDomRenderer(data)) {
         manager.markPaneHasComplexScriptOutput(pane.id)
       }
@@ -1253,6 +1261,7 @@ export function connectPanePty(
         cancelAnimationFrame(pendingGeometryReportRaf)
         pendingGeometryReportRaf = null
       }
+      commandLifecycle.dispose()
     }
   }
 }
