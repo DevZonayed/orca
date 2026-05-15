@@ -14,13 +14,22 @@ import type {
   GitHubViewer,
   GitHubWorkItem
 } from '../../shared/types'
+import type { CreateHostedReviewInput, CreateHostedReviewResult } from '../../shared/hosted-review'
+import {
+  normalizeHostedReviewBaseRef,
+  normalizeHostedReviewHeadRef
+} from '../../shared/hosted-review-refs'
 import { parseTaskQuery, type ParsedTaskQuery } from '../../shared/task-query'
 import { sortWorkItemsByUpdatedAt } from '../../shared/work-items'
+import { mkdtemp, rm, writeFile } from 'fs/promises'
+import { join } from 'path'
+import { tmpdir } from 'os'
 import { getPRConflictSummary } from './conflict-summary'
 import {
   execFileAsync,
   ghExecFileAsync,
   gitExecFileAsync,
+  extractExecError,
   acquire,
   release,
   getOwnerRepo,
@@ -909,6 +918,220 @@ export async function getRepoSlug(
   connectionId?: string | null
 ): Promise<{ owner: string; repo: string } | null> {
   return getOwnerRepo(repoPath, connectionId)
+}
+
+function classifyCreatePRError(error: unknown): CreateHostedReviewResult {
+  const { stderr, stdout } = extractExecError(error)
+  const message = `${stderr}\n${stdout}`.trim()
+  if (message) {
+    console.warn('createGitHubPullRequest failed:', message)
+  }
+  const lower = message.toLowerCase()
+  if (
+    lower.includes('not logged') ||
+    lower.includes('not authenticated') ||
+    lower.includes('authentication') ||
+    lower.includes('gh auth login') ||
+    lower.includes('http 401')
+  ) {
+    return {
+      ok: false,
+      code: 'auth_required',
+      error:
+        'Create PR failed: GitHub is not authenticated. Next step: run gh auth login in this environment.'
+    }
+  }
+  if (lower.includes('already exists') || lower.includes('a pull request already exists')) {
+    return {
+      ok: false,
+      code: 'already_exists',
+      error: 'A pull request already exists for this branch.'
+    }
+  }
+  if (lower.includes('timed out') || lower.includes('timeout')) {
+    return {
+      ok: false,
+      code: 'unknown_completion',
+      error: 'PR creation may have completed. Refreshing branch review state...'
+    }
+  }
+  if (lower.includes('validation failed') || lower.includes('http 422')) {
+    return {
+      ok: false,
+      code: 'validation',
+      error:
+        'Create PR failed: GitHub rejected the pull request. Check the base branch and branch state, then try again.'
+    }
+  }
+  return {
+    ok: false,
+    code: 'unknown',
+    error: 'Create PR failed: GitHub could not create the pull request. Try again in a moment.'
+  }
+}
+
+function parseCreatePRPayload(stdout: string): { number: number; url: string } | null {
+  const trimmed = stdout.trim()
+  if (!trimmed) {
+    return null
+  }
+  try {
+    const parsed = JSON.parse(trimmed) as { number?: unknown; url?: unknown }
+    const number = Number(parsed.number)
+    const url = typeof parsed.url === 'string' ? parsed.url.trim() : ''
+    if (Number.isInteger(number) && number > 0 && url) {
+      return { number, url }
+    }
+  } catch {
+    // Fall through to URL parsing for older gh versions without --json support.
+  }
+  const urlMatch = trimmed.match(/https:\/\/github\.com\/[^/\s]+\/[^/\s]+\/pull\/(\d+)/)
+  if (!urlMatch) {
+    return null
+  }
+  return { number: Number(urlMatch[1]), url: urlMatch[0] }
+}
+
+async function findOpenPRByHeadBase(args: {
+  repoPath: string
+  ownerRepo: OwnerRepo
+  head: string
+  base: string
+}): Promise<{ number: number; url: string } | null> {
+  const { stdout } = await ghExecFileAsync(
+    [
+      'pr',
+      'list',
+      '--repo',
+      `${args.ownerRepo.owner}/${args.ownerRepo.repo}`,
+      '--head',
+      args.head,
+      '--base',
+      args.base,
+      '--state',
+      'open',
+      '--limit',
+      '2',
+      '--json',
+      'number,url'
+    ],
+    { cwd: args.repoPath }
+  )
+  const list = JSON.parse(stdout) as { number?: number; url?: string }[]
+  if (list.length !== 1 || !list[0]?.number || !list[0]?.url) {
+    return null
+  }
+  return { number: list[0].number, url: list[0].url }
+}
+
+export async function createGitHubPullRequest(
+  repoPath: string,
+  input: CreateHostedReviewInput
+): Promise<CreateHostedReviewResult> {
+  if (input.provider !== 'github') {
+    return {
+      ok: false,
+      code: 'unsupported_provider',
+      error: 'Creating reviews for this provider is not supported yet.'
+    }
+  }
+
+  const ownerRepo = await getOwnerRepo(repoPath)
+  if (!ownerRepo) {
+    return {
+      ok: false,
+      code: 'unsupported_provider',
+      error: 'Creating pull requests requires a GitHub remote.'
+    }
+  }
+
+  const base = normalizeHostedReviewBaseRef(input.base)
+  const head = input.head ? normalizeHostedReviewHeadRef(input.head) || undefined : undefined
+  const title = input.title.trim()
+  if (!base || !title) {
+    return {
+      ok: false,
+      code: 'validation',
+      error: 'Create PR failed: base branch and title are required.'
+    }
+  }
+  if (head && head.toLowerCase() === base.toLowerCase()) {
+    return {
+      ok: false,
+      code: 'validation',
+      error: 'Create PR failed: choose a different base branch before creating a pull request.'
+    }
+  }
+
+  const tempDir = await mkdtemp(join(tmpdir(), 'orca-pr-body-'))
+  await acquire()
+  const bodyPath = join(tempDir, 'body.md')
+  try {
+    await writeFile(bodyPath, input.body ?? '', 'utf8')
+    const createArgs = [
+      'pr',
+      'create',
+      '--repo',
+      `${ownerRepo.owner}/${ownerRepo.repo}`,
+      '--base',
+      base,
+      '--title',
+      title,
+      '--body-file',
+      bodyPath
+    ]
+    if (head) {
+      createArgs.push('--head', head)
+    }
+    if (input.draft) {
+      createArgs.push('--draft')
+    }
+    try {
+      const { stdout } = await ghExecFileAsync(createArgs, {
+        cwd: repoPath,
+        timeout: 60_000,
+        idempotent: false
+      })
+      const created = parseCreatePRPayload(stdout)
+      if (created) {
+        return { ok: true, ...created }
+      }
+      const found = head
+        ? await findOpenPRByHeadBase({ repoPath, ownerRepo, head, base }).catch(() => null)
+        : null
+      if (found) {
+        return { ok: true, ...found }
+      }
+      return {
+        ok: false,
+        code: 'unknown_completion',
+        error: 'PR creation may have completed. Refreshing branch review state...'
+      }
+    } catch (error) {
+      const classified = classifyCreatePRError(error)
+      if (
+        !classified.ok &&
+        (classified.code === 'already_exists' || classified.code === 'unknown_completion') &&
+        head
+      ) {
+        const existing = await findOpenPRByHeadBase({ repoPath, ownerRepo, head, base }).catch(
+          () => null
+        )
+        if (existing) {
+          return {
+            ok: false,
+            code: 'already_exists',
+            error: 'A pull request already exists for this branch.',
+            existingReview: existing
+          }
+        }
+      }
+      return classified
+    }
+  } finally {
+    await rm(tempDir, { recursive: true, force: true }).catch(() => undefined)
+    release()
+  }
 }
 
 export async function getWorkItem(

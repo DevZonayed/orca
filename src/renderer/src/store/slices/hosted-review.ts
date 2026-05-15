@@ -1,5 +1,11 @@
 import type { StateCreator } from 'zustand'
-import type { HostedReviewInfo } from '../../../../shared/hosted-review'
+import type {
+  CreateHostedReviewInput,
+  CreateHostedReviewResult,
+  HostedReviewCreationEligibility,
+  HostedReviewCreationEligibilityArgs,
+  HostedReviewInfo
+} from '../../../../shared/hosted-review'
 import type { GlobalSettings } from '../../../../shared/types'
 import { callRuntimeRpc, getActiveRuntimeTarget } from '@/runtime/runtime-rpc-client'
 import type { AppState } from '../types'
@@ -32,6 +38,13 @@ export function getHostedReviewCacheKey(
 
 export type HostedReviewSlice = {
   hostedReviewCache: Record<string, CacheEntry<HostedReviewInfo>>
+  getHostedReviewCreationEligibility: (
+    args: HostedReviewCreationEligibilityArgs
+  ) => Promise<HostedReviewCreationEligibility>
+  createHostedReview: (
+    repoPath: string,
+    input: CreateHostedReviewInput
+  ) => Promise<CreateHostedReviewResult>
   fetchHostedReviewForBranch: (
     repoPath: string,
     branch: string,
@@ -49,6 +62,47 @@ export const createHostedReviewSlice: StateCreator<AppState, [], [], HostedRevie
   get
 ) => ({
   hostedReviewCache: {},
+
+  getHostedReviewCreationEligibility: async (args) => {
+    const settings = get().settings
+    const target = getActiveRuntimeTarget(settings)
+    if (target.kind === 'environment') {
+      const repo = get().repos.find((candidate) => candidate.path === args.repoPath)
+      const { repoPath: _repoPath, ...runtimeArgs } = args
+      void _repoPath
+      return callRuntimeRpc<HostedReviewCreationEligibility>(
+        target,
+        'hostedReview.getCreationEligibility',
+        { repo: repo?.id ?? args.repoPath, ...runtimeArgs },
+        { timeoutMs: 30_000 }
+      )
+    }
+    const repo = get().repos.find((candidate) => candidate.path === args.repoPath)
+    return window.api.hostedReview.getCreationEligibility({
+      ...args,
+      connectionId: repo?.connectionId ?? null
+    })
+  },
+
+  createHostedReview: async (repoPath, input) => {
+    const settings = get().settings
+    const target = getActiveRuntimeTarget(settings)
+    if (target.kind === 'environment') {
+      const repo = get().repos.find((candidate) => candidate.path === repoPath)
+      return callRuntimeRpc<CreateHostedReviewResult>(
+        target,
+        'hostedReview.create',
+        { repo: repo?.id ?? repoPath, ...input },
+        { timeoutMs: 60_000 }
+      )
+    }
+    const repo = get().repos.find((candidate) => candidate.path === repoPath)
+    return window.api.hostedReview.create({
+      repoPath,
+      connectionId: repo?.connectionId ?? null,
+      ...input
+    })
+  },
 
   fetchHostedReviewForBranch: async (
     repoPath,

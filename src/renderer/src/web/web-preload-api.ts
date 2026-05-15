@@ -128,6 +128,7 @@ function createWebPreloadApi(): Partial<PreloadApi> {
     git: createGitApi(),
     browser: createBrowserApi(),
     gh: createGitHubApi(),
+    hostedReview: createRuntimeNamespaceApi('hostedReview'),
     linear: createRuntimeNamespaceApi('linear'),
     hooks: createHooksApi(),
     stats: {

@@ -1,5 +1,12 @@
 /* eslint-disable max-lines -- Why: the preload contract is intentionally centralized in one declaration file so renderer and preload stay in lockstep when IPC surfaces change. */
-import type { HostedReviewForBranchArgs, HostedReviewInfo } from '../shared/hosted-review'
+import type {
+  CreateHostedReviewArgs,
+  CreateHostedReviewResult,
+  HostedReviewCreationEligibility,
+  HostedReviewCreationEligibilityArgs,
+  HostedReviewForBranchArgs,
+  HostedReviewInfo
+} from '../shared/hosted-review'
 import type {
   BaseRefDefaultResult,
   BrowserCookieImportResult,
@@ -820,6 +827,10 @@ export type PreloadApi = {
   }
   hostedReview: {
     forBranch: (args: HostedReviewForBranchArgs) => Promise<HostedReviewInfo | null>
+    getCreationEligibility: (
+      args: HostedReviewCreationEligibilityArgs
+    ) => Promise<HostedReviewCreationEligibility>
+    create: (args: CreateHostedReviewArgs) => Promise<CreateHostedReviewResult>
   }
   // ── GitLab — parallel to gh, MR/issue surface only in v1 ────────
   // Shapes mirror gh.* one-to-one where the data matches; diverge

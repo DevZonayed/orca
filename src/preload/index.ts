@@ -925,7 +925,10 @@ const api = {
 
   hostedReview: {
     forBranch: (args: HostedReviewForBranchArgs): Promise<unknown> =>
-      ipcRenderer.invoke('hostedReview:forBranch', args)
+      ipcRenderer.invoke('hostedReview:forBranch', args),
+    getCreationEligibility: (args: unknown): Promise<unknown> =>
+      ipcRenderer.invoke('hostedReview:getCreationEligibility', args),
+    create: (args: unknown): Promise<unknown> => ipcRenderer.invoke('hostedReview:create', args)
   },
 
   // Why: GitLab bindings live in `./gitlab` so adding or changing a

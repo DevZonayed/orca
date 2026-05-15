@@ -1,9 +1,17 @@
 import { ipcMain } from 'electron'
 import { resolve } from 'path'
-import type { HostedReviewForBranchArgs } from '../../shared/hosted-review'
+import type {
+  CreateHostedReviewArgs,
+  HostedReviewCreationEligibilityArgs,
+  HostedReviewForBranchArgs
+} from '../../shared/hosted-review'
 import type { Repo } from '../../shared/types'
 import type { Store } from '../persistence'
 import type { StatsCollector } from '../stats/collector'
+import {
+  createHostedReview,
+  getHostedReviewCreationEligibility
+} from '../source-control/hosted-review-creation'
 import { getHostedReviewForBranch } from '../source-control/hosted-review'
 
 function assertRegisteredRepo(repoPath: string, store: Store, repoId?: string): Repo {
@@ -43,5 +51,54 @@ export function registerHostedReviewHandlers(store: Store, stats: StatsCollector
       })
     }
     return review
+  })
+
+  ipcMain.handle(
+    'hostedReview:getCreationEligibility',
+    async (_event, args: HostedReviewCreationEligibilityArgs) => {
+      const repo = assertRegisteredRepo(args.repoPath, store)
+      if (repo.connectionId) {
+        return {
+          provider: 'unsupported' as const,
+          review: null,
+          canCreate: false,
+          blockedReason: 'unsupported_provider' as const,
+          nextAction: null,
+          defaultBaseRef: args.base ?? null,
+          head: args.branch,
+          title: null,
+          body: null
+        }
+      }
+      return getHostedReviewCreationEligibility({ ...args, repoPath: repo.path })
+    }
+  )
+
+  ipcMain.handle('hostedReview:create', async (_event, args: CreateHostedReviewArgs) => {
+    const repo = assertRegisteredRepo(args.repoPath, store)
+    if (repo.connectionId) {
+      return {
+        ok: false as const,
+        code: 'unsupported_provider' as const,
+        error: 'Creating pull requests from SSH worktrees is not supported yet.'
+      }
+    }
+    const result = await createHostedReview(repo.path, {
+      provider: args.provider,
+      base: args.base,
+      head: args.head,
+      title: args.title,
+      body: args.body,
+      draft: args.draft
+    })
+    if (result.ok && !stats.hasCountedPR(result.url)) {
+      stats.record({
+        type: 'pr_created',
+        at: Date.now(),
+        repoId: repo.id,
+        meta: { prNumber: result.number, prUrl: result.url }
+      })
+    }
+    return result
   })
 }

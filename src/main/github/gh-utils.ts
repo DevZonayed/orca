@@ -1,6 +1,6 @@
 import { execFile } from 'child_process'
 import { promisify } from 'util'
-import { gitExecFileAsync, ghExecFileAsync } from '../git/runner'
+import { gitExecFileAsync, ghExecFileAsync, extractExecError } from '../git/runner'
 import type { ClassifiedError, GitHubOwnerRepo, IssueSourcePreference } from '../../shared/types'
 import { getSshGitProvider } from '../providers/ssh-git-dispatch'
 
@@ -8,7 +8,7 @@ import { getSshGitProvider } from '../providers/ssh-git-dispatch'
 // WSL-aware routing (e.g. non-repo-scoped gh commands). Repo-scoped callers
 // should use ghExecFileAsync or gitExecFileAsync from the runner instead.
 export const execFileAsync = promisify(execFile)
-export { ghExecFileAsync, gitExecFileAsync }
+export { ghExecFileAsync, gitExecFileAsync, extractExecError }
 
 // Concurrency limiter - max 4 parallel gh processes
 const MAX_CONCURRENT = 4
