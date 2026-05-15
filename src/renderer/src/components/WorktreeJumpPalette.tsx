@@ -38,11 +38,7 @@ import {
   ORCA_BROWSER_FOCUS_REQUEST_EVENT,
   queueBrowserFocusRequest
 } from '@/components/browser-pane/browser-focus'
-import type {
-  BrowserPage,
-  BrowserWorkspace,
-  Worktree
-} from '../../../shared/types'
+import type { BrowserPage, BrowserWorkspace, Worktree } from '../../../shared/types'
 import { isGitRepoKind } from '../../../shared/repo-kind'
 
 type WorktreePaletteItem = {

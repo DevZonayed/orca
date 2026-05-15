@@ -458,9 +458,13 @@ describe('FsHandler', () => {
       .mockResolvedValue({ unsubscribe: vi.fn() })
 
     let stale = false
-    await dispatcher.callRequest('fs.watch', { rootPath: path.join(tmpDir, 'stale-root') }, {
-      isStale: () => stale
-    })
+    await dispatcher.callRequest(
+      'fs.watch',
+      { rootPath: path.join(tmpDir, 'stale-root') },
+      {
+        isStale: () => stale
+      }
+    )
     for (let index = 0; index < 19; index += 1) {
       await dispatcher.callRequest('fs.watch', {
         rootPath: path.join(tmpDir, `watched-${index}`)

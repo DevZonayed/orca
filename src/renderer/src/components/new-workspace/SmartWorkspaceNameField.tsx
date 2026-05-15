@@ -41,11 +41,7 @@ import {
 import { parseGitLabIssueOrMRLink } from '@/lib/gitlab-links'
 import { cn } from '@/lib/utils'
 import { LinearIcon } from '@/components/icons/LinearIcon'
-import type {
-  GitHubWorkItem,
-  GitLabWorkItem,
-  LinearIssue
-} from '../../../../shared/types'
+import type { GitHubWorkItem, GitLabWorkItem, LinearIssue } from '../../../../shared/types'
 
 type SmartNameMode = 'smart' | 'github' | 'gitlab' | 'branches' | 'linear' | 'text'
 
