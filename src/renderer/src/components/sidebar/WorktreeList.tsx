@@ -1429,46 +1429,46 @@ const WorktreeList = React.memo(function WorktreeList({
     hasObservedSmartOnceRef.current = true
   }, [sortBy, sortedIds])
 
-  // Why a 30s timer owned by the component: the class-distribution event is
-  // a coarse health signal — we only need it often enough to see the steady
-  // state, not every render. Cancelling on unmount or sort switch keeps the
-  // timer from firing while the user is in Recent/Name/Repo modes.
+  // Why retry on sortedIds changes: Smart can become active before attention
+  // hydrates. Fire once when class data exists, then stay quiet until the user
+  // leaves Smart so this never becomes a telemetry heartbeat.
+  const hasTrackedSmartDistributionRef = useRef(false)
   useEffect(() => {
     if (sortBy !== 'smart') {
+      hasTrackedSmartDistributionRef.current = false
       return
     }
-    const fire = () => {
-      const attention = lastAttentionByWorktreeRef.current
-      if (!attention) {
-        return
-      }
-      let class1 = 0
-      let class2 = 0
-      let class3 = 0
-      let class4 = 0
-      for (const info of attention.values()) {
-        if (info.cls === 1) {
-          class1++
-        } else if (info.cls === 2) {
-          class2++
-        } else if (info.cls === 3) {
-          class3++
-        } else {
-          class4++
-        }
-      }
-      track('smart_sort_class_distribution', {
-        class_1: class1,
-        class_2: class2,
-        class_3: class3,
-        class_4: class4,
-        total_worktrees: attention.size
-      })
+    if (hasTrackedSmartDistributionRef.current) {
+      return
     }
-    fire()
-    const timer = setInterval(fire, 30_000)
-    return () => clearInterval(timer)
-  }, [sortBy])
+    const attention = lastAttentionByWorktreeRef.current
+    if (!attention || attention.size === 0) {
+      return
+    }
+    let class1 = 0
+    let class2 = 0
+    let class3 = 0
+    let class4 = 0
+    for (const info of attention.values()) {
+      if (info.cls === 1) {
+        class1++
+      } else if (info.cls === 2) {
+        class2++
+      } else if (info.cls === 3) {
+        class3++
+      } else {
+        class4++
+      }
+    }
+    track('smart_sort_class_distribution', {
+      class_1: class1,
+      class_2: class2,
+      class_3: class3,
+      class_4: class4,
+      total_worktrees: attention.size
+    })
+    hasTrackedSmartDistributionRef.current = true
+  }, [sortBy, sortedIds])
 
   // Why fire on the transition: switching away from Smart is the user signal
   // we care about (regression). Use a ref to compare against the previous
