@@ -20,6 +20,7 @@ import {
   getDefaultUIState,
   getDefaultWorkspaceSession
 } from '../../../shared/constants'
+import { legacyBaseRefSearchResult } from '../../../shared/base-ref-search-result'
 import { createE2EConfig } from '../../../shared/e2e-config'
 import { relativePathInsideRoot } from '../../../shared/cross-platform-path'
 import type { RateLimitState } from '../../../shared/rate-limit-types'
@@ -297,6 +298,17 @@ function createReposApi(): NonNullable<Partial<PreloadApi>['repos']> {
           limit
         })
       ).refs,
+    searchBaseRefDetails: async ({ repoId, query, limit }) => {
+      const result = await callRuntimeResult<{
+        refs: string[]
+        refDetails?: { refName: string; localBranchName: string }[]
+      }>('repo.searchRefs', {
+        repo: repoId,
+        query,
+        limit
+      })
+      return result.refDetails ?? result.refs.map(legacyBaseRefSearchResult)
+    },
     onChanged: () => noopUnsubscribe
   }
 }
@@ -313,6 +325,7 @@ function createWorktreesApi(): NonNullable<Partial<PreloadApi>['worktrees']> {
         repo: args.repoId,
         name: args.name,
         baseBranch: args.baseBranch,
+        branchNameOverride: args.branchNameOverride,
         linkedIssue: args.linkedIssue,
         linkedPR: args.linkedPR,
         displayName: args.displayName,
