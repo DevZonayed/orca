@@ -84,10 +84,19 @@ import { callRuntimeRpc, getActiveRuntimeTarget } from '@/runtime/runtime-rpc-cl
 // Prevents jarring position shifts when background events (AI starting work,
 // terminal title changes) trigger score recalculations.
 const SORT_SETTLE_MS = 3_000
+const USER_SCROLL_MEASUREMENT_ADJUSTMENT_SUPPRESS_MS = 500
 const WORKTREE_SIDEBAR_SCROLL_STYLE: React.CSSProperties = {
   // Why: TanStack Virtual owns scroll correction. Native browser anchoring can
   // fight virtual row measurement/remounts and produce visible jumps.
   overflowAnchor: 'none'
+}
+
+export function shouldAdjustWorktreeSidebarMeasuredRowScroll(args: {
+  isScrolling: boolean
+  now: number
+  suppressUntil: number
+}): boolean {
+  return !args.isScrolling && args.now >= args.suppressUntil
 }
 
 function isEditableTarget(target: EventTarget | null): boolean {
@@ -283,6 +292,7 @@ const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktreeViewp
   scrollAnchorRef
 }: VirtualizedWorktreeViewportProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
+  const suppressMeasurementAdjustmentUntilRef = useRef(0)
   const [dragOverStatus, setDragOverStatus] = useState<WorkspaceStatus | null>(null)
   const [pinDragOver, setPinDragOver] = useState(false)
   const canReorderRepoHeaders = groupBy === 'repo' && repoGroupOrdering === 'manual'
@@ -349,6 +359,14 @@ const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktreeViewp
     },
     [isCurrentVirtualRowElement]
   )
+  const markDirectScrollInput = useCallback(() => {
+    suppressMeasurementAdjustmentUntilRef.current =
+      window.performance.now() + USER_SCROLL_MEASUREMENT_ADJUSTMENT_SUPPRESS_MS
+  }, [])
+  const shouldSkipScrollAnchorRestore = useCallback(
+    () => window.performance.now() < suppressMeasurementAdjustmentUntilRef.current,
+    []
+  )
 
   const virtualizer = useVirtualizer({
     count: renderRows.length,
@@ -357,6 +375,7 @@ const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktreeViewp
     measureElement: measureCurrentVirtualRowElement,
     overscan: 10,
     gap: 6,
+    isScrollingResetDelay: USER_SCROLL_MEASUREMENT_ADJUSTMENT_SUPPRESS_MS,
     // Why: the sidebar rows are rich cards. Flushing their React render inside
     // TanStack's native scroll listener can make wheel input wait on card work;
     // overscan gives the async render enough runway to stay visually filled.
@@ -369,6 +388,16 @@ const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktreeViewp
     initialOffset: () => scrollOffsetRef.current,
     getItemKey: getVirtualItemKey
   })
+  // Why: rich worktree cards remeasure while the user wheels through them.
+  // TanStack's default correction writes scrollTop in that path, which feels
+  // like rubber-banding. Structural mutations still use our explicit anchor
+  // restore after direct scroll input has settled.
+  virtualizer.shouldAdjustScrollPositionOnItemSizeChange = (_item, _delta, instance) =>
+    shouldAdjustWorktreeSidebarMeasuredRowScroll({
+      isScrolling: instance.isScrolling,
+      now: window.performance.now(),
+      suppressUntil: suppressMeasurementAdjustmentUntilRef.current
+    })
 
   React.useEffect(() => {
     if (!pendingRevealWorktreeId) {
@@ -502,6 +531,7 @@ const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktreeViewp
     rows: renderRows,
     scrollElementRef: scrollRef,
     scrollOffsetRef,
+    shouldSkipRestore: shouldSkipScrollAnchorRestore,
     totalSize,
     virtualizer
   })
@@ -727,6 +757,8 @@ const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktreeViewp
       aria-multiselectable="true"
       aria-activedescendant={activeDescendantId}
       onKeyDown={handleContainerKeyDown}
+      onTouchMove={markDirectScrollInput}
+      onWheel={markDirectScrollInput}
       className="worktree-sidebar-scrollbar flex-1 overflow-y-scroll overflow-x-hidden pl-1 scrollbar-sleek outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset pt-px"
       style={WORKTREE_SIDEBAR_SCROLL_STYLE}
     >
