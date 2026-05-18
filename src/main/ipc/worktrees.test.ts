@@ -652,6 +652,93 @@ describe('registerWorktreeHandlers', () => {
     })
   })
 
+  it('resolves a fork PR base even when push-target discovery fails', async () => {
+    getPullRequestPushTargetMock.mockRejectedValueOnce(new Error('lookup failed'))
+    gitExecFileAsyncMock.mockImplementation(async (args: string[]) => {
+      if (args[0] === 'rev-parse') {
+        return { stdout: 'abc123\n', stderr: '' }
+      }
+      return { stdout: '', stderr: '' }
+    })
+
+    const result = await handlers['worktrees:resolvePrBase'](null, {
+      repoId: 'repo-1',
+      prNumber: 1849,
+      headRefName: 'feat/onboarding-model-choice-782',
+      isCrossRepository: true
+    })
+
+    expect(gitExecFileAsyncMock).toHaveBeenCalledWith(['fetch', 'origin', 'refs/pull/1849/head'], {
+      cwd: '/workspace/repo'
+    })
+    expect(result).toEqual({ baseBranch: 'abc123' })
+  })
+
+  it('falls back to refs/pull/<N>/head when branch fetch fails for a PR', async () => {
+    gitExecFileAsyncMock.mockImplementation(async (args: string[]) => {
+      if (
+        args[0] === 'fetch' &&
+        args[2] ===
+          '+refs/heads/feat/onboarding-model-choice-782:refs/remotes/origin/feat/onboarding-model-choice-782'
+      ) {
+        throw new Error(
+          'fatal: could not find remote ref refs/heads/feat/onboarding-model-choice-782'
+        )
+      }
+      if (args[0] === 'rev-parse') {
+        return { stdout: 'abc123\n', stderr: '' }
+      }
+      return { stdout: '', stderr: '' }
+    })
+
+    const result = await handlers['worktrees:resolvePrBase'](null, {
+      repoId: 'repo-1',
+      prNumber: 1849,
+      headRefName: 'feat/onboarding-model-choice-782'
+    })
+
+    expect(gitExecFileAsyncMock).toHaveBeenCalledWith(
+      [
+        'fetch',
+        'origin',
+        '+refs/heads/feat/onboarding-model-choice-782:refs/remotes/origin/feat/onboarding-model-choice-782'
+      ],
+      { cwd: '/workspace/repo' }
+    )
+    expect(gitExecFileAsyncMock).toHaveBeenCalledWith(['fetch', 'origin', 'refs/pull/1849/head'], {
+      cwd: '/workspace/repo'
+    })
+    expect(result).toEqual({ baseBranch: 'abc123' })
+  })
+
+  it('does not fall back to refs/pull/<N>/head when branch fetch hits a network failure', async () => {
+    gitExecFileAsyncMock.mockImplementation(async (args: string[]) => {
+      if (
+        args[0] === 'fetch' &&
+        args[2] ===
+          '+refs/heads/feat/onboarding-model-choice-782:refs/remotes/origin/feat/onboarding-model-choice-782'
+      ) {
+        throw new Error('fatal: unable to access repo: Could not resolve host: github.com')
+      }
+      return { stdout: '', stderr: '' }
+    })
+
+    const result = await handlers['worktrees:resolvePrBase'](null, {
+      repoId: 'repo-1',
+      prNumber: 1849,
+      headRefName: 'feat/onboarding-model-choice-782'
+    })
+
+    expect(gitExecFileAsyncMock).not.toHaveBeenCalledWith(
+      ['fetch', 'origin', 'refs/pull/1849/head'],
+      expect.anything()
+    )
+    expect(result).toEqual({
+      error:
+        'Failed to fetch origin/feat/onboarding-model-choice-782: fatal: unable to access repo: Could not resolve host: github.com'
+    })
+  })
+
   it('persists linked issue, PR, and selected agent metadata during remote create', async () => {
     const repo = {
       id: 'repo-ssh',
