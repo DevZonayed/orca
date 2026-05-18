@@ -355,7 +355,8 @@ export function getDefaultUIState(): PersistedUIState {
     lastUpdateCheckAt: null,
     trustedOrcaHooks: {},
     acknowledgedAgentsByPaneKey: {},
-    workspaceCleanup: { dismissals: {} }
+    workspaceCleanup: { dismissals: {} },
+    featureTipsSeenIds: []
   }
 }
 
