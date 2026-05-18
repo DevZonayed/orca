@@ -38,6 +38,7 @@ import type {
   GitHubPRFileContents,
   GitHubPRReviewCommentInput,
   GitHubCommentResult,
+  GitHubOwnerRepo,
   GitHubWorkItem,
   GitHubWorkItemDetails,
   GitHubViewer,
@@ -798,6 +799,7 @@ export type PreloadApi = {
       repoId?: string
       prNumber: number
       headSha?: string
+      prRepo?: GitHubOwnerRepo | null
       noCache?: boolean
     }) => Promise<PRCheckDetail[]>
     rerunPRChecks: (args: {
@@ -811,6 +813,7 @@ export type PreloadApi = {
       repoPath: string
       repoId?: string
       prNumber: number
+      prRepo?: GitHubOwnerRepo | null
       noCache?: boolean
     }) => Promise<PRComment[]>
     resolveReviewThread: (args: {
@@ -832,12 +835,14 @@ export type PreloadApi = {
       repoId?: string
       prNumber: number
       title: string
+      prRepo?: GitHubOwnerRepo | null
     }) => Promise<boolean>
     mergePR: (args: {
       repoPath: string
       repoId?: string
       prNumber: number
       method?: 'merge' | 'squash' | 'rebase'
+      prRepo?: GitHubOwnerRepo | null
     }) => Promise<{ ok: true } | { ok: false; error: string }>
     updatePRState: (args: {
       repoPath: string
