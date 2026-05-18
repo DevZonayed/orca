@@ -9,6 +9,7 @@ import type {
   WorkspaceSessionState
 } from '../../../../shared/types'
 import { FLOATING_TERMINAL_WORKTREE_ID } from '../../../../shared/constants'
+import { isValidHostTerminalTabId, isValidTerminalTabId } from '../../../../shared/terminal-tab-id'
 import { getRepoIdFromWorktreeId, splitWorktreeId } from '../../../../shared/worktree-id'
 import type { AgentStartedTelemetry } from '../../lib/worktree-activation'
 import { scheduleRuntimeGraphSync } from '@/runtime/sync-runtime-graph'
@@ -30,8 +31,10 @@ import {
 import { normalizeTerminalLayoutSnapshot } from '@/components/terminal-pane/terminal-layout-leaf-ids'
 import { shutdownBufferCaptures } from '@/components/terminal-pane/shutdown-buffer-captures'
 import { callRuntimeRpc, getActiveRuntimeTarget } from '@/runtime/runtime-rpc-client'
+import { parseRemoteRuntimePtyId } from '@/runtime/runtime-terminal-stream'
 import { createBrowserUuid } from '@/lib/browser-uuid'
 import { hasWorktreeSleepIntent } from '@/lib/worktree-sleep-intent'
+import { sanitizeTerminalLayoutPaneTitles } from '@/lib/terminal-pane-title-sanitization'
 
 function getNextTerminalOrdinal(tabs: TerminalTab[]): number {
   const usedOrdinals = new Set<number>()
@@ -48,6 +51,10 @@ function getNextTerminalOrdinal(tabs: TerminalTab[]): number {
     nextOrdinal += 1
   }
   return nextOrdinal
+}
+
+function isRemoteRuntimePtyId(ptyId: string | null | undefined): boolean {
+  return typeof ptyId === 'string' && parseRemoteRuntimePtyId(ptyId) !== null
 }
 
 function getFallbackTabTitle(tab: TerminalTab, index?: number): string {
@@ -409,7 +416,8 @@ export const createTerminalSlice: StateCreator<AppState, [], [], TerminalSlice> 
       // otherwise be persisted as a real tab id and break paneKey routing
       // (`${tabId}:${leafId}` would inherit the bad tab segment).
       const trimmedHint = typeof options?.id === 'string' ? options.id.trim() : ''
-      const hintedId = trimmedHint.length > 0 ? trimmedHint : undefined
+      const hintedId =
+        trimmedHint.length > 0 && isValidHostTerminalTabId(trimmedHint) ? trimmedHint : undefined
       const idCollides =
         hintedId !== undefined &&
         Object.values(s.tabsByWorktree).some((tabs) => tabs.some((entry) => entry.id === hintedId))
@@ -994,6 +1002,7 @@ export const createTerminalSlice: StateCreator<AppState, [], [], TerminalSlice> 
   updateTabPtyId: (tabId, ptyId) => {
     let worktreeId: string | null = null
     let wasActivationSpawn = false
+    const isRemoteRuntimeMirror = isRemoteRuntimePtyId(ptyId)
     set((s) => {
       const existingPtyIds = s.ptyIdsByTabId[tabId] ?? []
       const nextPtyIds = existingPtyIds.includes(ptyId)
@@ -1058,7 +1067,7 @@ export const createTerminalSlice: StateCreator<AppState, [], [], TerminalSlice> 
     // stamp and the sortEpoch bump so the sidebar does not reorder on click.
     // Other spawn reasons (new tab, codex restart, reconnect) still flow
     // through bumpWorktreeActivity as a normal activity signal.
-    if (worktreeId && !wasActivationSpawn) {
+    if (worktreeId && !wasActivationSpawn && !isRemoteRuntimeMirror) {
       get().bumpWorktreeActivity(worktreeId)
     }
   },
@@ -1066,6 +1075,7 @@ export const createTerminalSlice: StateCreator<AppState, [], [], TerminalSlice> 
   clearTabPtyId: (tabId, ptyId) => {
     let worktreeId: string | null = null
     let wasActivationSpawn = false
+    let isRemoteRuntimeMirror = isRemoteRuntimePtyId(ptyId)
     set((s) => {
       const existingPtyIds = s.ptyIdsByTabId[tabId] ?? []
       const remainingPtyIds = ptyId ? existingPtyIds.filter((id) => id !== ptyId) : []
@@ -1079,6 +1089,10 @@ export const createTerminalSlice: StateCreator<AppState, [], [], TerminalSlice> 
         const tab = tabs[index]
         if (tab.pendingActivationSpawn) {
           wasActivationSpawn = true
+        }
+        if (!ptyId) {
+          isRemoteRuntimeMirror =
+            existingPtyIds.length > 0 && existingPtyIds.every((id) => isRemoteRuntimePtyId(id))
         }
         // Why: consume pendingActivationSpawn here too. Panes tearing down
         // during a worktree switch (e.g. the previously-active worktree
@@ -1133,6 +1147,7 @@ export const createTerminalSlice: StateCreator<AppState, [], [], TerminalSlice> 
     if (
       worktreeId &&
       !wasActivationSpawn &&
+      !isRemoteRuntimeMirror &&
       !hasWorktreeSleepIntent(worktreeId) &&
       !(ptyId && get().suppressedPtyExitIds[ptyId])
     ) {
@@ -1588,6 +1603,11 @@ export const createTerminalSlice: StateCreator<AppState, [], [], TerminalSlice> 
           .map(([worktreeId, tabs]) => [
             worktreeId,
             [...tabs]
+              .filter((tab) => {
+                // Why: old web-client mirrors could persist host surface ids
+                // with "::"; makePaneKey reserves ":" as its separator.
+                return isValidTerminalTabId(tab.id)
+              })
               .sort((a, b) => a.sortOrder - b.sortOrder || a.createdAt - b.createdAt)
               .map((tab, index) => ({
                 ...clearTransientTerminalState(tab, index),
@@ -1671,7 +1691,7 @@ export const createTerminalSlice: StateCreator<AppState, [], [], TerminalSlice> 
       // Why: remote PTY reattach uses the relay's pty.attach RPC, not the
       // local terminal daemon. The loop above correctly skips SSH repos
       // (connectionId check), so there is no overlap.
-      console.warn(
+      console.debug(
         `[terminals-hydration] remoteSessionIdsByTabId:`,
         JSON.stringify(remoteSessionIds)
       )
@@ -1797,7 +1817,11 @@ export const createTerminalSlice: StateCreator<AppState, [], [], TerminalSlice> 
             .map(([tabId, layout]) => {
               // Why: old sessions can contain renderer-local pane:1-style leaf
               // ids. Normalize during hydration before runtime/mobile surfaces read them.
-              return [tabId, normalizeTerminalLayoutSnapshot(layout).snapshot]
+              const normalized = normalizeTerminalLayoutSnapshot(layout).snapshot
+              const tab = Object.values(tabsByWorktree)
+                .flat()
+                .find((entry) => entry.id === tabId)
+              return [tabId, tab ? sanitizeTerminalLayoutPaneTitles(normalized, tab) : normalized]
             })
         )
       }
@@ -1851,7 +1875,7 @@ export const createTerminalSlice: StateCreator<AppState, [], [], TerminalSlice> 
       const sshState = repo?.connectionId ? get().sshConnectionStates.get(repo.connectionId) : null
       const sshConnected = repo?.connectionId != null && sshState?.status === 'connected'
       const supportsDeferredReattach = !repo?.connectionId || sshConnected
-      console.warn(
+      console.debug(
         `[reconnect-terminals] worktree=${worktreeId} connectionId=${repo?.connectionId} sshStatus=${sshState?.status} supportsDeferredReattach=${supportsDeferredReattach}`
       )
       const targetTabIds = pendingReconnectTabByWorktree[worktreeId] ?? []
@@ -1882,7 +1906,7 @@ export const createTerminalSlice: StateCreator<AppState, [], [], TerminalSlice> 
         // worktrees and the user must manually search for them. The actual
         // PTY reattach is handled later by pty-connection.ts when the
         // terminal pane mounts; this block only sets the visual state.
-        console.warn(
+        console.debug(
           `[reconnect-terminals] tab=${tabId} tabLevelPtyId=${tabLevelPtyId} supportsDeferredReattach=${supportsDeferredReattach} hasLeafMappings=${hasLeafMappings}`
         )
         if (tabLevelPtyId) {
