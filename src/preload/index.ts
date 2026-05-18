@@ -2783,6 +2783,9 @@ const api = {
     terminateSessions: (args: { targetId: string }): Promise<void> =>
       ipcRenderer.invoke('ssh:terminateSessions', args),
 
+    resetRelay: (args: { targetId: string }): Promise<void> =>
+      ipcRenderer.invoke('ssh:resetRelay', args),
+
     getState: (args: { targetId: string }): Promise<SshConnectionState | null> =>
       ipcRenderer.invoke('ssh:getState', args),
 
