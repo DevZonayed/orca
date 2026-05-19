@@ -20,16 +20,8 @@ import { SetupStep } from './AddRepoSetupStep'
 import { getDefaultCloneParent } from './clone-defaults'
 import { callRuntimeRpc, getActiveRuntimeTarget } from '@/runtime/runtime-rpc-client'
 import { isGitRepoKind } from '../../../../shared/repo-kind'
-import type {
-  AddRepoExistingWorkspaceSource,
-  AddRepoSetupStepAction
-} from '../../../../shared/telemetry-events'
 import type { Repo, Worktree } from '../../../../shared/types'
 import { finalizeImportedRepoAfterSkip } from './add-repo-skip-finalization'
-import {
-  buildAddRepoExistingWorkspacesTelemetry,
-  shouldTrackAddRepoExistingWorkspacesDetected
-} from './add-repo-existing-workspaces-telemetry'
 
 const AddRepoDialog = React.memo(function AddRepoDialog() {
   const activeModal = useAppStore((s) => s.activeModal)
@@ -46,8 +38,6 @@ const AddRepoDialog = React.memo(function AddRepoDialog() {
 
   const [step, setStep] = useState<'add' | 'clone' | 'remote' | 'create' | 'setup'>('add')
   const [addedRepo, setAddedRepo] = useState<Repo | null>(null)
-  const [existingWorkspaceSource, setExistingWorkspaceSource] =
-    useState<AddRepoExistingWorkspaceSource | null>(null)
   const [isAdding, setIsAdding] = useState(false)
   const [serverPath, setServerPath] = useState('')
   const [isAddingServerPath, setIsAddingServerPath] = useState(false)
@@ -78,7 +68,7 @@ const AddRepoDialog = React.memo(function AddRepoDialog() {
     handleOpenRemoteStep,
     handleAddRemoteRepo,
     handleConnectTarget
-  } = useRemoteRepo(fetchWorktrees, setStep, setAddedRepo, closeModal, setExistingWorkspaceSource)
+  } = useRemoteRepo(fetchWorktrees, setStep, setAddedRepo, closeModal)
 
   const {
     createName,
@@ -93,7 +83,7 @@ const AddRepoDialog = React.memo(function AddRepoDialog() {
     resetCreateState,
     handlePickParent,
     handleCreate
-  } = useCreateRepo(fetchWorktrees, setStep, setAddedRepo, closeModal, setExistingWorkspaceSource)
+  } = useCreateRepo(fetchWorktrees, setStep, setAddedRepo, closeModal)
   useEffect(() => {
     if (!isCloning) {
       return
@@ -147,7 +137,6 @@ const AddRepoDialog = React.memo(function AddRepoDialog() {
     void window.api.repos.cloneAbort()
     setStep('add')
     setAddedRepo(null)
-    setExistingWorkspaceSource(null)
     setIsAdding(false)
     setServerPath('')
     setIsAddingServerPath(false)
@@ -175,7 +164,6 @@ const AddRepoDialog = React.memo(function AddRepoDialog() {
       const repo = await addRepo()
       if (repo && isGitRepoKind(repo)) {
         setAddedRepo(repo)
-        setExistingWorkspaceSource('local_folder_picker')
         await fetchWorktrees(repo.id)
         setStep('setup')
       } else if (repo) {
@@ -198,7 +186,6 @@ const AddRepoDialog = React.memo(function AddRepoDialog() {
         const repo = await addRepoPath(path, kind)
         if (repo && isGitRepoKind(repo)) {
           setAddedRepo(repo)
-          setExistingWorkspaceSource('runtime_server_path')
           await fetchWorktrees(repo.id)
           setStep('setup')
         } else if (repo) {
@@ -270,7 +257,6 @@ const AddRepoDialog = React.memo(function AddRepoDialog() {
         useAppStore.setState({ repos: updated })
       }
       setAddedRepo(repo)
-      setExistingWorkspaceSource('clone_url')
       await fetchWorktrees(repo.id)
       setStep('setup')
     } catch (err) {
@@ -286,55 +272,18 @@ const AddRepoDialog = React.memo(function AddRepoDialog() {
     }
   }, [cloneUrl, cloneDestination, fetchWorktrees])
 
-  const existingWorkspaceTelemetry = useMemo(
-    () => buildAddRepoExistingWorkspacesTelemetry(existingWorkspaceSource, sortedWorktrees),
-    [existingWorkspaceSource, sortedWorktrees]
-  )
-
-  const detectedTelemetryTrackedRef = useRef<Set<string>>(new Set())
-  useEffect(() => {
-    if (
-      step !== 'setup' ||
-      !repoId ||
-      !existingWorkspaceTelemetry ||
-      !shouldTrackAddRepoExistingWorkspacesDetected(existingWorkspaceSource) ||
-      detectedTelemetryTrackedRef.current.has(repoId)
-    ) {
-      return
-    }
-    detectedTelemetryTrackedRef.current.add(repoId)
-    track('add_repo_existing_workspaces_detected', existingWorkspaceTelemetry)
-  }, [existingWorkspaceSource, existingWorkspaceTelemetry, repoId, step])
-
-  const trackSetupAction = useCallback(
-    (action: AddRepoSetupStepAction): void => {
-      track('add_repo_setup_step_action', {
-        action,
-        ...(existingWorkspaceTelemetry
-          ? {
-              source: existingWorkspaceTelemetry.source,
-              existing_workspace_count: existingWorkspaceTelemetry.existing_workspace_count,
-              existing_linked_workspace_count:
-                existingWorkspaceTelemetry.existing_linked_workspace_count
-            }
-          : {})
-      })
-    },
-    [existingWorkspaceTelemetry]
-  )
-
   const handleOpenWorktree = useCallback(
     (worktree: Worktree) => {
-      trackSetupAction('open_existing')
+      track('add_repo_setup_step_action', { action: 'open_existing' })
       activateAndRevealWorktree(worktree.id)
       closeModal()
     },
-    [closeModal, trackSetupAction]
+    [closeModal]
   )
 
   const handleCreateWorktree = useCallback(() => {
     // Why: Setup-step "Create" affordance — fires on click intent, not on IPC arrival, mirroring the other 4 actions in this dialog.
-    trackSetupAction('create_worktree')
+    track('add_repo_setup_step_action', { action: 'create_worktree' })
     // Why: small delay so the Add Project dialog close animation finishes before
     // the composer modal takes focus; otherwise the dialog teardown can steal
     // the first focus frame from the composer's prompt textarea.
@@ -342,14 +291,14 @@ const AddRepoDialog = React.memo(function AddRepoDialog() {
     setTimeout(() => {
       openModal('new-workspace-composer', { initialRepoId: repoId, telemetrySource: 'sidebar' })
     }, 150)
-  }, [closeModal, openModal, repoId, trackSetupAction])
+  }, [closeModal, openModal, repoId])
 
   const handleConfigureRepo = useCallback(() => {
-    trackSetupAction('configure')
+    track('add_repo_setup_step_action', { action: 'configure' })
     closeModal()
     openSettingsTarget({ pane: 'repo', repoId })
     openSettingsPage()
-  }, [closeModal, openSettingsTarget, openSettingsPage, repoId, trackSetupAction])
+  }, [closeModal, openSettingsTarget, openSettingsPage, repoId])
 
   const finishImportedRepoWithoutOpening = useCallback(async () => {
     const importedRepoId = repoId
@@ -368,18 +317,18 @@ const AddRepoDialog = React.memo(function AddRepoDialog() {
   const handleBack = resetState
 
   const handleSkip = useCallback(() => {
-    trackSetupAction('skip')
+    track('add_repo_setup_step_action', { action: 'skip' })
     void finishImportedRepoWithoutOpening()
-  }, [finishImportedRepoWithoutOpening, trackSetupAction])
+  }, [finishImportedRepoWithoutOpening])
 
   // Why: only the Setup step's "Add another project" back arrow counts as a
   // funnel event — the in-flight Back arrows on clone/remote/create are not
   // a Setup-step affordance. Keeping the emit scoped to this handler avoids
   // also tagging mid-clone backs.
   const handleSetupStepBack = useCallback(() => {
-    trackSetupAction('back')
+    track('add_repo_setup_step_action', { action: 'back' })
     handleBack()
-  }, [handleBack, trackSetupAction])
+  }, [handleBack])
 
   return (
     <Dialog
@@ -391,7 +340,7 @@ const AddRepoDialog = React.memo(function AddRepoDialog() {
           // Skip is handled on its own renderer-side click handler. Implicit closes
           // on the Setup step are funnel-equivalent to Skip.
           if (step === 'setup') {
-            trackSetupAction('skip')
+            track('add_repo_setup_step_action', { action: 'skip' })
             void finishImportedRepoWithoutOpening()
             return
           }
