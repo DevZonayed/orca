@@ -249,11 +249,12 @@ export async function getAuthenticatedViewer(): Promise<GitHubViewer | null> {
 type MainWorkItem = Omit<GitHubWorkItem, 'repoId'>
 
 const WORK_ITEM_PR_LIST_JSON_FIELDS =
-  'number,title,state,url,labels,updatedAt,author,isDraft,headRefName,baseRefName,headRepositoryOwner'
+  'number,title,state,url,labels,updatedAt,author,isDraft,headRefName,baseRefName,headRepositoryOwner,reviewRequests'
 
 // Why: these fields are intentionally excluded from `gh pr list` because
-// statusCheckRollup/review/merge metadata fan out into expensive GraphQL work
-// across every row. Fetch them only for single-PR detail surfaces.
+// statusCheckRollup/review decision/merge metadata fan out into expensive
+// GraphQL work across every row. Requested reviewers are kept in the list
+// payload because the Tasks table renders that column on first paint.
 const WORK_ITEM_PR_DETAIL_JSON_FIELDS =
   'number,title,state,url,labels,updatedAt,author,isDraft,headRefName,baseRefName,headRepositoryOwner,additions,deletions,changedFiles,reviewDecision,reviewRequests,latestReviews,assignees,statusCheckRollup,mergeable,mergeStateStatus,maintainerCanModify'
 
@@ -342,7 +343,12 @@ function userFromUnknown(
   return {
     login,
     name: typeof raw.name === 'string' ? raw.name : null,
-    avatarUrl: typeof raw.avatarUrl === 'string' ? raw.avatarUrl : ''
+    avatarUrl:
+      typeof raw.avatarUrl === 'string'
+        ? raw.avatarUrl
+        : typeof raw.avatar_url === 'string'
+          ? raw.avatar_url
+          : ''
   }
 }
 
@@ -2504,7 +2510,7 @@ export async function requestPRReviewers(
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const logins = reviewers.map((reviewer) => reviewer.trim()).filter(Boolean)
   if (logins.length === 0) {
-    return { ok: false, error: 'Enter at least one reviewer login' }
+    return { ok: false, error: 'Enter at least one reviewer' }
   }
   const ghOptions = ghRepoExecOptions(githubRepoContext(repoPath, connectionId))
   const ownerRepo = await getOwnerRepo(repoPath, connectionId)

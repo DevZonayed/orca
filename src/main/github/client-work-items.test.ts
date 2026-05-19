@@ -114,7 +114,16 @@ describe('listWorkItems', () => {
             author: { login: 'octocat' },
             isDraft: false,
             headRefName: 'feature/add-feature',
-            baseRefName: 'main'
+            baseRefName: 'main',
+            reviewRequests: [
+              {
+                requestedReviewer: {
+                  login: 'AmethystLiang',
+                  name: 'Amethyst Liang',
+                  avatarUrl: 'https://avatars.githubusercontent.com/u/1?v=4'
+                }
+              }
+            ]
           }
         ])
       })
@@ -147,7 +156,7 @@ describe('listWorkItems', () => {
         '--limit',
         '10',
         '--json',
-        'number,title,state,url,labels,updatedAt,author,isDraft,headRefName,baseRefName,headRepositoryOwner',
+        'number,title,state,url,labels,updatedAt,author,isDraft,headRefName,baseRefName,headRepositoryOwner,reviewRequests',
         '--repo',
         'acme/widgets',
         '--assignee',
@@ -157,7 +166,7 @@ describe('listWorkItems', () => {
     )
     const prListFields = ghExecFileAsyncMock.mock.calls[1][0].join(',')
     expect(prListFields).not.toContain('statusCheckRollup')
-    expect(prListFields).not.toContain('reviewRequests')
+    expect(prListFields).toContain('reviewRequests')
     expect(prListFields).not.toContain('mergeStateStatus')
     expect(items).toEqual([
       {
@@ -182,7 +191,14 @@ describe('listWorkItems', () => {
         updatedAt: '2026-03-28T00:00:00Z',
         author: 'octocat',
         branchName: 'feature/add-feature',
-        baseRefName: 'main'
+        baseRefName: 'main',
+        reviewRequests: [
+          {
+            login: 'AmethystLiang',
+            name: 'Amethyst Liang',
+            avatarUrl: 'https://avatars.githubusercontent.com/u/1?v=4'
+          }
+        ]
       }
     ])
   })
@@ -215,7 +231,7 @@ describe('listWorkItems', () => {
         '--limit',
         '10',
         '--json',
-        'number,title,state,url,labels,updatedAt,author,isDraft,headRefName,baseRefName,headRepositoryOwner',
+        'number,title,state,url,labels,updatedAt,author,isDraft,headRefName,baseRefName,headRepositoryOwner,reviewRequests',
         '--repo',
         'acme/widgets',
         '--state',
@@ -315,7 +331,7 @@ describe('listWorkItems', () => {
         '--limit',
         '10',
         '--json',
-        'number,title,state,url,labels,updatedAt,author,isDraft,headRefName,baseRefName,headRepositoryOwner',
+        'number,title,state,url,labels,updatedAt,author,isDraft,headRefName,baseRefName,headRepositoryOwner,reviewRequests',
         '--repo',
         'acme/widgets',
         '--state',
@@ -354,26 +370,24 @@ describe('listWorkItems', () => {
   it('marks fork PRs as cross-repository when REST payload only includes head.label', async () => {
     getIssueOwnerRepoMock.mockResolvedValueOnce({ owner: 'stablyai', repo: 'orca' })
     getOwnerRepoMock.mockResolvedValueOnce({ owner: 'stablyai', repo: 'orca' })
-    ghExecFileAsyncMock
-      .mockResolvedValueOnce({ stdout: '[]' })
-      .mockResolvedValueOnce({
-        stdout: JSON.stringify([
-          {
-            number: 1849,
-            title: 'Fork PR with missing head repo',
-            state: 'open',
-            html_url: 'https://github.com/stablyai/orca/pull/1849',
-            updated_at: '2026-04-01T00:00:00Z',
-            user: { login: 'contributor' },
-            head: {
-              ref: 'feat/onboarding-model-choice-782',
-              repo: null,
-              label: 'contributor:feat/onboarding-model-choice-782'
-            },
-            base: { ref: 'main' }
-          }
-        ])
-      })
+    ghExecFileAsyncMock.mockResolvedValueOnce({ stdout: '[]' }).mockResolvedValueOnce({
+      stdout: JSON.stringify([
+        {
+          number: 1849,
+          title: 'Fork PR with missing head repo',
+          state: 'open',
+          html_url: 'https://github.com/stablyai/orca/pull/1849',
+          updated_at: '2026-04-01T00:00:00Z',
+          user: { login: 'contributor' },
+          head: {
+            ref: 'feat/onboarding-model-choice-782',
+            repo: null,
+            label: 'contributor:feat/onboarding-model-choice-782'
+          },
+          base: { ref: 'main' }
+        }
+      ])
+    })
 
     const { items } = await listWorkItems('/repo-root', 10)
     expect(items).toEqual([
