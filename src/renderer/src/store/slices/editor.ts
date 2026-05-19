@@ -25,6 +25,7 @@ import type {
   WorkspaceVisibleTabType
 } from '../../../../shared/types'
 import { stripCredentialsFromMessage } from '../../../../shared/git-remote-error'
+import { FLOATING_TERMINAL_WORKTREE_ID } from '../../../../shared/constants'
 import type { RemoteOpKind } from '@/components/right-sidebar/source-control-primary-action'
 import {
   fetchRuntimeGit,
@@ -494,6 +495,28 @@ function openWorkspaceEditorItem(
   return created?.id ?? fileId
 }
 
+function buildEditorActiveResult(
+  state: Pick<EditorSlice, 'activeFileIdByWorktree' | 'activeTabTypeByWorktree'>,
+  worktreeId: string,
+  fileId: string
+): {
+  activeFileId?: string
+  activeTabType?: 'editor'
+  activeFileIdByWorktree: Record<string, string | null>
+  activeTabTypeByWorktree: Record<string, WorkspaceVisibleTabType>
+} {
+  return {
+    // Why: floating markdown tabs use the editor surface without becoming the
+    // main worktree's active editor. Updating only the per-worktree maps keeps
+    // the workspace behind the floating panel from switching surfaces.
+    ...(worktreeId === FLOATING_TERMINAL_WORKTREE_ID
+      ? {}
+      : { activeFileId: fileId, activeTabType: 'editor' as const }),
+    activeFileIdByWorktree: { ...state.activeFileIdByWorktree, [worktreeId]: fileId },
+    activeTabTypeByWorktree: { ...state.activeTabTypeByWorktree, [worktreeId]: 'editor' }
+  }
+}
+
 const REMOTE_OPERATION_FAILED_MESSAGE = 'Remote operation failed'
 const REMOTE_OPERATION_DETAIL_MAX_LENGTH = 200
 
@@ -823,12 +846,7 @@ export const createEditorSlice: StateCreator<AppState, [], [], EditorSlice> = (s
         }
       }
 
-      const activeResult = {
-        activeFileId: id,
-        activeTabType: 'editor' as const,
-        activeFileIdByWorktree: { ...s.activeFileIdByWorktree, [worktreeId]: id },
-        activeTabTypeByWorktree: { ...s.activeTabTypeByWorktree, [worktreeId]: 'editor' as const }
-      }
+      const activeResult = buildEditorActiveResult(s, worktreeId, id)
 
       if (existing) {
         // If opening as non-preview, also pin the existing tab
@@ -1038,12 +1056,7 @@ export const createEditorSlice: StateCreator<AppState, [], [], EditorSlice> = (s
       const worktreeId = file.worktreeId
       const runtimeEnvironmentId =
         file.runtimeEnvironmentId ?? s.settings?.activeRuntimeEnvironmentId?.trim() ?? undefined
-      const activeResult = {
-        activeFileId: id,
-        activeTabType: 'editor' as const,
-        activeFileIdByWorktree: { ...s.activeFileIdByWorktree, [worktreeId]: id },
-        activeTabTypeByWorktree: { ...s.activeTabTypeByWorktree, [worktreeId]: 'editor' as const }
-      }
+      const activeResult = buildEditorActiveResult(s, worktreeId, id)
 
       if (existing) {
         const needsUpdate =
