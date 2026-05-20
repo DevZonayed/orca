@@ -74,4 +74,34 @@ describe('local filesystem watcher large batches', () => {
     await closeAllWatchers()
     vi.useRealTimers()
   })
+
+  it('emits one overflow event for oversized native watcher batches', async () => {
+    vi.useFakeTimers()
+    vi.mocked(stat).mockResolvedValue({ isDirectory: () => true } as never)
+    let watcherCallback: ((err: Error | null, events: WatcherEvent[]) => void) | undefined
+    vi.mocked(subscribeParcelWatcher).mockImplementation(async (_root, callback) => {
+      watcherCallback = callback as typeof watcherCallback
+      return { unsubscribe: vi.fn() } as never
+    })
+    const sender = { isDestroyed: () => false, send: vi.fn(), once: vi.fn(), id: 1 }
+
+    await handlers['fs:watchWorktree']({ sender }, { worktreePath: '/tmp/repo' })
+    watcherCallback?.(
+      null,
+      Array.from(
+        { length: 5_001 },
+        (_, index): WatcherEvent => ({ type: 'update', path: `/tmp/repo/file-${index}.txt` })
+      )
+    )
+
+    await vi.advanceTimersByTimeAsync(150)
+
+    expect(stat).toHaveBeenCalledTimes(1)
+    expect(sender.send).toHaveBeenCalledWith('fs:changed', {
+      worktreePath: '/tmp/repo',
+      events: [{ kind: 'overflow', absolutePath: '/tmp/repo' }]
+    })
+    await closeAllWatchers()
+    vi.useRealTimers()
+  })
 })
