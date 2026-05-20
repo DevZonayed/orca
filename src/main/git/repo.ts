@@ -6,6 +6,8 @@ import hostedGitInfo from 'hosted-git-info'
 import { gitExecFileSync, gitExecFileAsync } from './runner'
 import type { BaseRefSearchResult } from '../../shared/types'
 
+const GH_LOGIN_TIMEOUT_MS = 2500
+
 /**
  * Ordered probe list used to resolve a repo's default base ref when no
  * explicit origin/HEAD symbolic-ref is set. `returnAs` is the short-name
@@ -116,6 +118,18 @@ function normalizeUsername(value: string): string {
 
 let cachedGhLogin: string | undefined
 
+function isGhProbeTimeout(error: unknown): boolean {
+  if (!error || typeof error !== 'object') {
+    return false
+  }
+
+  const err = error as { code?: unknown; message?: unknown }
+  return (
+    err.code === 'ETIMEDOUT' ||
+    (typeof err.message === 'string' && /\bETIMEDOUT\b|timed out/i.test(err.message))
+  )
+}
+
 function getGhLogin(): string {
   if (cachedGhLogin !== undefined) {
     return cachedGhLogin
@@ -124,13 +138,20 @@ function getGhLogin(): string {
   try {
     const apiLogin = execSync('gh api user -q .login', {
       encoding: 'utf-8',
-      stdio: ['pipe', 'pipe', 'pipe']
+      stdio: ['pipe', 'pipe', 'pipe'],
+      timeout: GH_LOGIN_TIMEOUT_MS
     }).trim()
     if (apiLogin) {
       cachedGhLogin = normalizeUsername(apiLogin)
       return cachedGhLogin
     }
-  } catch {
+  } catch (err) {
+    if (isGhProbeTimeout(err)) {
+      // Why: if `gh api user` timed out, `gh auth status` is likely to hit the
+      // same stuck keychain/network path. Keep repo creation bounded to one probe.
+      cachedGhLogin = ''
+      return ''
+    }
     // Fall through to auth status parsing
   }
 
@@ -140,7 +161,8 @@ function getGhLogin(): string {
     const output = execSync('gh auth status 2>&1', {
       encoding: 'utf-8',
       shell: process.platform === 'win32' ? process.env.ComSpec || 'cmd.exe' : '/bin/bash',
-      stdio: ['pipe', 'pipe', 'pipe']
+      stdio: ['pipe', 'pipe', 'pipe'],
+      timeout: GH_LOGIN_TIMEOUT_MS
     })
 
     const activeAccountMatch = output.match(
@@ -158,7 +180,9 @@ function getGhLogin(): string {
     }
     return login
   } catch {
-    // Don't cache empty results on failure — allow retry on next call
+    // Why: broken tokens/keychains can block the Electron main process.
+    // Keep the fallback best-effort for this app session.
+    cachedGhLogin = ''
     return ''
   }
 }
@@ -170,8 +194,10 @@ export function getGitUsername(path: string): string {
   return normalizeUsername(
     getGitConfigValue(path, 'github.user') ||
       getGitConfigValue(path, 'user.username') ||
-      getGhLogin() ||
+      // Why: GitHub CLI login can touch network/keychain state. A repo-local
+      // email is already enough for the branch prefix and keeps repo add fast.
       getGitConfigValue(path, 'user.email').split('@')[0] ||
+      getGhLogin() ||
       getGitConfigValue(path, 'user.name')
   )
 }
