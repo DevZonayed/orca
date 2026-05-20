@@ -79,6 +79,7 @@ import { SettingsSidebar } from './SettingsSidebar'
 import { ActiveSettingsSectionProvider, SettingsSection } from './SettingsSection'
 import { matchesSettingsSearch, type SettingsSearchEntry } from './settings-search'
 import { checkRuntimeHooks } from '@/runtime/runtime-hooks-client'
+import { useWindowsTerminalCapabilities } from '@/lib/windows-terminal-capabilities'
 import {
   deriveNeededRepoIds,
   deriveNeededSectionIds,
@@ -244,8 +245,6 @@ function Settings(): React.JSX.Element {
   // the import trigger as a headerAction. The modal itself still lives inside
   // TerminalPane, driven by this shared state.
   const ghostty = useGhosttyImport(updateSettings, settings)
-  const [wslAvailable, setWslAvailable] = useState(false)
-  const [pwshAvailable, setPwshAvailable] = useState(false)
   const [fontSuggestions, setFontSuggestions] = useState<string[]>(
     Array.from(new Set([DEFAULT_APP_FONT_FAMILY, ...getFallbackTerminalFonts()]))
   )
@@ -265,7 +264,6 @@ function Settings(): React.JSX.Element {
   const contentScrollRef = useRef<HTMLDivElement | null>(null)
   const searchInputRef = useRef<HTMLInputElement | null>(null)
   const terminalFontsLoadedRef = useRef(false)
-  const terminalCapabilitiesLoadedRef = useRef(false)
   const pendingNavSectionRef = useRef<string | null>(null)
   const pendingScrollTargetRef = useRef<string | null>(null)
   const repoHooksRequestSeqRef = useRef(0)
@@ -678,6 +676,9 @@ function Settings(): React.JSX.Element {
       }),
     [activeSectionId, mountedSectionIds, navSections, settingsSearchQuery, visibleSectionIds]
   )
+  const windowsTerminalCapabilities = useWindowsTerminalCapabilities(
+    isWindows && neededSectionIds.has('terminal')
+  )
 
   useEffect(() => {
     setMountedSectionIds((previous) => {
@@ -721,34 +722,6 @@ function Settings(): React.JSX.Element {
       stale = true
     }
   }, [neededSectionIds])
-
-  useEffect(() => {
-    if (!isWindows) {
-      setWslAvailable(false)
-      setPwshAvailable(false)
-      terminalCapabilitiesLoadedRef.current = true
-      return
-    }
-    if (!neededSectionIds.has('terminal') || terminalCapabilitiesLoadedRef.current) {
-      return
-    }
-
-    let stale = false
-    terminalCapabilitiesLoadedRef.current = true
-    void window.api.wsl.isAvailable().then((available) => {
-      if (!stale) {
-        setWslAvailable(available)
-      }
-    })
-    void window.api.pwsh.isAvailable().then((available) => {
-      if (!stale) {
-        setPwshAvailable(available)
-      }
-    })
-    return () => {
-      stale = true
-    }
-  }, [isWindows, neededSectionIds])
 
   const neededRepoIds = useMemo(
     () => deriveNeededRepoIds(repos, neededSectionIds),
@@ -1088,8 +1061,8 @@ function Settings(): React.JSX.Element {
                       scrollbackMode={scrollbackMode}
                       setScrollbackMode={setScrollbackMode}
                       ghostty={ghostty}
-                      wslAvailable={wslAvailable}
-                      pwshAvailable={pwshAvailable}
+                      wslAvailable={windowsTerminalCapabilities.wslAvailable}
+                      pwshAvailable={windowsTerminalCapabilities.pwshAvailable}
                     />
                   ) : null}
                 </SettingsSection>
