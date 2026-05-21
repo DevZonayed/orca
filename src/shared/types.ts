@@ -641,6 +641,7 @@ export type GitHubPRRefreshAlias = {
   repoPath: string
   branch: string
   worktreeId?: string
+  connectionId?: string | null
 }
 
 export type GitHubPRRefreshCandidate = GitHubPRRefreshAlias & {
@@ -670,6 +671,7 @@ type GitHubPRRefreshEventBase = {
   sequence: number
   reason: GitHubPRRefreshReason
   aliases: GitHubPRRefreshAlias[]
+  requestStartedAt?: number
 }
 
 export type GitHubPRRefreshEvent =

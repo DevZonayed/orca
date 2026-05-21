@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { LoaderCircle, ExternalLink, RefreshCw, Check, X, Pencil } from 'lucide-react'
 import { useAppStore } from '@/store'
 import { prChecksCacheSuffix, prCommentsCacheSuffix } from '@/store/slices/github'
+import { getGitHubPRCacheKey, getGitHubRepoCacheKey } from '@/store/slices/github-cache-key'
 import { useActiveWorktree, useRepoById } from '@/store/selectors'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -42,6 +43,7 @@ export default function ChecksPanel(): React.JSX.Element {
   const activeWorktree = useActiveWorktree()
   const activeWorktreeId = useAppStore((s) => s.activeWorktreeId)
   const repo = useRepoById(activeWorktree?.repoId ?? null)
+  const settings = useAppStore((s) => s.settings)
   const prCache = useAppStore((s) => s.prCache)
   const fetchPRForBranch = useAppStore((s) => s.fetchPRForBranch)
   const fetchHostedReviewForBranch = useAppStore((s) => s.fetchHostedReviewForBranch)
@@ -118,8 +120,11 @@ export default function ChecksPanel(): React.JSX.Element {
   // Find active worktree and repo
   const branch = activeWorktree ? activeWorktree.branch.replace(/^refs\/heads\//, '') : ''
   const isFolder = repo ? isFolderRepo(repo) : false
-  const prCacheKey = repo && branch ? `${repo.id}::${branch}` : ''
-  const refreshContextKey = `${activeWorktreeId ?? ''}::${repo?.id ?? ''}::${branch}`
+  const prCacheKey =
+    repo && branch
+      ? getGitHubPRCacheKey(repo.path, repo.id, branch, settings, repo.connectionId)
+      : ''
+  const refreshContextKey = `${activeWorktreeId ?? ''}::${prCacheKey}::${branch}`
   if (refreshContextKey !== refreshContextKeyRef.current) {
     refreshContextKeyRef.current = refreshContextKey
     refreshRequestKeyRef.current = null
@@ -144,9 +149,25 @@ export default function ChecksPanel(): React.JSX.Element {
     prCacheKey ? s.prCache[prCacheKey]?.fetchedAt : undefined
   )
   const checksCacheKey =
-    repo && prNumber ? `${repo.id}::${prChecksCacheSuffix(prNumber, pr?.prRepo)}` : ''
+    repo && prNumber
+      ? getGitHubRepoCacheKey(
+          repo.path,
+          repo.id,
+          prChecksCacheSuffix(prNumber, pr?.prRepo),
+          settings,
+          repo.connectionId
+        )
+      : ''
   const commentsCacheKey =
-    repo && prNumber ? `${repo.id}::${prCommentsCacheSuffix(prNumber, pr?.prRepo)}` : ''
+    repo && prNumber
+      ? getGitHubRepoCacheKey(
+          repo.path,
+          repo.id,
+          prCommentsCacheSuffix(prNumber, pr?.prRepo),
+          settings,
+          repo.connectionId
+        )
+      : ''
   const checksFetchedAt = useAppStore((s) =>
     checksCacheKey ? s.checksCache[checksCacheKey]?.fetchedAt : undefined
   )
@@ -161,7 +182,9 @@ export default function ChecksPanel(): React.JSX.Element {
   const linkedGitLabMR = activeWorktree?.linkedGitLabMR ?? null
   const activeWorktreePath = activeWorktree?.path ?? null
   const stateRequestKey =
-    repo && branch ? checksPanelAsyncResultKey(repo.id, branch, prNumber, pr?.prRepo) : ''
+    repo && branch
+      ? checksPanelAsyncResultKey(prCacheKey, branch, prNumber, pr?.prRepo, pr?.headSha)
+      : ''
   asyncResultKeyRef.current = stateRequestKey
 
   const isCurrentAsyncResult = useCallback(
@@ -235,7 +258,7 @@ export default function ChecksPanel(): React.JSX.Element {
       return
     }
 
-    const refreshKey = `${repo.path}::${branch}::${pr.number}`
+    const refreshKey = `${prCacheKey}::${branch}::${pr.number}`
     if (conflictSummaryRefreshKeyRef.current === refreshKey) {
       return
     }
@@ -258,7 +281,7 @@ export default function ChecksPanel(): React.JSX.Element {
         setConflictDetailsRefreshing(false)
       }
     })
-  }, [repo, isFolder, branch, pr, activeWorktreeId, linkedPR, fetchPRForBranch])
+  }, [repo, isFolder, branch, pr, prCacheKey, activeWorktreeId, linkedPR, fetchPRForBranch])
 
   // Fetch checks via cached store method
   const fetchChecks = useCallback(
@@ -272,7 +295,13 @@ export default function ChecksPanel(): React.JSX.Element {
       }
       setChecksLoading(true)
       try {
-        const requestKey = checksPanelAsyncResultKey(repo.id, branch, targetPRNumber, pr?.prRepo)
+        const requestKey = checksPanelAsyncResultKey(
+          prCacheKey,
+          branch,
+          targetPRNumber,
+          pr?.prRepo,
+          pr?.headSha
+        )
         const result = await fetchPRChecks(
           repo.path,
           targetPRNumber,
@@ -300,7 +329,7 @@ export default function ChecksPanel(): React.JSX.Element {
       } catch (err) {
         if (
           !isCurrentAsyncResult(
-            checksPanelAsyncResultKey(repo.id, branch, targetPRNumber, pr?.prRepo)
+            checksPanelAsyncResultKey(prCacheKey, branch, targetPRNumber, pr?.prRepo, pr?.headSha)
           )
         ) {
           return
@@ -310,14 +339,23 @@ export default function ChecksPanel(): React.JSX.Element {
       } finally {
         if (
           isCurrentAsyncResult(
-            checksPanelAsyncResultKey(repo.id, branch, targetPRNumber, pr?.prRepo)
+            checksPanelAsyncResultKey(prCacheKey, branch, targetPRNumber, pr?.prRepo, pr?.headSha)
           )
         ) {
           setChecksLoading(false)
         }
       }
     },
-    [repo, prNumber, branch, pr?.headSha, pr?.prRepo, fetchPRChecks, isCurrentAsyncResult]
+    [
+      repo,
+      prNumber,
+      branch,
+      pr?.headSha,
+      pr?.prRepo,
+      prCacheKey,
+      fetchPRChecks,
+      isCurrentAsyncResult
+    ]
   )
 
   // Fetch checks on mount + poll with exponential backoff
@@ -372,7 +410,13 @@ export default function ChecksPanel(): React.JSX.Element {
       }
       setCommentsLoading(true)
       try {
-        const requestKey = checksPanelAsyncResultKey(repo.id, branch, targetPRNumber, targetPRRepo)
+        const requestKey = checksPanelAsyncResultKey(
+          prCacheKey,
+          branch,
+          targetPRNumber,
+          targetPRRepo,
+          pr?.headSha
+        )
         const result = await fetchPRComments(repo.path, targetPRNumber, {
           force,
           repoId: repo.id,
@@ -385,7 +429,7 @@ export default function ChecksPanel(): React.JSX.Element {
       } catch (err) {
         if (
           !isCurrentAsyncResult(
-            checksPanelAsyncResultKey(repo.id, branch, targetPRNumber, targetPRRepo)
+            checksPanelAsyncResultKey(prCacheKey, branch, targetPRNumber, targetPRRepo, pr?.headSha)
           )
         ) {
           return
@@ -395,14 +439,23 @@ export default function ChecksPanel(): React.JSX.Element {
       } finally {
         if (
           isCurrentAsyncResult(
-            checksPanelAsyncResultKey(repo.id, branch, targetPRNumber, targetPRRepo)
+            checksPanelAsyncResultKey(prCacheKey, branch, targetPRNumber, targetPRRepo, pr?.headSha)
           )
         ) {
           setCommentsLoading(false)
         }
       }
     },
-    [repo, prNumber, pr?.prRepo, fetchPRComments, branch, isCurrentAsyncResult]
+    [
+      repo,
+      prNumber,
+      pr?.headSha,
+      pr?.prRepo,
+      prCacheKey,
+      fetchPRComments,
+      branch,
+      isCurrentAsyncResult
+    ]
   )
 
   useEffect(() => {
@@ -431,14 +484,20 @@ export default function ChecksPanel(): React.JSX.Element {
     return () => {
       cancelled = true
     }
-  }, [repo, prNumber, pr?.prRepo, isPanelVisible, fetchPRComments])
+  }, [repo, prNumber, pr?.prRepo, prCacheKey, isPanelVisible, fetchPRComments])
 
   const handleRefresh = useCallback(async () => {
     if (!repo || !branch) {
       return
     }
-    const initialRequestKey = checksPanelAsyncResultKey(repo.id, branch, prNumber, pr?.prRepo)
-    const refreshRequestKey = `${activeWorktreeId ?? ''}::${repo.id}::${branch}::${Date.now()}::${Math.random()}`
+    const initialRequestKey = checksPanelAsyncResultKey(
+      prCacheKey,
+      branch,
+      prNumber,
+      pr?.prRepo,
+      pr?.headSha
+    )
+    const refreshRequestKey = `${activeWorktreeId ?? ''}::${prCacheKey}::${branch}::${Date.now()}::${Math.random()}`
     refreshRequestKeyRef.current = refreshRequestKey
     const isCurrentRequest = (): boolean => refreshRequestKeyRef.current === refreshRequestKey
     setIsRefreshing(true)
@@ -463,10 +522,11 @@ export default function ChecksPanel(): React.JSX.Element {
       }
       if (refreshedPR) {
         const prRequestKey = checksPanelAsyncResultKey(
-          repo.id,
+          prCacheKey,
           branch,
           refreshedPR.number,
-          refreshedPR.prRepo
+          refreshedPR.prRepo,
+          refreshedPR.headSha
         )
         if (!isCurrentAsyncResult(initialRequestKey) && !isCurrentRequest()) {
           return
@@ -554,7 +614,9 @@ export default function ChecksPanel(): React.JSX.Element {
     branch,
     activeWorktreeId,
     prNumber,
+    pr?.headSha,
     pr?.prRepo,
+    prCacheKey,
     linkedPR,
     linkedGitLabMR,
     fetchPRForBranch,
@@ -868,7 +930,13 @@ export default function ChecksPanel(): React.JSX.Element {
       if (!repo || !branch) {
         return
       }
-      const initialRequestKey = checksPanelAsyncResultKey(repo.id, branch, prNumber, pr?.prRepo)
+      const initialRequestKey = checksPanelAsyncResultKey(
+        prCacheKey,
+        branch,
+        prNumber,
+        pr?.prRepo,
+        pr?.headSha
+      )
       setRightSidebarOpen(true)
       setRightSidebarTab('checks')
       try {
@@ -886,10 +954,11 @@ export default function ChecksPanel(): React.JSX.Element {
         })
         if (refreshedPR) {
           const requestKey = checksPanelAsyncResultKey(
-            repo.id,
+            prCacheKey,
             branch,
             refreshedPR.number,
-            refreshedPR.prRepo
+            refreshedPR.prRepo,
+            refreshedPR.headSha
           )
           if (!isCurrentAsyncResult(initialRequestKey) && !isCurrentAsyncResult(requestKey)) {
             return
@@ -934,7 +1003,9 @@ export default function ChecksPanel(): React.JSX.Element {
       fetchPRForBranch,
       isCurrentAsyncResult,
       linkedGitLabMR,
+      prCacheKey,
       prNumber,
+      pr?.headSha,
       pr?.prRepo,
       repo,
       setRightSidebarOpen,
