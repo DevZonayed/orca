@@ -291,7 +291,10 @@ import {
   shouldSetDisplayName,
   areWorktreePathsEqual
 } from '../ipc/worktree-logic'
-import { canSafelyRemoveOrphanedWorktreeDirectory } from '../worktree-removal-safety'
+import {
+  canSafelyRemoveOrphanedWorktreeDirectory,
+  getRegisteredDeletableWorktree
+} from '../worktree-removal-safety'
 import { invalidateAuthorizedRootsCache } from '../ipc/filesystem-auth'
 import { HeadlessEmulator } from '../daemon/headless-emulator'
 import { killAllProcessesForWorktree } from './worktree-teardown'
@@ -6907,14 +6910,22 @@ export class OrcaRuntimeService {
     if (isFolderRepo(repo)) {
       throw new Error('Folder mode does not support deleting worktrees.')
     }
+    const provider = repo.connectionId ? requireSshGitProvider(repo.connectionId) : null
+    const registeredWorktrees = repo.connectionId
+      ? await provider!.listWorktrees(repo.path)
+      : await listWorktrees(repo.path)
+    const canonicalWorktreePath = getRegisteredDeletableWorktree(
+      repo.path,
+      worktree.path,
+      registeredWorktrees
+    ).path
+    const deleteBranch = this.store.getWorktreeMeta(worktree.id)?.preserveBranchOnDelete !== true
     if (repo.connectionId) {
-      const provider = requireSshGitProvider(repo.connectionId)
-      const deleteBranch = this.store.getWorktreeMeta(worktree.id)?.preserveBranchOnDelete !== true
       await (deleteBranch
-        ? provider.removeWorktree(worktree.path, force)
-        : provider.removeWorktree(worktree.path, force, { deleteBranch }))
+        ? provider!.removeWorktree(canonicalWorktreePath, force)
+        : provider!.removeWorktree(canonicalWorktreePath, force, { deleteBranch }))
       await cleanupUnusedWorktreePushTargetRemoteSsh(
-        provider,
+        provider!,
         repo.path,
         worktree.id,
         worktree.pushTarget,
@@ -6931,22 +6942,22 @@ export class OrcaRuntimeService {
     const hooks = getEffectiveHooks(repo)
     let warning: string | undefined
     if (hooks?.scripts.archive && runHooks) {
-      const result = await runHook('archive', worktree.path, repo)
+      const result = await runHook('archive', canonicalWorktreePath, repo)
       if (!result.success) {
-        console.error(`[hooks] archive hook failed for ${worktree.path}:`, result.output)
+        console.error(`[hooks] archive hook failed for ${canonicalWorktreePath}:`, result.output)
       }
     } else if (hooks?.scripts.archive) {
       // Runtime RPC calls have no renderer trust prompt, so hooks require explicit CLI opt-in.
-      warning = `orca.yaml archive hook skipped for ${worktree.path}; pass --run-hooks to run it.`
+      warning = `orca.yaml archive hook skipped for ${canonicalWorktreePath}; pass --run-hooks to run it.`
       console.warn(`[hooks] ${warning}`)
     }
 
     let shouldTearDownPtys = true
     try {
-      await assertWorktreeCleanForRemoval(worktree.path, force)
+      await assertWorktreeCleanForRemoval(canonicalWorktreePath, force)
     } catch (error) {
       if (!isOrphanCompatiblePreflightError(error)) {
-        throw new Error(formatWorktreeRemovalError(error, worktree.path, force))
+        throw new Error(formatWorktreeRemovalError(error, canonicalWorktreePath, force))
       }
       // Why: orphan cleanup does not need live shells to be killed first,
       // and preflight did not prove the worktree is cleanly removable.
@@ -6981,17 +6992,16 @@ export class OrcaRuntimeService {
     }
 
     try {
-      const deleteBranch = this.store.getWorktreeMeta(worktree.id)?.preserveBranchOnDelete !== true
       await (deleteBranch
-        ? removeWorktree(repo.path, worktree.path, force)
-        : removeWorktree(repo.path, worktree.path, force, { deleteBranch }))
+        ? removeWorktree(repo.path, canonicalWorktreePath, force)
+        : removeWorktree(repo.path, canonicalWorktreePath, force, { deleteBranch }))
     } catch (error) {
       if (isOrphanedWorktreeError(error)) {
-        if (await canSafelyRemoveOrphanedWorktreeDirectory(worktree.path, repo.path)) {
-          await rm(worktree.path, { recursive: true, force: true }).catch(() => {})
+        if (await canSafelyRemoveOrphanedWorktreeDirectory(canonicalWorktreePath, repo.path)) {
+          await rm(canonicalWorktreePath, { recursive: true, force: true }).catch(() => {})
         } else {
           console.warn(
-            `[worktrees] Refusing recursive cleanup for unproven worktree directory: ${worktree.path}`
+            `[worktrees] Refusing recursive cleanup for unproven worktree directory: ${canonicalWorktreePath}`
           )
         }
         // Why: `git worktree remove` failed, so git's internal worktree tracking
@@ -7014,7 +7024,7 @@ export class OrcaRuntimeService {
           ...(warning ? { warning } : {})
         }
       }
-      throw new Error(formatWorktreeRemovalError(error, worktree.path, force))
+      throw new Error(formatWorktreeRemovalError(error, canonicalWorktreePath, force))
     }
 
     await cleanupUnusedWorktreePushTargetRemote(
