@@ -49,11 +49,20 @@ const SidebarNav = React.memo(function SidebarNav() {
   )
   const visibleTaskProviders = React.useMemo(
     () =>
-      filterAvailableTaskProviders(preferredVisibleTaskProviders, {
-        gitlabInstalled: preflightStatus?.glab?.installed === true,
-        linearConnected: linearStatus.connected === true
-      }),
-    [linearStatus.connected, preferredVisibleTaskProviders, preflightStatus?.glab?.installed]
+      filterAvailableTaskProviders(
+        preferredVisibleTaskProviders,
+        {
+          gitlabInstalled: preflightStatus?.glab?.installed === true,
+          linearConnected: linearStatus.connected === true
+        },
+        defaultTaskSource
+      ),
+    [
+      defaultTaskSource,
+      linearStatus.connected,
+      preferredVisibleTaskProviders,
+      preflightStatus?.glab?.installed
+    ]
   )
   const resolvedDefaultTaskSource = React.useMemo(
     () => resolveVisibleTaskProvider(defaultTaskSource, visibleTaskProviders),

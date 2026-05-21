@@ -1798,13 +1798,23 @@ export default function TaskPage(): React.JSX.Element {
     () => normalizeVisibleTaskProviders(settings?.visibleTaskProviders),
     [settings?.visibleTaskProviders]
   )
+  const defaultTaskSource = settings?.defaultTaskSource ?? 'github'
   const visibleTaskProviders = useMemo(
     () =>
-      filterAvailableTaskProviders(preferredVisibleTaskProviders, {
-        gitlabInstalled: preflightStatus?.glab?.installed === true,
-        linearConnected: linearStatus.connected === true
-      }),
-    [linearStatus.connected, preferredVisibleTaskProviders, preflightStatus?.glab?.installed]
+      filterAvailableTaskProviders(
+        preferredVisibleTaskProviders,
+        {
+          gitlabInstalled: preflightStatus?.glab?.installed === true,
+          linearConnected: linearStatus.connected === true
+        },
+        defaultTaskSource
+      ),
+    [
+      defaultTaskSource,
+      linearStatus.connected,
+      preferredVisibleTaskProviders,
+      preflightStatus?.glab?.installed
+    ]
   )
   const visibleSourceOptions = useMemo(
     () => SOURCE_OPTIONS.filter((source) => visibleTaskProviders.includes(source.id)),
@@ -1819,7 +1829,6 @@ export default function TaskPage(): React.JSX.Element {
   const defaultTaskViewPreset = normalizeGitHubTaskPreset(settings?.defaultTaskViewPreset ?? 'all')
   const initialTaskQuery = getTaskPresetQuery(defaultTaskViewPreset)
 
-  const defaultTaskSource = settings?.defaultTaskSource ?? 'github'
   const preferredTaskSource = pageData.taskSource ?? defaultTaskSource
   const [taskSource, setTaskSource] = useState<TaskSource>(
     resolveVisibleTaskProvider(preferredTaskSource, visibleTaskProviders)

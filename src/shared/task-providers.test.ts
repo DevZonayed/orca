@@ -30,6 +30,58 @@ describe('task providers', () => {
     ).toEqual(['github', 'linear'])
   })
 
+  it('keeps an available saved default visible when provider visibility drifted', () => {
+    expect(
+      filterAvailableTaskProviders(
+        ['linear'],
+        {
+          gitlabInstalled: false,
+          linearConnected: true
+        },
+        'github'
+      )
+    ).toEqual(['github', 'linear'])
+  })
+
+  it('preserves intentionally narrowed providers when the saved default matches them', () => {
+    expect(
+      filterAvailableTaskProviders(
+        ['linear'],
+        {
+          gitlabInstalled: false,
+          linearConnected: true
+        },
+        'linear'
+      )
+    ).toEqual(['linear'])
+  })
+
+  it('does not restore an unavailable saved default', () => {
+    expect(
+      filterAvailableTaskProviders(
+        ['linear'],
+        {
+          gitlabInstalled: false,
+          linearConnected: true
+        },
+        'gitlab'
+      )
+    ).toEqual(['linear'])
+  })
+
+  it('ignores malformed saved defaults when every preferred provider is unavailable', () => {
+    expect(
+      filterAvailableTaskProviders(
+        ['gitlab'],
+        {
+          gitlabInstalled: false,
+          linearConnected: true
+        },
+        'jira' as never
+      )
+    ).toEqual(['github'])
+  })
+
   it('falls back to GitHub when every preferred provider is unavailable', () => {
     expect(
       filterAvailableTaskProviders(['gitlab', 'linear'], {
