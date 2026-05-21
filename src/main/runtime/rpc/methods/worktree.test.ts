@@ -28,6 +28,8 @@ describe('worktree RPC methods', () => {
         manualOrder: 123_456,
         linkedIssue: 123,
         linkedPR: 456,
+        linkedGitLabIssue: 789,
+        linkedGitLabMR: 321,
         sparseCheckout: { directories: ['src'], presetId: 'preset-1' },
         pushTarget: { remoteName: 'fork', branchName: 'feature' },
         parentWorktree: 'id:parent'
@@ -42,6 +44,8 @@ describe('worktree RPC methods', () => {
       linkedIssue: 123,
       linkedPR: 456,
       linkedLinearIssue: undefined,
+      linkedGitLabIssue: 789,
+      linkedGitLabMR: 321,
       comment: undefined,
       displayName: 'Feature title',
       workspaceStatus: 'in-review',

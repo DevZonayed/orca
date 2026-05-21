@@ -812,6 +812,8 @@ export async function createRemoteWorktree(
     ...(args.linkedPR !== undefined ? { linkedPR: args.linkedPR } : {}),
     ...(args.linkedLinearIssue !== undefined ? { linkedLinearIssue: args.linkedLinearIssue } : {}),
     ...(args.manualOrder !== undefined ? { manualOrder: args.manualOrder } : {}),
+    ...(args.linkedGitLabMR !== undefined ? { linkedGitLabMR: args.linkedGitLabMR } : {}),
+    ...(args.linkedGitLabIssue !== undefined ? { linkedGitLabIssue: args.linkedGitLabIssue } : {}),
     ...(args.workspaceStatus !== undefined ? { workspaceStatus: args.workspaceStatus } : {})
   }
   const meta = store.setWorktreeMeta(worktreeId, metaUpdates)
@@ -1157,6 +1159,8 @@ export async function createLocalWorktree(
     ...(args.linkedPR !== undefined ? { linkedPR: args.linkedPR } : {}),
     ...(args.linkedLinearIssue !== undefined ? { linkedLinearIssue: args.linkedLinearIssue } : {}),
     ...(args.manualOrder !== undefined ? { manualOrder: args.manualOrder } : {}),
+    ...(args.linkedGitLabMR !== undefined ? { linkedGitLabMR: args.linkedGitLabMR } : {}),
+    ...(args.linkedGitLabIssue !== undefined ? { linkedGitLabIssue: args.linkedGitLabIssue } : {}),
     ...(args.workspaceStatus !== undefined ? { workspaceStatus: args.workspaceStatus } : {})
   }
   const meta = store.setWorktreeMeta(worktreeId, metaUpdates)

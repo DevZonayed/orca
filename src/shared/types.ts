@@ -1250,6 +1250,8 @@ export type CreateWorktreeArgs = {
   linkedIssue?: number
   linkedPR?: number
   linkedLinearIssue?: string
+  linkedGitLabMR?: number
+  linkedGitLabIssue?: number
   pushTarget?: GitPushTarget
   workspaceStatus?: WorkspaceStatus
   manualOrder?: number

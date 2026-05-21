@@ -18,6 +18,7 @@ import type {
   BrowserSessionProfileSource,
   BrowserViewportOverride,
   ClaudeRateLimitAccountsState,
+  ClassifiedError,
   CodexRateLimitAccountsState,
   CreateWorktreeArgs,
   CreateWorktreeResult,
@@ -1062,7 +1063,12 @@ export type PreloadApi = {
       perPage?: number
     }) => Promise<ListMergeRequestsResult>
     issue: (args: { repoPath: string; number: number }) => Promise<GitLabIssueInfo | null>
-    listIssues: (args: { repoPath: string; limit?: number }) => Promise<GitLabIssueInfo[]>
+    listIssues: (args: {
+      repoPath: string
+      state?: 'opened' | 'closed' | 'all'
+      assignee?: string
+      limit?: number
+    }) => Promise<{ items: GitLabWorkItem[]; error?: ClassifiedError }>
     createIssue: (args: {
       repoPath: string
       title: string
