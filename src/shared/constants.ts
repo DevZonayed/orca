@@ -360,6 +360,7 @@ export function getDefaultUIState(): PersistedUIState {
     dismissedUpdateVersion: null,
     lastUpdateCheckAt: null,
     trustedOrcaHooks: {},
+    setupScriptPromptDismissedRepoIds: [],
     acknowledgedAgentsByPaneKey: {},
     workspaceCleanup: { dismissals: {} },
     featureTipsSeenIds: []
