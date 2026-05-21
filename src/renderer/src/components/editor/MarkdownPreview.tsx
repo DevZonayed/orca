@@ -12,7 +12,6 @@ import rehypeKatex from 'rehype-katex'
 import rehypeRaw from 'rehype-raw'
 import rehypeSanitize, { defaultSchema } from 'rehype-sanitize'
 import rehypeSlug from 'rehype-slug'
-import GithubSlugger from 'github-slugger'
 import { extractFrontMatter } from './markdown-frontmatter'
 import {
   Check,
@@ -228,27 +227,6 @@ const markdownPreviewSanitizeSchema = {
     td: [...(defaultSchema.attributes?.td ?? []), 'align'],
     th: [...(defaultSchema.attributes?.th ?? []), 'align']
   }
-}
-
-function getMarkdownPreviewNodeText(node: React.ReactNode): string {
-  if (typeof node === 'string' || typeof node === 'number') {
-    return String(node)
-  }
-  if (Array.isArray(node)) {
-    return node.map((child) => getMarkdownPreviewNodeText(child)).join('')
-  }
-  if (React.isValidElement<{ children?: React.ReactNode }>(node)) {
-    return getMarkdownPreviewNodeText(node.props.children)
-  }
-  return ''
-}
-
-// Why: use the same GithubSlugger that rehype-slug uses internally so
-// heading IDs match standard GitHub/VS Code anchor links. The custom
-// slugger previously stripped punctuation differently, breaking links
-// like `#a--b` for headings containing `A & B`.
-function createMarkdownPreviewHeadingId(headingText: string, slugger: GithubSlugger): string {
-  return slugger.slug(headingText)
 }
 
 function parseLineTarget(hash: string): { line: number; column?: number } | null {
@@ -471,7 +449,6 @@ export default function MarkdownPreview({
       .replace(/\r?\n(?:---|\+\+\+)\r?\n?$/, '')
       .trim()
   }, [frontMatter])
-  const sluggerRef = useRef(new GithubSlugger())
   const [activeAnnotationBlockKey, setActiveAnnotationBlockKey] = useState<string | null>(null)
   const [reviewPanelOpen, setReviewPanelOpen] = useState(false)
   const [reviewNotesCopied, setReviewNotesCopied] = useState(false)
@@ -884,8 +861,6 @@ export default function MarkdownPreview({
   )
 
   const components: Components = useMemo(() => {
-    sluggerRef.current.reset()
-    const slugger = sluggerRef.current
     return {
       a: ({ href, children, className, ...props }) => {
         const docLinkTarget = parseMarkdownDocLinkHref(href)
@@ -1239,61 +1214,55 @@ export default function MarkdownPreview({
         )
       },
       h1: ({ node, children, ...props }) => {
-        const id = createMarkdownPreviewHeadingId(getMarkdownPreviewNodeText(children), slugger)
         return wrapAnnotatedBlock(
           'h1',
           node as MarkdownPreviewPositionNode,
-          <h1 {...props} id={id} tabIndex={-1}>
+          <h1 {...props} tabIndex={-1}>
             {children}
           </h1>
         )
       },
       h2: ({ node, children, ...props }) => {
-        const id = createMarkdownPreviewHeadingId(getMarkdownPreviewNodeText(children), slugger)
         return wrapAnnotatedBlock(
           'h2',
           node as MarkdownPreviewPositionNode,
-          <h2 {...props} id={id} tabIndex={-1}>
+          <h2 {...props} tabIndex={-1}>
             {children}
           </h2>
         )
       },
       h3: ({ node, children, ...props }) => {
-        const id = createMarkdownPreviewHeadingId(getMarkdownPreviewNodeText(children), slugger)
         return wrapAnnotatedBlock(
           'h3',
           node as MarkdownPreviewPositionNode,
-          <h3 {...props} id={id} tabIndex={-1}>
+          <h3 {...props} tabIndex={-1}>
             {children}
           </h3>
         )
       },
       h4: ({ node, children, ...props }) => {
-        const id = createMarkdownPreviewHeadingId(getMarkdownPreviewNodeText(children), slugger)
         return wrapAnnotatedBlock(
           'h4',
           node as MarkdownPreviewPositionNode,
-          <h4 {...props} id={id} tabIndex={-1}>
+          <h4 {...props} tabIndex={-1}>
             {children}
           </h4>
         )
       },
       h5: ({ node, children, ...props }) => {
-        const id = createMarkdownPreviewHeadingId(getMarkdownPreviewNodeText(children), slugger)
         return wrapAnnotatedBlock(
           'h5',
           node as MarkdownPreviewPositionNode,
-          <h5 {...props} id={id} tabIndex={-1}>
+          <h5 {...props} tabIndex={-1}>
             {children}
           </h5>
         )
       },
       h6: ({ node, children, ...props }) => {
-        const id = createMarkdownPreviewHeadingId(getMarkdownPreviewNodeText(children), slugger)
         return wrapAnnotatedBlock(
           'h6',
           node as MarkdownPreviewPositionNode,
-          <h6 {...props} id={id} tabIndex={-1}>
+          <h6 {...props} tabIndex={-1}>
             {children}
           </h6>
         )
