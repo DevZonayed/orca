@@ -3,7 +3,9 @@ import { FLOATING_TERMINAL_WORKTREE_ID } from '../../../shared/constants'
 import type { TerminalTab } from '../../../shared/types'
 import {
   createFloatingWorkspaceTerminalTab,
-  isFloatingWorkspacePanelVisible
+  isFloatingWorkspacePanelFocused,
+  isFloatingWorkspacePanelVisible,
+  shouldMinimizeFloatingWorkspacePanelOnCloseShortcut
 } from './floating-workspace-terminal-actions'
 
 const createWebRuntimeSessionTerminalMock = vi.hoisted(() => vi.fn())
@@ -46,6 +48,22 @@ describe('isFloatingWorkspacePanelVisible', () => {
     expect(isFloatingWorkspacePanelVisible({ querySelector: vi.fn().mockReturnValue(null) })).toBe(
       false
     )
+  })
+})
+
+describe('isFloatingWorkspacePanelFocused', () => {
+  it('detects focus inside the floating workspace panel', () => {
+    const activeElement = {
+      closest: vi.fn().mockReturnValue({})
+    }
+    vi.stubGlobal('HTMLElement', class {})
+
+    Object.setPrototypeOf(activeElement, HTMLElement.prototype)
+
+    expect(isFloatingWorkspacePanelFocused({ activeElement } as never)).toBe(true)
+    expect(activeElement.closest).toHaveBeenCalledWith('[data-floating-terminal-panel]')
+
+    vi.unstubAllGlobals()
   })
 })
 
@@ -107,5 +125,45 @@ describe('createFloatingWorkspaceTerminalTab', () => {
     expect(store.createTab).not.toHaveBeenCalled()
     expect(store.activateTab).not.toHaveBeenCalled()
     expect(focusTerminalTabSurfaceMock).not.toHaveBeenCalled()
+  })
+})
+
+describe('shouldMinimizeFloatingWorkspacePanelOnCloseShortcut', () => {
+  const base = {
+    activeView: 'terminal',
+    activeWorktreeId: null,
+    floatingTerminalOpen: true,
+    floatingUnifiedTabCount: 0
+  }
+
+  it('allows Cmd/Ctrl+W to minimize the empty floating panel from landing', () => {
+    expect(shouldMinimizeFloatingWorkspacePanelOnCloseShortcut(base)).toBe(true)
+  })
+
+  it('does not minimize outside the empty floating-panel landing state', () => {
+    expect(
+      shouldMinimizeFloatingWorkspacePanelOnCloseShortcut({
+        ...base,
+        floatingUnifiedTabCount: 1
+      })
+    ).toBe(false)
+    expect(
+      shouldMinimizeFloatingWorkspacePanelOnCloseShortcut({
+        ...base,
+        activeWorktreeId: 'worktree-1'
+      })
+    ).toBe(false)
+    expect(
+      shouldMinimizeFloatingWorkspacePanelOnCloseShortcut({
+        ...base,
+        activeView: 'settings'
+      })
+    ).toBe(false)
+    expect(
+      shouldMinimizeFloatingWorkspacePanelOnCloseShortcut({
+        ...base,
+        floatingTerminalOpen: false
+      })
+    ).toBe(false)
   })
 })

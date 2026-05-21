@@ -15,6 +15,32 @@ export function isFloatingWorkspacePanelVisible(
   return Boolean(doc.querySelector('[data-floating-terminal-panel][aria-hidden="false"]'))
 }
 
+export function isFloatingWorkspacePanelFocused(
+  doc: Pick<Document, 'activeElement'> = document
+): boolean {
+  const active = doc.activeElement
+  return active instanceof HTMLElement && active.closest('[data-floating-terminal-panel]') !== null
+}
+
+export function shouldMinimizeFloatingWorkspacePanelOnCloseShortcut({
+  activeView,
+  activeWorktreeId,
+  floatingTerminalOpen,
+  floatingUnifiedTabCount
+}: {
+  activeView: string
+  activeWorktreeId: string | null
+  floatingTerminalOpen: boolean
+  floatingUnifiedTabCount: number
+}): boolean {
+  return (
+    floatingTerminalOpen &&
+    floatingUnifiedTabCount === 0 &&
+    activeView === 'terminal' &&
+    activeWorktreeId === null
+  )
+}
+
 export async function createFloatingWorkspaceTerminalTab(
   store: FloatingWorkspaceTerminalStore,
   shellOverride?: string
