@@ -10,7 +10,6 @@ export type KeybindingScope =
   | 'fileExplorer'
   | 'composer'
   | 'settings'
-  | 'onboarding'
 
 export type KeybindingContext = 'app' | 'terminal' | 'browser'
 
@@ -73,9 +72,7 @@ export type KeybindingActionId =
   | 'fileExplorer.copyRelativePath'
   | 'fileExplorer.delete'
   | 'composer.addAttachment'
-  | 'composer.submit'
   | 'settings.search'
-  | 'onboarding.continue'
   | 'terminal.copySelection'
   | 'terminal.paste'
   | 'terminal.search'
@@ -577,28 +574,12 @@ export const KEYBINDING_DEFINITIONS: readonly KeybindingDefinition[] = [
     defaultBindings: platformBindings(['Mod+U'])
   },
   {
-    id: 'composer.submit',
-    title: 'Submit Composer',
-    group: 'Composer',
-    scope: 'composer',
-    searchKeywords: ['shortcut', 'composer', 'submit', 'send', 'comment'],
-    defaultBindings: platformBindings(['Mod+Enter'])
-  },
-  {
     id: 'settings.search',
     title: 'Search Settings',
     group: 'Settings',
     scope: 'settings',
     searchKeywords: ['shortcut', 'settings', 'search', 'find'],
     defaultBindings: platformBindings(['Mod+F'])
-  },
-  {
-    id: 'onboarding.continue',
-    title: 'Continue Onboarding',
-    group: 'Onboarding',
-    scope: 'onboarding',
-    searchKeywords: ['shortcut', 'onboarding', 'continue', 'next'],
-    defaultBindings: platformBindings(['Mod+Enter'])
   },
   {
     id: 'terminal.copySelection',
