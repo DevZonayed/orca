@@ -2632,6 +2632,9 @@ const api = {
     setMarkdownEditorFocused: (focused: boolean): void => {
       ipcRenderer.send('ui:setMarkdownEditorFocused', focused)
     },
+    setFloatingTerminalInputFocused: (focused: boolean): void => {
+      ipcRenderer.send('ui:setFloatingTerminalInputFocused', focused)
+    },
     onRichMarkdownContextCommand: (
       callback: (payload: RichMarkdownContextMenuCommandPayload) => void
     ): (() => void) => {
