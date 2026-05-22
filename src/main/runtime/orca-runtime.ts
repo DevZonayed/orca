@@ -134,6 +134,7 @@ import {
   getPRForBranch,
   getRepoSlug,
   getWorkItem,
+  listIssues as listGitHubIssues,
   listWorkItems,
   countWorkItems,
   getPRChecks,
@@ -169,6 +170,8 @@ import {
   addIssueComment as addGitLabIssueComment,
   addMRComment as addGitLabMRComment,
   listTodos as listGitLabTodos,
+  listIssues as listGitLabIssues,
+  listMergeRequests as listGitLabMergeRequests,
   listWorkItems as listGitLabWorkItems,
   mergeMR as mergeGitLabMR,
   reopenMR as reopenGitLabMR,
@@ -177,6 +180,13 @@ import {
 } from '../gitlab/client'
 import { getGlabKnownHosts } from '../gitlab/gl-utils'
 import { getWorkItemDetails as getGitLabWorkItemDetails } from '../gitlab/work-item-details'
+import {
+  normalizeGitLabIssueListArgs,
+  normalizeGitLabMRListState,
+  normalizeGitLabPositiveInteger,
+  type GitLabIssueListState
+} from '../gitlab/gitlab-preload-args'
+import { recordGitLabProjectRecent } from '../gitlab/gitlab-project-recents'
 import type {
   GitHubIssueUpdate,
   GitHubPullRequestStateUpdate,
@@ -184,6 +194,7 @@ import type {
   GitHubPRReviewCommentInput,
   GitLabIssueUpdate,
   GitLabProjectRef,
+  GitLabWorkItem,
   MRListState
 } from '../../shared/types'
 import { inspectSetupScriptImportCandidates } from '../../shared/setup-script-imports'
@@ -406,6 +417,7 @@ type RuntimeStore = {
     defaultRepoSelection?: GlobalSettings['defaultRepoSelection']
     defaultLinearTeamSelection?: GlobalSettings['defaultLinearTeamSelection']
     githubProjects?: GlobalSettings['githubProjects']
+    gitlabProjects?: GlobalSettings['gitlabProjects']
     experimentalWorktreeSymlinks?: boolean
     mobileAutoRestoreFitMs?: number | null
     voice?: VoiceSettings
@@ -5344,6 +5356,20 @@ export class OrcaRuntimeService {
     )
   }
 
+  async listRepoIssues(
+    repoSelector: string,
+    limit?: number
+  ): Promise<Awaited<ReturnType<typeof listGitHubIssues>>['items']> {
+    const repo = await this.resolveRepoSelector(repoSelector)
+    const result = await listGitHubIssues(
+      repo.path,
+      limit,
+      repo.issueSourcePreference,
+      repo.connectionId ?? null
+    )
+    return result.items
+  }
+
   async getRepoWorkItem(
     repoSelector: string,
     number: number,
@@ -5515,6 +5541,61 @@ export class OrcaRuntimeService {
     )
   }
 
+  async listGitLabRepoMRs(
+    repoSelector: string,
+    state?: MRListState,
+    page?: number,
+    perPage?: number,
+    query?: string
+  ): Promise<Awaited<ReturnType<typeof listGitLabMergeRequests>>> {
+    const repo = await this.resolveRepoSelector(repoSelector)
+    return listGitLabMergeRequests(
+      repo.path,
+      normalizeGitLabMRListState(state),
+      normalizeGitLabPositiveInteger(page, 1, 10_000),
+      normalizeGitLabPositiveInteger(perPage, 20, 100),
+      repo.issueSourcePreference,
+      query,
+      repo.connectionId ?? null
+    )
+  }
+
+  async listGitLabRepoIssues(
+    repoSelector: string,
+    state?: GitLabIssueListState,
+    assignee?: string,
+    limit?: number
+  ): Promise<{
+    items: GitLabWorkItem[]
+    error?: Awaited<ReturnType<typeof listGitLabIssues>>['error']
+  }> {
+    const repo = await this.resolveRepoSelector(repoSelector)
+    const normalized = normalizeGitLabIssueListArgs({ state, assignee, limit })
+    const result = await listGitLabIssues(
+      repo.path,
+      normalized.limit,
+      repo.issueSourcePreference,
+      normalized.state,
+      normalized.assignee,
+      repo.connectionId ?? null
+    )
+    // Why: web runtime mirrors the desktop preload contract, where GitLab
+    // issue rows share the GitLabWorkItem shape with MRs on TaskPage.
+    const items: GitLabWorkItem[] = result.items.map((issue) => ({
+      id: `gitlab-issue-${repo.id}-${issue.number}`,
+      type: 'issue' as const,
+      number: issue.number,
+      title: issue.title,
+      state: issue.state,
+      url: issue.url,
+      labels: issue.labels,
+      updatedAt: issue.updatedAt ?? '',
+      author: issue.author ?? null,
+      repoId: repo.id
+    }))
+    return { items, ...(result.error ? { error: result.error } : {}) }
+  }
+
   async listGitLabRepoTodos(
     repoSelector: string
   ): Promise<Awaited<ReturnType<typeof listGitLabTodos>>> {
@@ -5661,6 +5742,36 @@ export class OrcaRuntimeService {
       repo.connectionId ?? null,
       projectRef
     )
+  }
+
+  async getGitLabRepoWorkItemByPath(
+    repoSelector: string,
+    projectRef: GitLabProjectRef,
+    iid: number,
+    type: 'issue' | 'mr'
+  ): Promise<Awaited<ReturnType<typeof getGitLabWorkItemByProjectRef>>> {
+    const repo = await this.resolveRepoSelector(repoSelector)
+    const result = await getGitLabWorkItemByProjectRef(
+      repo.path,
+      projectRef,
+      iid,
+      type,
+      repo.connectionId ?? null
+    )
+    // Why: remote pasted-URL lookups should update GitLab recents exactly
+    // like the desktop IPC path, but only after a successful lookup.
+    if (result && this.store?.updateSettings) {
+      const store = this.store
+      recordGitLabProjectRecent(
+        {
+          getSettings: () => store.getSettings(),
+          updateSettings: (updates) => store.updateSettings?.(updates)
+        },
+        projectRef.host,
+        projectRef.path
+      )
+    }
+    return result
   }
 
   async getRepoIssue(

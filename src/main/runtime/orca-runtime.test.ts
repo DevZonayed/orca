@@ -50,9 +50,12 @@ const {
   createHostedReviewMock,
   getHostedReviewCreationEligibilityMock,
   getPRForBranchMock,
+  listGitHubIssuesMock,
   detectInstalledAgentsMock,
   detectRemoteAgentsMock,
+  listGitLabMergeRequestsMock,
   listGitLabWorkItemsMock,
+  listGitLabIssuesMock,
   listGitLabTodosMock,
   getGitLabProjectRefForRemoteMock,
   getGitLabWorkItemByProjectRefMock,
@@ -99,9 +102,12 @@ const {
     createHostedReviewMock: vi.fn(),
     getHostedReviewCreationEligibilityMock: vi.fn(),
     getPRForBranchMock: vi.fn().mockResolvedValue(null),
+    listGitHubIssuesMock: vi.fn(),
     detectInstalledAgentsMock: vi.fn(),
     detectRemoteAgentsMock: vi.fn(),
+    listGitLabMergeRequestsMock: vi.fn(),
     listGitLabWorkItemsMock: vi.fn(),
+    listGitLabIssuesMock: vi.fn(),
     listGitLabTodosMock: vi.fn(),
     getGitLabProjectRefForRemoteMock: vi.fn(),
     getGitLabWorkItemByProjectRefMock: vi.fn(),
@@ -195,7 +201,8 @@ vi.mock('../github/client', async (importOriginal) => {
   const actual = (await importOriginal()) as Record<string, unknown>
   return {
     ...actual,
-    getPRForBranch: getPRForBranchMock
+    getPRForBranch: getPRForBranchMock,
+    listIssues: listGitHubIssuesMock
   }
 })
 
@@ -203,7 +210,9 @@ vi.mock('../gitlab/client', async (importOriginal) => {
   const actual = (await importOriginal()) as Record<string, unknown>
   return {
     ...actual,
+    listMergeRequests: listGitLabMergeRequestsMock,
     listWorkItems: listGitLabWorkItemsMock,
+    listIssues: listGitLabIssuesMock,
     listTodos: listGitLabTodosMock,
     getProjectRefForRemote: getGitLabProjectRefForRemoteMock,
     getWorkItemByProjectRef: getGitLabWorkItemByProjectRefMock,
@@ -318,12 +327,18 @@ afterEach(() => {
   })
   getPRForBranchMock.mockReset()
   getPRForBranchMock.mockResolvedValue(null)
+  listGitHubIssuesMock.mockReset()
+  listGitHubIssuesMock.mockResolvedValue({ items: [] })
   detectInstalledAgentsMock.mockReset()
   detectInstalledAgentsMock.mockResolvedValue([])
   detectRemoteAgentsMock.mockReset()
   detectRemoteAgentsMock.mockResolvedValue([])
+  listGitLabMergeRequestsMock.mockReset()
+  listGitLabMergeRequestsMock.mockResolvedValue({ items: [] })
   listGitLabWorkItemsMock.mockReset()
   listGitLabWorkItemsMock.mockResolvedValue({ items: [] })
+  listGitLabIssuesMock.mockReset()
+  listGitLabIssuesMock.mockResolvedValue({ items: [] })
   listGitLabTodosMock.mockReset()
   listGitLabTodosMock.mockResolvedValue([])
   getGitLabProjectRefForRemoteMock.mockReset()
@@ -1618,6 +1633,9 @@ describe('OrcaRuntimeService', () => {
 
   it('allows host integration slug helpers for SSH repos through provider-aware GitHub clients', async () => {
     getIssueMock.mockResolvedValueOnce({ number: 12, title: 'Remote issue' })
+    listGitHubIssuesMock.mockResolvedValueOnce({
+      items: [{ number: 7, title: 'Remote issue list item' }]
+    })
     const remoteStore = {
       ...store,
       getRepos: () => [
@@ -1638,7 +1656,11 @@ describe('OrcaRuntimeService', () => {
       number: 12,
       title: 'Remote issue'
     })
+    await expect(runtime.listRepoIssues('id:repo-1', 10)).resolves.toEqual([
+      { number: 7, title: 'Remote issue list item' }
+    ])
     expect(getIssueMock).toHaveBeenCalledWith('/remote/repo', 12, 'ssh-1')
+    expect(listGitHubIssuesMock).toHaveBeenCalledWith('/remote/repo', 10, undefined, 'ssh-1')
   })
 
   it('rejects hosted review worktree selectors outside the selected repo', async () => {
@@ -7200,8 +7222,27 @@ describe('OrcaRuntimeService', () => {
   })
 
   it('passes SSH connection ids through GitLab task operations', async () => {
+    listGitLabMergeRequestsMock.mockResolvedValue({ items: [] })
     listGitLabWorkItemsMock.mockResolvedValue({ items: [] })
+    listGitLabIssuesMock.mockResolvedValue({
+      items: [
+        {
+          number: 7,
+          title: 'Issue title',
+          state: 'opened',
+          url: 'https://gitlab.example/issues/7',
+          labels: ['bug'],
+          updatedAt: '2026-05-22T00:00:00Z',
+          author: 'alex'
+        }
+      ]
+    })
     listGitLabTodosMock.mockResolvedValue([])
+    getGitLabWorkItemByProjectRefMock.mockResolvedValue({
+      id: 'gitlab-issue-7',
+      type: 'issue',
+      number: 7
+    })
     createGitLabIssueMock.mockResolvedValue({
       ok: true,
       number: 1,
@@ -7231,7 +7272,9 @@ describe('OrcaRuntimeService', () => {
     }
     const runtime = new OrcaRuntimeService(runtimeStore as never)
 
+    await runtime.listGitLabRepoMRs(TEST_REPO_ID, 'closed', 2, 25, 'ambiguous selector')
     await runtime.listGitLabRepoWorkItems(TEST_REPO_ID, 'closed', 2, 25, 'ambiguous selector')
+    const issues = await runtime.listGitLabRepoIssues(TEST_REPO_ID, 'opened', '@me', 50)
     await runtime.listGitLabRepoTodos(TEST_REPO_ID)
     await runtime.createGitLabRepoIssue(TEST_REPO_ID, 'New issue', 'Body')
     await runtime.updateGitLabRepoIssue(TEST_REPO_ID, 7, { state: 'closed' })
@@ -7241,7 +7284,22 @@ describe('OrcaRuntimeService', () => {
     await runtime.updateGitLabRepoMRState(TEST_REPO_ID, 8, 'closed')
     await runtime.updateGitLabRepoMRState(TEST_REPO_ID, 8, 'opened')
     await runtime.getGitLabRepoWorkItemDetails(TEST_REPO_ID, 8, 'mr')
+    await runtime.getGitLabRepoWorkItemByPath(
+      TEST_REPO_ID,
+      { host: 'gitlab.example.com', path: 'group/project' },
+      7,
+      'issue'
+    )
 
+    expect(listGitLabMergeRequestsMock).toHaveBeenCalledWith(
+      '/remote/repo',
+      'closed',
+      2,
+      25,
+      'origin',
+      'ambiguous selector',
+      'ssh-1'
+    )
     expect(listGitLabWorkItemsMock).toHaveBeenCalledWith(
       '/remote/repo',
       'closed',
@@ -7251,6 +7309,28 @@ describe('OrcaRuntimeService', () => {
       'ambiguous selector',
       'ssh-1'
     )
+    expect(listGitLabIssuesMock).toHaveBeenCalledWith(
+      '/remote/repo',
+      50,
+      'origin',
+      'opened',
+      '@me',
+      'ssh-1'
+    )
+    expect(issues.items).toEqual([
+      {
+        id: `gitlab-issue-${TEST_REPO_ID}-7`,
+        type: 'issue',
+        number: 7,
+        title: 'Issue title',
+        state: 'opened',
+        url: 'https://gitlab.example/issues/7',
+        labels: ['bug'],
+        updatedAt: '2026-05-22T00:00:00Z',
+        author: 'alex',
+        repoId: TEST_REPO_ID
+      }
+    ])
     expect(listGitLabTodosMock).toHaveBeenCalledWith('/remote/repo', 'ssh-1')
     expect(createGitLabIssueMock).toHaveBeenCalledWith(
       '/remote/repo',
@@ -7301,6 +7381,104 @@ describe('OrcaRuntimeService', () => {
       'ssh-1',
       undefined
     )
+    expect(getGitLabWorkItemByProjectRefMock).toHaveBeenCalledWith(
+      '/remote/repo',
+      { host: 'gitlab.example.com', path: 'group/project' },
+      7,
+      'issue',
+      'ssh-1'
+    )
+  })
+
+  it('normalizes runtime GitLab issue list arguments like the desktop IPC path', async () => {
+    const runtime = new OrcaRuntimeService(store as never)
+
+    await runtime.listGitLabRepoIssues(TEST_REPO_ID, 'closed', 'someone-else' as never, 250.8)
+    await runtime.listGitLabRepoIssues(TEST_REPO_ID, 'all', '@me', 0.7)
+    await runtime.listGitLabRepoIssues(TEST_REPO_ID, 'unexpected' as never, '@me', Number.NaN)
+
+    expect(listGitLabIssuesMock).toHaveBeenNthCalledWith(
+      1,
+      TEST_REPO_PATH,
+      100,
+      undefined,
+      'closed',
+      undefined,
+      null
+    )
+    expect(listGitLabIssuesMock).toHaveBeenNthCalledWith(
+      2,
+      TEST_REPO_PATH,
+      1,
+      undefined,
+      'all',
+      '@me',
+      null
+    )
+    expect(listGitLabIssuesMock).toHaveBeenNthCalledWith(
+      3,
+      TEST_REPO_PATH,
+      20,
+      undefined,
+      'opened',
+      '@me',
+      null
+    )
+  })
+
+  it('records GitLab pasted-project recents only after successful runtime lookup', async () => {
+    let settings = {
+      ...store.getSettings(),
+      gitlabProjects: {
+        pinned: [{ host: 'gitlab.example.com', path: 'group/pinned' }],
+        recent: []
+      }
+    }
+    const updateSettings = vi.fn((updates: Record<string, unknown>) => {
+      settings = { ...settings, ...updates } as typeof settings
+    })
+    const runtimeStore = {
+      ...store,
+      getSettings: () => settings,
+      updateSettings
+    }
+    const runtime = new OrcaRuntimeService(runtimeStore as never)
+
+    getGitLabWorkItemByProjectRefMock.mockResolvedValueOnce({
+      id: 'gitlab-issue-7',
+      type: 'issue',
+      number: 7
+    })
+    await runtime.getGitLabRepoWorkItemByPath(
+      TEST_REPO_ID,
+      { host: 'gitlab.example.com', path: 'group/project' },
+      7,
+      'issue'
+    )
+
+    expect(updateSettings).toHaveBeenCalledWith({
+      gitlabProjects: {
+        pinned: [{ host: 'gitlab.example.com', path: 'group/pinned' }],
+        recent: [
+          expect.objectContaining({
+            host: 'gitlab.example.com',
+            path: 'group/project',
+            lastOpenedAt: expect.any(String)
+          })
+        ]
+      }
+    })
+
+    updateSettings.mockClear()
+    getGitLabWorkItemByProjectRefMock.mockResolvedValueOnce(null)
+    await runtime.getGitLabRepoWorkItemByPath(
+      TEST_REPO_ID,
+      { host: 'gitlab.example.com', path: 'group/missing' },
+      404,
+      'issue'
+    )
+
+    expect(updateSettings).not.toHaveBeenCalled()
   })
 
   it('resolves local GitLab fork MR bases from the target project MR head ref', async () => {
