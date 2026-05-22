@@ -1,3 +1,6 @@
+/* eslint-disable max-lines -- Why: shared keybinding tests cover the central
+ * registry, parser, matcher, and conflict detector together so shortcut
+ * semantics cannot drift across app surfaces. */
 import { describe, expect, it } from 'vitest'
 import {
   findKeybindingConflicts,
@@ -228,6 +231,133 @@ describe('keybindings', () => {
       keybindingMatchesAction(
         'fileExplorer.delete',
         { key: 'Delete', code: 'Delete', control: false, meta: false, alt: false, shift: false },
+        'linux'
+      )
+    ).toBe(true)
+  })
+
+  it('matches logical bracket shortcuts on JIS keyboards without changing code fallback', () => {
+    const jisLeftBracket = {
+      key: '[',
+      code: 'BracketRight',
+      control: false,
+      meta: true,
+      alt: false,
+      shift: false
+    }
+    const jisRightBracket = {
+      key: ']',
+      code: 'Backslash',
+      control: false,
+      meta: true,
+      alt: false,
+      shift: false
+    }
+    const jisLeftBracketShifted = { ...jisLeftBracket, key: '{', shift: true }
+    const jisRightBracketShifted = { ...jisRightBracket, key: '}', shift: true }
+
+    expect(
+      keybindingMatchesAction('tab.previousSameType', jisLeftBracketShifted, 'darwin', {
+        'tab.previousSameType': ['Mod+Shift+BracketLeft']
+      })
+    ).toBe(true)
+    expect(
+      keybindingMatchesAction('tab.previousSameType', jisRightBracketShifted, 'darwin', {
+        'tab.previousSameType': ['Mod+Shift+BracketLeft']
+      })
+    ).toBe(false)
+    expect(
+      keybindingMatchesAction('tab.nextSameType', jisRightBracketShifted, 'darwin', {
+        'tab.nextSameType': ['Mod+Shift+BracketRight']
+      })
+    ).toBe(true)
+    expect(
+      keybindingMatchesAction('tab.nextSameType', jisLeftBracketShifted, 'darwin', {
+        'tab.nextSameType': ['Mod+Shift+BracketRight']
+      })
+    ).toBe(false)
+
+    expect(keybindingMatchesAction('terminal.focusPreviousPane', jisLeftBracket, 'darwin')).toBe(
+      true
+    )
+    expect(keybindingMatchesAction('terminal.focusNextPane', jisLeftBracket, 'darwin')).toBe(false)
+    expect(keybindingMatchesAction('terminal.focusNextPane', jisRightBracket, 'darwin')).toBe(true)
+
+    expect(
+      keybindingMatchesAction('tab.previousAllTypes', { ...jisLeftBracket, alt: true }, 'darwin')
+    ).toBe(true)
+    expect(
+      keybindingMatchesAction('tab.nextAllTypes', { ...jisRightBracket, alt: true }, 'darwin')
+    ).toBe(true)
+    expect(
+      keybindingMatchesAction(
+        'tab.previousAllTypes',
+        { ...jisLeftBracket, control: true, meta: false, alt: true },
+        'linux'
+      )
+    ).toBe(true)
+    expect(
+      keybindingMatchesAction(
+        'tab.nextAllTypes',
+        { ...jisLeftBracket, control: true, meta: false, alt: true },
+        'linux'
+      )
+    ).toBe(false)
+    expect(
+      keybindingMatchesAction(
+        'tab.nextAllTypes',
+        { ...jisRightBracket, control: true, meta: false, alt: true },
+        'linux'
+      )
+    ).toBe(true)
+
+    expect(
+      keybindingMatchesAction('terminal.splitRight', jisRightBracketShifted, 'darwin', {
+        'terminal.splitRight': ['Mod+Shift+Backslash']
+      })
+    ).toBe(false)
+
+    expect(
+      keybindingMatchesAction(
+        'tab.nextSameType',
+        {
+          key: 'Dead',
+          code: 'BracketRight',
+          control: false,
+          meta: true,
+          alt: false,
+          shift: true
+        },
+        'darwin',
+        { 'tab.nextSameType': ['Mod+Shift+BracketRight'] }
+      )
+    ).toBe(true)
+
+    expect(
+      keybindingMatchesAction(
+        'tab.previousAllTypes',
+        {
+          key: '[',
+          code: 'Digit8',
+          control: true,
+          meta: false,
+          alt: true,
+          shift: false
+        },
+        'linux'
+      )
+    ).toBe(false)
+    expect(
+      keybindingMatchesAction(
+        'tab.previousAllTypes',
+        {
+          key: 'Dead',
+          code: 'BracketLeft',
+          control: true,
+          meta: false,
+          alt: true,
+          shift: false
+        },
         'linux'
       )
     ).toBe(true)
