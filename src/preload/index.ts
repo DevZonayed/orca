@@ -102,7 +102,7 @@ import type {
   SshConnectionState,
   SshTarget,
   PortForwardEntry,
-  DetectedPort
+  EnrichedDetectedPort
 } from '../shared/ssh-types'
 import type {
   AgentStatusIpcPayload,
@@ -3017,7 +3017,7 @@ const api = {
     listPortForwards: (args?: { targetId?: string }): Promise<PortForwardEntry[]> =>
       ipcRenderer.invoke('ssh:listPortForwards', args),
 
-    listDetectedPorts: (args: { targetId: string }): Promise<DetectedPort[]> =>
+    listDetectedPorts: (args: { targetId: string }): Promise<EnrichedDetectedPort[]> =>
       ipcRenderer.invoke('ssh:listDetectedPorts', args),
 
     onPortForwardsChanged: (
@@ -3032,11 +3032,11 @@ const api = {
     },
 
     onDetectedPortsChanged: (
-      callback: (data: { targetId: string; ports: DetectedPort[] }) => void
+      callback: (data: { targetId: string; ports: EnrichedDetectedPort[] }) => void
     ): (() => void) => {
       const handler = (
         _event: Electron.IpcRendererEvent,
-        data: { targetId: string; ports: DetectedPort[] }
+        data: { targetId: string; ports: EnrichedDetectedPort[] }
       ) => callback(data)
       ipcRenderer.on('ssh:detected-ports-changed', handler)
       return () => ipcRenderer.removeListener('ssh:detected-ports-changed', handler)
