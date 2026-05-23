@@ -1966,7 +1966,7 @@ const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktreeViewp
                             }}
                           >
                             <SlidersHorizontal className="size-3.5" />
-                            Repo Settings
+                            Project Settings
                           </DropdownMenuItem>
                           <DropdownMenuItem
                             onSelect={() => {
@@ -1979,7 +1979,7 @@ const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktreeViewp
                             }}
                           >
                             <Palette className="size-3.5" />
-                            Change Repo Color
+                            Change Project Color
                           </DropdownMenuItem>
                           {row.repo && isGitRepoKind(row.repo) ? (
                             <DropdownMenuItem
