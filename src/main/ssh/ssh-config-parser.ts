@@ -11,6 +11,8 @@ export type SshConfigHost = {
   port?: number
   user?: string
   identityFile?: string
+  identityAgent?: string
+  identitiesOnly?: boolean
   proxyCommand?: string
   proxyUseFdpass?: boolean
   proxyJump?: string
@@ -89,6 +91,16 @@ export function parseSshConfig(content: string): SshConfigHost[] {
       case 'identityfile':
         for (const host of current) {
           host.identityFile = resolveHomePath(value)
+        }
+        break
+      case 'identityagent':
+        for (const host of current) {
+          host.identityAgent = resolveHomePath(value)
+        }
+        break
+      case 'identitiesonly':
+        for (const host of current) {
+          host.identitiesOnly = value.toLowerCase() === 'yes'
         }
         break
       case 'proxycommand':
@@ -209,6 +221,8 @@ export function sshConfigHostsToTargets(
       port: entry.port ?? 22,
       username: entry.user ?? '',
       identityFile: entry.identityFile,
+      identityAgent: entry.identityAgent,
+      identitiesOnly: entry.identitiesOnly,
       proxyCommand: entry.proxyCommand,
       jumpHost: entry.proxyJump
     })
@@ -223,6 +237,8 @@ export type SshResolvedConfig = {
   user?: string
   port: number
   identityFile: string[]
+  identityAgent?: string
+  identitiesOnly: boolean
   forwardAgent: boolean
   proxyCommand?: string
   proxyUseFdpass: boolean
@@ -273,12 +289,16 @@ export function parseSshGOutput(stdout: string): SshResolvedConfig {
   const proxyCommand = rawProxy && rawProxy !== 'none' ? rawProxy : undefined
   const rawJump = map.get('proxyjump')
   const proxyJump = rawJump && rawJump !== 'none' ? rawJump : undefined
+  const rawIdentityAgent = map.get('identityagent')
+  const identityAgent = rawIdentityAgent ? resolveHomePath(rawIdentityAgent) : undefined
 
   return {
     hostname: map.get('hostname') ?? '',
     user: map.get('user') || undefined,
     port: parseInt(map.get('port') ?? '22', 10),
     identityFile: identityFiles,
+    identityAgent,
+    identitiesOnly: map.get('identitiesonly') === 'yes',
     forwardAgent: map.get('forwardagent') === 'yes',
     proxyCommand,
     proxyUseFdpass: map.get('proxyusefdpass') === 'yes',
