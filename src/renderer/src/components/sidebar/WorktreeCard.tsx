@@ -47,6 +47,7 @@ import { RepoBadgeMark } from '@/components/repo/RepoBadgeLabel'
 import { hasActiveWorkspaceActivity } from '@/lib/worktree-activity-state'
 import { installWindowVisibilityInterval, isWindowVisible } from '@/lib/window-visibility-interval'
 import { runWorktreeDelete } from './delete-worktree-flow'
+import { WorktreeTitleInlineRename } from './WorktreeTitleInlineRename'
 
 type WorktreeCardProps = {
   worktree: Worktree
@@ -161,6 +162,7 @@ const WorktreeCard = React.memo(function WorktreeCard({
   })
   const isSshDisconnected = sshStatus != null && sshStatus !== 'connected'
   const [showDisconnectedDialog, setShowDisconnectedDialog] = useState(false)
+  const [titleRenaming, setTitleRenaming] = useState(false)
 
   // Why: on restart the previously-active worktree is auto-restored without a
   // click, so the dialog never opens. Auto-show it for the active card when SSH
@@ -389,6 +391,11 @@ const WorktreeCard = React.memo(function WorktreeCard({
     [worktree.id, isSshDisconnected, onActivate, onSelectionGesture]
   )
 
+  const handleRenameTitle = useCallback(
+    (displayName: string) => updateWorktreeMeta(worktree.id, { displayName }),
+    [updateWorktreeMeta, worktree.id]
+  )
+
   const handleDoubleClick = useCallback(() => {
     openModal('edit-meta', {
       worktreeId: worktree.id,
@@ -398,12 +405,12 @@ const WorktreeCard = React.memo(function WorktreeCard({
       currentComment: worktree.comment
     })
   }, [
-    worktree.id,
-    worktree.displayName,
-    worktree.linkedIssue,
-    worktree.linkedPR,
+    openModal,
     worktree.comment,
-    openModal
+    worktree.displayName,
+    worktree.id,
+    worktree.linkedIssue,
+    worktree.linkedPR
   ])
 
   const handleToggleUnreadQuick = useCallback(
@@ -545,12 +552,13 @@ const WorktreeCard = React.memo(function WorktreeCard({
             ? 'border border-sidebar-ring/35 bg-sidebar-accent/70 ring-1 ring-sidebar-ring/30'
             : 'border border-transparent hover:bg-sidebar-accent/40',
         isActiveSurface && isMultiSelected && 'ring-1 ring-sidebar-ring/35',
+        titleRenaming && '!border-transparent !bg-transparent !shadow-none !ring-0',
         isDeleting && 'opacity-50 grayscale cursor-not-allowed',
         isSshDisconnected && !isDeleting && 'opacity-60'
       )}
       onClick={handleClick}
       onDoubleClick={handleDoubleClick}
-      draggable={nativeDragEnabled && !isDeleting}
+      draggable={nativeDragEnabled && !isDeleting && !titleRenaming}
       onDragStart={nativeDragEnabled ? handleDragStart : undefined}
       onDragEnd={nativeDragEnabled ? onCardDragEnd : undefined}
       aria-busy={isDeleting}
@@ -628,18 +636,15 @@ const WorktreeCard = React.memo(function WorktreeCard({
                  hierarchy against the muted branch row below (muting the
                  title as well flattened the card — same reasoning as the
                  repo chip comment below). */}
-            <div
-              className={cn(
-                'text-[12px] truncate leading-tight text-foreground',
-                showUnreadEmphasis ? 'font-semibold' : 'font-normal'
-              )}
-            >
-              {/* Why: the card root is a non-interactive <div>, so aria-label
-                   on it is announced inconsistently across screen readers.
-                   A visible-text prefix inside the accessible name is reliable. */}
-              {showUnreadEmphasis && <span className="sr-only">Unread: </span>}
-              {worktree.displayName}
-            </div>
+            <WorktreeTitleInlineRename
+              displayName={worktree.displayName}
+              disabled={isDeleting}
+              showUnreadEmphasis={showUnreadEmphasis}
+              className="text-[12px]"
+              editingClassName="flex-1"
+              onEditingChange={setTitleRenaming}
+              onRename={handleRenameTitle}
+            />
 
             {/* Why: the primary worktree (the original clone directory) cannot be
                  deleted via `git worktree remove`. Placing this badge next to the
