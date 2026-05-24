@@ -98,10 +98,8 @@ export function isCommandGroup(commandPath: string[]): boolean {
         'storage',
         'orchestration',
         'computer',
-        'agent',
         'environment'
       ].includes(commandPath[0])) ||
-    (commandPath.length === 2 && commandPath[0] === 'agent' && commandPath[1] === 'hooks') ||
     (commandPath.length === 2 &&
       commandPath[0] === 'storage' &&
       ['local', 'session'].includes(commandPath[1]))

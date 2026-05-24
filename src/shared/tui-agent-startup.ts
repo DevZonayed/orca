@@ -1,6 +1,4 @@
 import { isShellProcess } from './agent-detection'
-import { appendOrcaClaudeAgentStatusSettings } from './claude-settings'
-import { appendOrcaCodexAgentStatusProfile } from './codex-profile'
 import { TUI_AGENT_CONFIG } from './tui-agent-config'
 import type { TuiAgent } from './types'
 
@@ -46,26 +44,6 @@ function commandSeparator(shell: AgentStartupShell): string {
   return shell === 'cmd' ? ' & ' : '; '
 }
 
-function resolveBaseCommand(args: {
-  agent: TuiAgent
-  cmdOverrides: Partial<Record<TuiAgent, string>>
-  shell: AgentStartupShell
-  useOrcaClaudeAgentStatusSettings?: boolean
-  useOrcaCodexAgentStatusProfile?: boolean
-}): string {
-  const override = args.cmdOverrides[args.agent]
-  if (override) {
-    return override
-  }
-  const command = TUI_AGENT_CONFIG[args.agent].launchCmd
-  if (args.agent === 'claude' && args.useOrcaClaudeAgentStatusSettings) {
-    return appendOrcaClaudeAgentStatusSettings(command, args.shell)
-  }
-  return args.agent === 'codex' && args.useOrcaCodexAgentStatusProfile
-    ? appendOrcaCodexAgentStatusProfile(command)
-    : command
-}
-
 export function buildAgentStartupPlan(args: {
   agent: TuiAgent
   prompt: string
@@ -73,20 +51,12 @@ export function buildAgentStartupPlan(args: {
   platform: NodeJS.Platform
   shell?: AgentStartupShell
   allowEmptyPromptLaunch?: boolean
-  useOrcaClaudeAgentStatusSettings?: boolean
-  useOrcaCodexAgentStatusProfile?: boolean
 }): AgentStartupPlan | null {
   const { agent, prompt, cmdOverrides, platform, allowEmptyPromptLaunch = false } = args
   const shell = resolveStartupShell(platform, args.shell)
   const trimmedPrompt = prompt.trim()
   const config = TUI_AGENT_CONFIG[agent]
-  const baseCommand = resolveBaseCommand({
-    agent,
-    cmdOverrides,
-    shell,
-    useOrcaClaudeAgentStatusSettings: args.useOrcaClaudeAgentStatusSettings,
-    useOrcaCodexAgentStatusProfile: args.useOrcaCodexAgentStatusProfile
-  })
+  const baseCommand = cmdOverrides[agent] ?? config.launchCmd
 
   if (!trimmedPrompt) {
     if (!allowEmptyPromptLaunch) {
@@ -159,8 +129,6 @@ export function buildAgentDraftLaunchPlan(args: {
   cmdOverrides: Partial<Record<TuiAgent, string>>
   platform: NodeJS.Platform
   shell?: AgentStartupShell
-  useOrcaClaudeAgentStatusSettings?: boolean
-  useOrcaCodexAgentStatusProfile?: boolean
 }): AgentDraftLaunchPlan | null {
   const { agent, draft, cmdOverrides, platform } = args
   const shell = resolveStartupShell(platform, args.shell)
@@ -169,13 +137,7 @@ export function buildAgentDraftLaunchPlan(args: {
   if (!trimmed) {
     return null
   }
-  const baseCommand = resolveBaseCommand({
-    agent,
-    cmdOverrides,
-    shell,
-    useOrcaClaudeAgentStatusSettings: args.useOrcaClaudeAgentStatusSettings,
-    useOrcaCodexAgentStatusProfile: args.useOrcaCodexAgentStatusProfile
-  })
+  const baseCommand = cmdOverrides[agent] ?? config.launchCmd
   if (config.draftPromptFlag) {
     const quoted = quoteStartupArg(trimmed, shell)
     return {

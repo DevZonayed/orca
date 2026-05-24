@@ -20,7 +20,6 @@ const {
   spawnMock,
   openCodeBuildPtyEnvMock,
   openCodeClearPtyMock,
-  claudeBuildPtyEnvMock,
   buildAgentHookEnvMock,
   clearAgentHookPaneStateMock,
   registerPaneKeyAliasMock,
@@ -50,7 +49,6 @@ const {
   getPathMock: vi.fn(),
   spawnMock: vi.fn(),
   openCodeBuildPtyEnvMock: vi.fn(),
-  claudeBuildPtyEnvMock: vi.fn(),
   isPwshAvailableMock: vi.fn(),
   openCodeClearPtyMock: vi.fn(),
   buildAgentHookEnvMock: vi.fn(),
@@ -102,12 +100,6 @@ vi.mock('../opencode/hook-service', () => ({
   openCodeHookService: {
     buildPtyEnv: openCodeBuildPtyEnvMock,
     clearPty: openCodeClearPtyMock
-  }
-}))
-
-vi.mock('../claude/hook-service', () => ({
-  claudeHookService: {
-    buildPtyEnv: claudeBuildPtyEnvMock
   }
 }))
 
@@ -195,14 +187,12 @@ describe('registerPtyHandlers', () => {
   const savedPiAgentDir = process.env.PI_CODING_AGENT_DIR
   const savedOrcaPiAgentDir = process.env.ORCA_PI_CODING_AGENT_DIR
   const savedOrcaPiSourceAgentDir = process.env.ORCA_PI_SOURCE_AGENT_DIR
-  const savedOrcaClaudeSettings = process.env.ORCA_CLAUDE_AGENT_STATUS_SETTINGS
 
   beforeEach(() => {
     delete process.env.OPENCODE_CONFIG_DIR
     delete process.env.ORCA_OPENCODE_SOURCE_CONFIG_DIR
     delete process.env.ORCA_OPENCODE_CONFIG_DIR
     delete process.env.ORCA_AGENT_HOOK_ENDPOINT
-    delete process.env.ORCA_CLAUDE_AGENT_STATUS_SETTINGS
     delete process.env.PI_CODING_AGENT_DIR
     delete process.env.ORCA_PI_SOURCE_AGENT_DIR
     delete process.env.ORCA_PI_CODING_AGENT_DIR
@@ -222,7 +212,6 @@ describe('registerPtyHandlers', () => {
     spawnMock.mockReset()
     openCodeBuildPtyEnvMock.mockReset()
     openCodeClearPtyMock.mockReset()
-    claudeBuildPtyEnvMock.mockReset()
     buildAgentHookEnvMock.mockReset()
     clearAgentHookPaneStateMock.mockReset()
     registerPaneKeyAliasMock.mockReset()
@@ -258,9 +247,6 @@ describe('registerPtyHandlers', () => {
     buildAgentHookEnvMock.mockReturnValue({
       ORCA_AGENT_HOOK_PORT: '5678',
       ORCA_AGENT_HOOK_TOKEN: 'agent-token'
-    })
-    claudeBuildPtyEnvMock.mockReturnValue({
-      ORCA_CLAUDE_AGENT_STATUS_SETTINGS: '/tmp/orca-claude-settings.json'
     })
     piBuildPtyEnvMock.mockImplementation((_ptyId: string, existingAgentDir?: string) => ({
       PI_CODING_AGENT_DIR: existingAgentDir
@@ -312,11 +298,6 @@ describe('registerPtyHandlers', () => {
     } else {
       process.env.ORCA_PI_SOURCE_AGENT_DIR = savedOrcaPiSourceAgentDir
     }
-    if (savedOrcaClaudeSettings === undefined) {
-      delete process.env.ORCA_CLAUDE_AGENT_STATUS_SETTINGS
-    } else {
-      process.env.ORCA_CLAUDE_AGENT_STATUS_SETTINGS = savedOrcaClaudeSettings
-    }
   })
 
   function createMockProc() {
@@ -359,7 +340,7 @@ describe('registerPtyHandlers', () => {
     argsEnv?: Record<string, string>,
     processEnvOverrides?: Record<string, string | undefined>,
     getSelectedCodexHomePath?: () => string | null,
-    getSettings?: () => { enableGitHubAttribution?: boolean; agentStatusHooksEnabled?: boolean }
+    getSettings?: () => { enableGitHubAttribution: boolean }
   ): Promise<Record<string, string>> {
     const savedEnv: Record<string, string | undefined> = {}
     if (processEnvOverrides) {
@@ -517,41 +498,6 @@ describe('registerPtyHandlers', () => {
       expect(env.ORCA_OPENCODE_SOURCE_CONFIG_DIR).toBe('/tmp/user-opencode-config')
     })
 
-    it('restores user OpenCode config when agent status hooks are disabled in a nested Orca shell', async () => {
-      const env = await spawnAndGetEnv(
-        {
-          OPENCODE_CONFIG_DIR: '/tmp/parent-orca-opencode-overlay',
-          ORCA_OPENCODE_CONFIG_DIR: '/tmp/parent-orca-opencode-overlay',
-          ORCA_OPENCODE_SOURCE_CONFIG_DIR: '/tmp/user-opencode-config'
-        },
-        undefined,
-        undefined,
-        () => ({ agentStatusHooksEnabled: false })
-      )
-
-      expect(openCodeBuildPtyEnvMock).not.toHaveBeenCalled()
-      expect(env.OPENCODE_CONFIG_DIR).toBe('/tmp/user-opencode-config')
-      expect(env.ORCA_OPENCODE_CONFIG_DIR).toBeUndefined()
-      expect(env.ORCA_OPENCODE_SOURCE_CONFIG_DIR).toBeUndefined()
-    })
-
-    it('strips inherited OpenCode overlay env when agent status hooks are disabled without a source dir', async () => {
-      const env = await spawnAndGetEnv(
-        {
-          OPENCODE_CONFIG_DIR: '/tmp/parent-orca-opencode-overlay',
-          ORCA_OPENCODE_CONFIG_DIR: '/tmp/parent-orca-opencode-overlay'
-        },
-        undefined,
-        undefined,
-        () => ({ agentStatusHooksEnabled: false })
-      )
-
-      expect(openCodeBuildPtyEnvMock).not.toHaveBeenCalled()
-      expect(env.OPENCODE_CONFIG_DIR).toBeUndefined()
-      expect(env.ORCA_OPENCODE_CONFIG_DIR).toBeUndefined()
-      expect(env.ORCA_OPENCODE_SOURCE_CONFIG_DIR).toBeUndefined()
-    })
-
     it('reproduces issue #1534: GUI-launched Orca mirrors zshrc-only OpenCode config', async () => {
       // Why: the reporter's app process did not inherit OPENCODE_CONFIG_DIR;
       // their interactive zsh startup later exported a company config repo.
@@ -602,24 +548,6 @@ describe('registerPtyHandlers', () => {
       expect(env.ORCA_PI_SOURCE_AGENT_DIR).toBe('/tmp/user-pi-agent')
     })
 
-    it('restores user Pi config when agent status hooks are disabled in a nested Orca shell', async () => {
-      const env = await spawnAndGetEnv(
-        {
-          PI_CODING_AGENT_DIR: '/tmp/parent-orca-pi-overlay',
-          ORCA_PI_CODING_AGENT_DIR: '/tmp/parent-orca-pi-overlay',
-          ORCA_PI_SOURCE_AGENT_DIR: '/tmp/user-pi-agent'
-        },
-        undefined,
-        undefined,
-        () => ({ agentStatusHooksEnabled: false })
-      )
-
-      expect(piBuildPtyEnvMock).not.toHaveBeenCalled()
-      expect(env.PI_CODING_AGENT_DIR).toBe('/tmp/user-pi-agent')
-      expect(env.ORCA_PI_CODING_AGENT_DIR).toBeUndefined()
-      expect(env.ORCA_PI_SOURCE_AGENT_DIR).toBeUndefined()
-    })
-
     it('mirrors Pi config exported only by shell startup files', async () => {
       readFileSyncMock.mockImplementation((path: string) =>
         path.endsWith('.zshrc') ? 'export PI_CODING_AGENT_DIR="$HOME/.config/pi-agent"\n' : ''
@@ -648,10 +576,8 @@ describe('registerPtyHandlers', () => {
       // both route through. The handler's separate ad-hoc injection (which
       // used to cause a double-call for local spawns) is gone.
       expect(buildAgentHookEnvMock).toHaveBeenCalledTimes(1)
-      expect(claudeBuildPtyEnvMock).toHaveBeenCalledTimes(1)
       expect(env.ORCA_AGENT_HOOK_PORT).toBe('5678')
       expect(env.ORCA_AGENT_HOOK_TOKEN).toBe('agent-token')
-      expect(env.ORCA_CLAUDE_AGENT_STATUS_SETTINGS).toBe('/tmp/orca-claude-settings.json')
     })
 
     it('strips stale inherited hook receiver env before injecting this runtime', async () => {
@@ -660,8 +586,7 @@ describe('registerPtyHandlers', () => {
         ORCA_AGENT_HOOK_TOKEN: 'stale-token',
         ORCA_AGENT_HOOK_ENV: 'production',
         ORCA_AGENT_HOOK_VERSION: 'stale-version',
-        ORCA_AGENT_HOOK_ENDPOINT: '/tmp/stale-endpoint.env',
-        ORCA_CLAUDE_AGENT_STATUS_SETTINGS: '/tmp/stale-claude-settings.json'
+        ORCA_AGENT_HOOK_ENDPOINT: '/tmp/stale-endpoint.env'
       })
 
       expect(env.ORCA_AGENT_HOOK_PORT).toBe('5678')
@@ -669,7 +594,6 @@ describe('registerPtyHandlers', () => {
       expect(env.ORCA_AGENT_HOOK_ENV).toBeUndefined()
       expect(env.ORCA_AGENT_HOOK_VERSION).toBeUndefined()
       expect(env.ORCA_AGENT_HOOK_ENDPOINT).toBeUndefined()
-      expect(env.ORCA_CLAUDE_AGENT_STATUS_SETTINGS).toBe('/tmp/orca-claude-settings.json')
     })
 
     it('does not leak inherited hook receiver env if the hook server is unavailable', async () => {
@@ -680,8 +604,7 @@ describe('registerPtyHandlers', () => {
         ORCA_AGENT_HOOK_TOKEN: 'stale-token',
         ORCA_AGENT_HOOK_ENV: 'production',
         ORCA_AGENT_HOOK_VERSION: 'stale-version',
-        ORCA_AGENT_HOOK_ENDPOINT: '/tmp/stale-endpoint.env',
-        ORCA_CLAUDE_AGENT_STATUS_SETTINGS: '/tmp/stale-claude-settings.json'
+        ORCA_AGENT_HOOK_ENDPOINT: '/tmp/stale-endpoint.env'
       })
 
       expect(env.ORCA_AGENT_HOOK_PORT).toBeUndefined()
@@ -689,7 +612,6 @@ describe('registerPtyHandlers', () => {
       expect(env.ORCA_AGENT_HOOK_ENV).toBeUndefined()
       expect(env.ORCA_AGENT_HOOK_VERSION).toBeUndefined()
       expect(env.ORCA_AGENT_HOOK_ENDPOINT).toBeUndefined()
-      expect(env.ORCA_CLAUDE_AGENT_STATUS_SETTINGS).toBe('/tmp/orca-claude-settings.json')
     })
 
     it('prepends local git/gh attribution shims when attribution is enabled', async () => {
@@ -882,7 +804,6 @@ describe('registerPtyHandlers', () => {
         const env = await daemonSpawnAndGetEnv({})
         expect(env.ORCA_AGENT_HOOK_PORT).toBe('5678')
         expect(env.ORCA_AGENT_HOOK_TOKEN).toBe('agent-token')
-        expect(env.ORCA_CLAUDE_AGENT_STATUS_SETTINGS).toBe('/tmp/orca-claude-settings.json')
       })
 
       it('strips inherited agent-hook endpoint env from development daemon PTYs', async () => {
@@ -1173,7 +1094,6 @@ describe('registerPtyHandlers', () => {
         // worst a credential leak.
         expect(env.ORCA_AGENT_HOOK_PORT).toBeUndefined()
         expect(env.ORCA_AGENT_HOOK_TOKEN).toBeUndefined()
-        expect(env.ORCA_CLAUDE_AGENT_STATUS_SETTINGS).toBeUndefined()
         expect(env.ORCA_ENABLE_GIT_ATTRIBUTION).toBeUndefined()
         expect(env.OPENCODE_CONFIG_DIR).toBeUndefined()
         expect(env.ORCA_OPENCODE_CONFIG_DIR).toBeUndefined()
