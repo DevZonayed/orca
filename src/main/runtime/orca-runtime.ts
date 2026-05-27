@@ -11499,11 +11499,18 @@ export class OrcaRuntimeService {
     description?: string,
     workspaceId?: string,
     parentIssueId?: string,
-    projectId?: string | null
+    projectId?: string | null,
+    options?: {
+      stateId?: string
+      priority?: number
+      assigneeId?: string | null
+      labelIds?: string[]
+    }
   ): ReturnType<typeof createLinearIssue> {
     return createLinearIssue(teamId, title, description, workspaceId, {
       parentId: parentIssueId,
-      projectId
+      projectId,
+      ...options
     })
   }
 
