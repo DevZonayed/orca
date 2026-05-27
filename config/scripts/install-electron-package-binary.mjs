@@ -12,10 +12,11 @@ import {
   rmSync,
   writeFileSync
 } from 'node:fs'
+import { get as httpGet } from 'node:http'
+import { get as httpsGet } from 'node:https'
 import { createRequire } from 'node:module'
 import { platform as osPlatform, tmpdir } from 'node:os'
 import { dirname, resolve } from 'node:path'
-import { Readable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import { fileURLToPath } from 'node:url'
 
@@ -26,23 +27,31 @@ const electronRequire = createRequire(resolve(electronPackageDir, 'package.json'
 const { version: electronVersion } = electronRequire('./package.json')
 const extract = electronRequire('extract-zip')
 const platformPath = getElectronPlatformPath()
+const MAX_DOWNLOAD_REDIRECTS = 5
 
-if (electronPackageLoads()) {
-  process.exit(0)
-}
-
-// Why: PR tests run under system Node after native modules are rebuilt for
-// Node. Install only Electron's npm package binary here; do not run the full
-// Electron native-module rebuild path, which would undo the Node ABI rebuild.
-console.log('[electron-package] Electron package binary is missing; running Electron install.')
-await installElectronPackageBinary()
-
-repairElectronPathFile()
-
-if (!electronPackageLoads()) {
-  logElectronInstallDiagnostics()
-  console.error('[electron-package] Electron package is still unavailable after install.')
+main().catch((error) => {
+  console.error(error)
   process.exit(1)
+})
+
+async function main() {
+  if (electronPackageLoads()) {
+    return
+  }
+
+  // Why: PR tests run under system Node after native modules are rebuilt for
+  // Node. Install only Electron's npm package binary here; do not run the full
+  // Electron native-module rebuild path, which would undo the Node ABI rebuild.
+  console.log('[electron-package] Electron package binary is missing; running Electron install.')
+  await installElectronPackageBinary()
+
+  repairElectronPathFile()
+
+  if (!electronPackageLoads()) {
+    logElectronInstallDiagnostics()
+    console.error('[electron-package] Electron package is still unavailable after install.')
+    process.exit(1)
+  }
 }
 
 function electronPackageLoads() {
@@ -100,15 +109,53 @@ async function downloadElectronArtifact(artifactName, zipPath) {
   const artifactUrl = new URL(`v${electronVersion}/${artifactName}`, getElectronReleaseBaseUrl())
   console.log(`[electron-package] Downloading ${artifactUrl}`)
 
-  const response = await fetch(artifactUrl)
-  if (!response.ok) {
-    throw new Error(`Failed to download ${artifactName}: ${response.status} ${response.statusText}`)
-  }
-  if (!response.body) {
-    throw new Error(`Failed to download ${artifactName}: empty response body`)
+  await downloadUrlToFile(artifactUrl, zipPath, artifactName)
+}
+
+async function downloadUrlToFile(url, zipPath, artifactName, redirectCount = 0) {
+  const response = await requestUrl(url)
+  const status = response.statusCode ?? 0
+
+  if (status >= 300 && status < 400 && response.headers.location) {
+    response.resume()
+    if (redirectCount >= MAX_DOWNLOAD_REDIRECTS) {
+      throw new Error(`Failed to download ${artifactName}: too many redirects`)
+    }
+
+    const nextUrl = new URL(response.headers.location, url)
+    console.log(`[electron-package] Following redirect to ${nextUrl.origin}${nextUrl.pathname}`)
+    await downloadUrlToFile(nextUrl, zipPath, artifactName, redirectCount + 1)
+    return
   }
 
-  await pipeline(Readable.fromWeb(response.body), createWriteStream(zipPath))
+  if (status < 200 || status >= 300) {
+    response.resume()
+    throw new Error(
+      `Failed to download ${artifactName}: ${status} ${response.statusMessage ?? ''}`.trim()
+    )
+  }
+
+  await pipeline(response, createWriteStream(zipPath))
+}
+
+function requestUrl(url) {
+  const get = url.protocol === 'http:' ? httpGet : url.protocol === 'https:' ? httpsGet : undefined
+  if (!get) {
+    throw new Error(`Unsupported Electron download protocol: ${url.protocol}`)
+  }
+
+  return new Promise((resolve, reject) => {
+    const request = get(
+      url,
+      {
+        headers: {
+          'user-agent': 'orca-electron-package-installer'
+        }
+      },
+      resolve
+    )
+    request.on('error', reject)
+  })
 }
 
 async function verifyElectronArtifactChecksum(artifactName, zipPath) {
