@@ -363,6 +363,7 @@ import type { IFilesystemProvider, IPtyProvider } from '../providers/types'
 import { getSshFilesystemProvider } from '../providers/ssh-filesystem-dispatch'
 import { getSshGitProvider, requireSshGitProvider } from '../providers/ssh-git-dispatch'
 import { getActiveMultiplexer } from '../ipc/ssh'
+import { detectRepoIcon } from '../repo-icon-autodetect'
 import type { ClaudeAccountService } from '../claude-accounts/service'
 import type { CodexAccountService } from '../codex-accounts/service'
 import type { RateLimitService } from '../rate-limits/service'
@@ -5114,11 +5115,13 @@ export class OrcaRuntimeService {
       return existing
     }
 
+    const repoIcon = await detectRepoIcon({ repoPath: path, kind })
     const repo: Repo = {
       id: randomUUID(),
       path,
       displayName: getRepoName(path),
       badgeColor: DEFAULT_REPO_BADGE_COLOR,
+      ...(repoIcon ? { repoIcon } : {}),
       addedAt: Date.now(),
       kind,
       ...(kind === 'git'
@@ -5228,11 +5231,13 @@ export class OrcaRuntimeService {
       return { repo: raceWinner }
     }
 
+    const repoIcon = await detectRepoIcon({ repoPath: targetPath, kind: repoKind })
     const repo: Repo = {
       id: randomUUID(),
       path: targetPath,
       displayName: trimmedName,
       badgeColor: DEFAULT_REPO_BADGE_COLOR,
+      ...(repoIcon ? { repoIcon } : {}),
       addedAt: Date.now(),
       kind: repoKind,
       ...(repoKind === 'git'
@@ -5301,11 +5306,13 @@ export class OrcaRuntimeService {
       return existing
     }
 
+    const repoIcon = await detectRepoIcon({ repoPath: clonePath, kind: 'git' })
     const repo: Repo = {
       id: randomUUID(),
       path: clonePath,
       displayName: getRepoName(clonePath),
       badgeColor: DEFAULT_REPO_BADGE_COLOR,
+      ...(repoIcon ? { repoIcon } : {}),
       addedAt: Date.now(),
       kind: 'git',
       externalWorktreeVisibility: 'hide',
