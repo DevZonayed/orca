@@ -2102,11 +2102,11 @@ export class OrcaRuntimeService {
 
   private async resolveRuntimeGitTarget(
     worktreeSelector: string
-  ): Promise<{ worktree: ResolvedWorktree; connectionId?: string }> {
+  ): Promise<{ worktree: ResolvedWorktree; repo?: Repo; connectionId?: string }> {
     const store = this.requireStore()
     const worktree = await this.resolveWorktreeSelector(worktreeSelector)
     const repo = store.getRepo(worktree.repoId)
-    return { worktree, connectionId: repo?.connectionId ?? undefined }
+    return { worktree, repo, connectionId: repo?.connectionId ?? undefined }
   }
 
   onMobileSessionTabsChanged(
@@ -5367,6 +5367,7 @@ export class OrcaRuntimeService {
         | 'issueSourcePreference'
         | 'externalWorktreeVisibility'
         | 'externalWorktreeVisibilityPromptDismissedAt'
+        | 'sourceControlAi'
       >
     >
   ): Promise<Repo> {
@@ -5722,7 +5723,8 @@ export class OrcaRuntimeService {
         head: args.head,
         title: args.title,
         body: args.body,
-        draft: args.draft
+        draft: args.draft,
+        useTemplate: args.useTemplate
       },
       repo.connectionId ?? null
     )
