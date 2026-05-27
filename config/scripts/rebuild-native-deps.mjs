@@ -22,7 +22,7 @@
 import { rebuild } from '@electron/rebuild'
 import { execFileSync, spawnSync } from 'node:child_process'
 import { createRequire } from 'node:module'
-import { existsSync, globSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, globSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { platform as osPlatform } from 'node:os'
 import { resolve } from 'node:path'
 
@@ -151,6 +151,10 @@ function ensureElectronPackageInstalled() {
     })
   } catch (/** @type {any} */ err) {
     console.error('[rebuild] Electron install retry failed:', err?.message ?? err)
+    logElectronInstallDiagnostics()
+    if (continuePostinstallWithoutElectron()) {
+      process.exit(0)
+    }
     process.exit(1)
   }
 
@@ -158,6 +162,10 @@ function ensureElectronPackageInstalled() {
     require('electron')
   } catch (/** @type {any} */ err) {
     if (!repairElectronPathFile()) {
+      logElectronInstallDiagnostics()
+      if (continuePostinstallWithoutElectron()) {
+        process.exit(0)
+      }
       console.error(
         '[rebuild] Electron package is still unavailable after retry:',
         err?.message ?? err
@@ -176,6 +184,18 @@ function ensureElectronPackageInstalled() {
   }
 }
 
+function continuePostinstallWithoutElectron() {
+  if (!isPostinstall() || process.env.ORCA_STRICT_ELECTRON_INSTALL === '1') {
+    return false
+  }
+  console.error(
+    '[rebuild] Continuing postinstall because Electron binary installation failed. ' +
+      'Electron-consuming package scripts and release jobs run ' +
+      'config/scripts/ensure-native-runtime.mjs --runtime=electron before launching Electron.'
+  )
+  return true
+}
+
 function repairElectronPathFile() {
   const electronPackageDir = resolve(projectDir, 'node_modules/electron')
   const platformPath = getElectronPlatformPath()
@@ -192,6 +212,27 @@ function repairElectronPathFile() {
   writeFileSync(resolve(electronPackageDir, 'path.txt'), platformPath)
   console.log(`[rebuild] Repaired Electron path.txt -> ${platformPath}`)
   return true
+}
+
+function logElectronInstallDiagnostics() {
+  const electronPackageDir = resolve(projectDir, 'node_modules/electron')
+  const electronDistDir = resolve(electronPackageDir, 'dist')
+  const pathFile = resolve(electronPackageDir, 'path.txt')
+  console.error('[rebuild] Electron install diagnostics:')
+  console.error(`  packageDir=${electronPackageDir} exists=${existsSync(electronPackageDir)}`)
+  console.error(`  distDir=${electronDistDir} exists=${existsSync(electronDistDir)}`)
+  console.error(`  pathFile=${pathFile} exists=${existsSync(pathFile)}`)
+  if (existsSync(electronDistDir)) {
+    console.error(`  distEntries=${safeReaddir(electronDistDir).join(', ')}`)
+  }
+}
+
+function safeReaddir(targetPath) {
+  try {
+    return readdirSync(targetPath).slice(0, 20)
+  } catch {
+    return []
+  }
 }
 
 function getElectronPlatformPath() {
