@@ -10581,6 +10581,7 @@ export class OrcaRuntimeService {
         leafId: tab.leafId,
         title: leaf?.paneTitle ?? syncedTab?.title ?? pty?.title ?? tab.title,
         ...(tab.ptyId ? { ptyId: tab.ptyId } : {}),
+        ...(tab.terminalTheme ? { terminalTheme: tab.terminalTheme } : {}),
         ...(tab.agentStatus ? { agentStatus: tab.agentStatus } : {}),
         ...(tab.parentLayout ? { parentLayout: tab.parentLayout } : {}),
         isActive: tab.isActive,
