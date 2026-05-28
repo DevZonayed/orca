@@ -8,13 +8,13 @@ import {
 } from 'react'
 import type { Virtualizer } from '@tanstack/react-virtual'
 import { shouldCancelVirtualizedScrollOffsetRestore } from './virtualizedScrollOffsetRestore'
+import {
+  VIRTUALIZED_SCROLL_ANCHOR_RECORD_EVENT,
+  clampVirtualizedScrollAnchorOffset,
+  type VirtualizedScrollAnchor
+} from './virtualizedScrollAnchorState'
+import { resolveVirtualizedScrollAnchorKey } from './virtualizedScrollAnchorResolution'
 
-export type VirtualizedScrollAnchor = {
-  fallbackKeys?: readonly string[]
-  key: string
-  offset: number
-} | null
-export const VIRTUALIZED_SCROLL_ANCHOR_RECORD_EVENT = 'orca-record-virtualized-scroll-anchor'
 const RECORD_ANCHOR_SCROLL_IDLE_DELAY_MS = 150
 
 type UseVirtualizedScrollAnchorOptions<
@@ -31,6 +31,8 @@ type UseVirtualizedScrollAnchorOptions<
   scrollElementRef: RefObject<TScrollElement | null>
   scrollOffsetRef: MutableRefObject<number>
   shouldSkipRestore?: () => boolean
+  maxAnchorOffset?: number
+  topInset?: number
   totalSize: number
   virtualizer: Virtualizer<TScrollElement, TItemElement>
 }
@@ -57,23 +59,23 @@ export function useVirtualizedScrollAnchor<
   scrollElementRef,
   scrollOffsetRef,
   shouldSkipRestore,
+  maxAnchorOffset = Infinity,
+  topInset = 0,
   totalSize,
   virtualizer
 }: UseVirtualizedScrollAnchorOptions<TRow, TScrollElement, TItemElement>): void {
   const rowIndexByKey = useMemo(() => {
     const indexByKey = new Map<string, number>()
-    rows.forEach((row, index) => {
-      indexByKey.set(getRowKey(row), index)
-    })
+    rows.forEach((row, index) => indexByKey.set(getRowKey(row), index))
     return indexByKey
   }, [getRowKey, rows])
-
   const findDomAnchor = useCallback(
     (scrollElement: TScrollElement) => {
       if (!itemElementSelector || !getItemElementKey) {
         return null
       }
       const scrollRect = scrollElement.getBoundingClientRect()
+      const visibleTop = scrollRect.top + topInset
       type DomAnchorItem = { element: TItemElement; key: string; rect: DOMRect }
       const visibleItems = Array.from(
         scrollElement.querySelectorAll<TItemElement>(itemElementSelector)
@@ -84,7 +86,7 @@ export function useVirtualizedScrollAnchor<
             return null
           }
           const rect = element.getBoundingClientRect()
-          if (rect.height <= 0 || rect.bottom <= scrollRect.top || rect.top >= scrollRect.bottom) {
+          if (rect.height <= 0 || rect.bottom <= visibleTop || rect.top >= scrollRect.bottom) {
             return null
           }
           return { element, key, rect }
@@ -99,19 +101,20 @@ export function useVirtualizedScrollAnchor<
       return {
         fallbackKeys: visibleItems.slice(1).map((item) => item.key),
         key: firstVisible.key,
-        offset: Math.min(
-          firstVisible.rect.height,
-          Math.max(0, scrollRect.top - firstVisible.rect.top)
+        offset: clampVirtualizedScrollAnchorOffset(
+          Math.min(firstVisible.rect.height, visibleTop - firstVisible.rect.top),
+          maxAnchorOffset
         )
       }
     },
-    [getItemElementKey, itemElementSelector, rowIndexByKey]
+    [getItemElementKey, itemElementSelector, maxAnchorOffset, rowIndexByKey, topInset]
   )
 
   const recordVirtualScrollAnchor = useCallback(
     (scrollTop: number) => {
       const virtualItems = virtualizer.getVirtualItems()
-      const firstVisible = virtualItems.find((item) => item.end > scrollTop)
+      const visibleTop = scrollTop + topInset
+      const firstVisible = virtualItems.find((item) => item.end > visibleTop)
       const row = firstVisible ? rows[firstVisible.index] : undefined
       if (!firstVisible || !row) {
         anchorRef.current = null
@@ -124,10 +127,10 @@ export function useVirtualizedScrollAnchor<
           .filter((row): row is TRow => row != null)
           .map(getRowKey),
         key: getRowKey(row),
-        offset: Math.max(0, scrollTop - firstVisible.start)
+        offset: clampVirtualizedScrollAnchorOffset(visibleTop - firstVisible.start, maxAnchorOffset)
       }
     },
-    [anchorRef, getRowKey, rows, virtualizer]
+    [anchorRef, getRowKey, maxAnchorOffset, rows, topInset, virtualizer]
   )
 
   const recordScrollAnchor = useCallback(
@@ -259,16 +262,11 @@ export function useVirtualizedScrollAnchor<
       return
     }
 
-    const resolvedKey = rowIndexByKey.has(anchor.key)
-      ? anchor.key
-      : anchor.fallbackKeys?.find((key) => rowIndexByKey.has(key))
-    if (!resolvedKey) {
+    const resolvedAnchor = resolveVirtualizedScrollAnchorKey(anchor, rowIndexByKey)
+    if (!resolvedAnchor) {
       return
     }
-    const index = rowIndexByKey.get(resolvedKey)
-    if (index === undefined) {
-      return
-    }
+    const { index, key: resolvedKey } = resolvedAnchor
     const offset = resolvedKey === anchor.key ? anchor.offset : 0
 
     const restoreFromDomElement = (): boolean => {
@@ -284,7 +282,7 @@ export function useVirtualizedScrollAnchor<
       }
       const scrollRect = el.getBoundingClientRect()
       const rect = element.getBoundingClientRect()
-      const desiredTop = scrollRect.top - offset
+      const desiredTop = scrollRect.top + topInset - offset
       const delta = rect.top - desiredTop
       if (Math.abs(delta) > 1) {
         el.scrollTop += delta
@@ -300,7 +298,7 @@ export function useVirtualizedScrollAnchor<
         return false
       }
       const maxScrollTop = Math.max(0, el.scrollHeight - el.clientHeight)
-      const nextScrollTop = Math.min(maxScrollTop, Math.max(0, item.start + offset))
+      const nextScrollTop = Math.min(maxScrollTop, Math.max(0, item.start + offset - topInset))
       if (Math.abs(el.scrollTop - nextScrollTop) > 1) {
         el.scrollTop = nextScrollTop
       }
@@ -341,6 +339,7 @@ export function useVirtualizedScrollAnchor<
     scrollElementRef,
     scrollOffsetRef,
     shouldSkipRestore,
+    topInset,
     totalSize,
     virtualizer,
     virtualizer.isScrolling
