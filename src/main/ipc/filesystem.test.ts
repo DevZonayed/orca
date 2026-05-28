@@ -304,11 +304,11 @@ describe('registerFilesystemHandlers', () => {
     expect(listWorktreesMock).not.toHaveBeenCalled()
   })
 
-  it('reports symlinked directories from readDir as directories', async () => {
+  it('does not follow symlinks when classifying readDir entries', async () => {
     const modelLinkPath = path.join(REPO_PATH, 'Model')
     readdirMock.mockResolvedValue([
       dirEntry({ name: 'README.md', file: true }),
-      dirEntry({ name: 'Model', symlink: true })
+      dirEntry({ name: 'Model', directory: true, symlink: true })
     ])
     statMock.mockImplementation(async (targetPath: string) => ({
       size: 10,
@@ -319,9 +319,10 @@ describe('registerFilesystemHandlers', () => {
     registerFilesystemHandlers(store as never)
 
     await expect(handlers.get('fs:readDir')!(null, { dirPath: REPO_PATH })).resolves.toEqual([
-      { name: 'Model', isDirectory: true, isSymlink: true },
+      { name: 'Model', isDirectory: false, isSymlink: true },
       { name: 'README.md', isDirectory: false, isSymlink: false }
     ])
+    expect(statMock).not.toHaveBeenCalledWith(modelLinkPath)
   })
 
   it('allows deletePath when a registered worktree parent resolves to a macOS canonical alias', async () => {
