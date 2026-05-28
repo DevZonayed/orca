@@ -349,6 +349,90 @@ describe('createIpcPtyTransport', () => {
     expect(onBell).toHaveBeenCalledTimes(1)
   })
 
+  it('bounds the eager buffer to its cap and keeps the most recent output', async () => {
+    const { registerEagerPtyBuffer } = await import('./pty-transport')
+    const cap = 512 * 1024
+    const handle = registerEagerPtyBuffer('pty-restored', vi.fn())
+
+    // 8 x 100 KB = 800 KB of distinct chunks, exceeding the 512 KB cap; the
+    // earliest chunks must be dropped while the prompt-bearing tail is kept.
+    for (let i = 0; i < 8; i += 1) {
+      onData?.({ id: 'pty-restored', data: String.fromCharCode(65 + i).repeat(100 * 1024) })
+    }
+    onData?.({ id: 'pty-restored', data: 'PROMPT$' })
+
+    const flushed = handle.flush()
+    expect(flushed.length).toBeLessThanOrEqual(cap)
+    expect(flushed.endsWith('PROMPT$')).toBe(true)
+    expect(flushed).not.toContain('A') // oldest chunk trimmed
+  })
+
+  it('caps a single oversized eager chunk to its most-recent tail', async () => {
+    const { registerEagerPtyBuffer } = await import('./pty-transport')
+    const cap = 512 * 1024
+    const handle = registerEagerPtyBuffer('pty-restored', vi.fn())
+
+    // One chunk larger than the cap must not be stored whole.
+    onData?.({ id: 'pty-restored', data: `${'x'.repeat(cap)}TAIL$` })
+
+    const flushed = handle.flush()
+    expect(flushed.length).toBeLessThanOrEqual(cap)
+    expect(flushed.endsWith('TAIL$')).toBe(true)
+  })
+
+  it('enforces the eager buffer cap in UTF-8 bytes for multi-byte output', async () => {
+    const { registerEagerPtyBuffer } = await import('./pty-transport')
+    const cap = 512 * 1024
+    const handle = registerEagerPtyBuffer('pty-restored', vi.fn())
+
+    onData?.({ id: 'pty-restored', data: `${'界'.repeat(cap)}PROMPT$` })
+
+    const flushed = handle.flush()
+    expect(new TextEncoder().encode(flushed).byteLength).toBeLessThanOrEqual(cap)
+    expect(flushed.endsWith('PROMPT$')).toBe(true)
+  })
+
+  it('preserves a BOM when it starts the retained oversized eager-buffer tail', async () => {
+    const { registerEagerPtyBuffer } = await import('./pty-transport')
+    const cap = 512 * 1024
+    const handle = registerEagerPtyBuffer('pty-restored', vi.fn())
+
+    onData?.({ id: 'pty-restored', data: `${'x'.repeat(16)}\uFEFF${'y'.repeat(cap - 3)}` })
+
+    const flushed = handle.flush()
+    expect(new TextEncoder().encode(flushed).byteLength).toBe(cap)
+    expect(flushed.startsWith('\uFEFF')).toBe(true)
+  })
+
+  it('does not use Array.shift while trimming many eager chunks', async () => {
+    const { registerEagerPtyBuffer } = await import('./pty-transport')
+    const handle = registerEagerPtyBuffer('pty-restored', vi.fn())
+    const originalShift = Array.prototype.shift
+
+    try {
+      // Why: this hot path used to call Array.shift() once per trim, which
+      // reindexed the live buffer and made many small chunks quadratic.
+      Object.defineProperty(Array.prototype, 'shift', {
+        configurable: true,
+        writable: true,
+        value() {
+          throw new Error('Array.shift should not be used by the eager buffer')
+        }
+      })
+      for (let i = 0; i < 2048; i += 1) {
+        onData?.({ id: 'pty-restored', data: 'x'.repeat(1024) })
+      }
+    } finally {
+      Object.defineProperty(Array.prototype, 'shift', {
+        configurable: true,
+        writable: true,
+        value: originalShift
+      })
+    }
+
+    expect(handle.flush().length).toBeLessThanOrEqual(512 * 1024)
+  })
+
   it('routes eager-buffered bytes through onReplayData so the renderer can engage the replay guard', async () => {
     const { createIpcPtyTransport, registerEagerPtyBuffer } = await import('./pty-transport')
 
