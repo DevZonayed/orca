@@ -118,6 +118,7 @@ import {
 import { getConnectionId } from '@/lib/connection-context'
 import {
   abortRuntimeGitMerge,
+  abortRuntimeGitRebase,
   bulkDiscardRuntimeGitPaths,
   bulkStageRuntimeGitPaths,
   bulkUnstageRuntimeGitPaths,
@@ -178,7 +179,9 @@ import { getRepositorySourceControlAiSectionId } from '@/components/settings/rep
 import { hasExpandedCommitFailureDetails, summarizeCommitFailure } from './commit-failure-summary'
 
 export type SourceControlScope = 'all' | 'uncommitted'
-type SourceControlActionError = { kind: RemoteOpKind | 'abort_merge'; message: string }
+type AbortConflictOperation = Extract<GitConflictOperation, 'merge' | 'rebase'>
+type AbortActionErrorKind = 'abort_merge' | 'abort_rebase'
+type SourceControlActionError = { kind: RemoteOpKind | AbortActionErrorKind; message: string }
 type SourceControlAiInstructionGuidance = {
   operation: SourceControlAiOperation
   repoBacked: boolean
@@ -1132,10 +1135,10 @@ function SourceControlInner(): React.JSX.Element {
   const [commitInFlightByWorktree, setCommitInFlightByWorktree] = useState<Record<string, boolean>>(
     {}
   )
-  const [abortMergeInFlightByWorktree, setAbortMergeInFlightByWorktree] = useState<
+  const [abortOperationInFlightByWorktree, setAbortOperationInFlightByWorktree] = useState<
     Record<string, boolean>
   >({})
-  const isAbortingMerge = abortMergeInFlightByWorktree[activeWorktreeId ?? ''] ?? false
+  const isAbortingOperation = abortOperationInFlightByWorktree[activeWorktreeId ?? ''] ?? false
   const confirmAction = useConfirmationDialog()
   const isCommitting = commitInFlightByWorktree[activeWorktreeId ?? ''] ?? false
   // Why: parallel state to commit. Same per-worktree shape so navigating between
@@ -1747,7 +1750,7 @@ function SourceControlInner(): React.JSX.Element {
     setCommitErrors((prev) => pruneRecord(prev))
     setRemoteActionErrors((prev) => pruneRecord(prev))
     setCommitInFlightByWorktree((prev) => pruneRecord(prev))
-    setAbortMergeInFlightByWorktree((prev) => pruneRecord(prev))
+    setAbortOperationInFlightByWorktree((prev) => pruneRecord(prev))
     setGenerateInFlightByWorktree((prev) => pruneRecord(prev))
     setGenerateErrors((prev) => pruneRecord(prev))
     setGitHistoryByWorktree((prev) => pruneRecord(prev))
@@ -2085,52 +2088,91 @@ function SourceControlInner(): React.JSX.Element {
     ]
   )
 
-  const handleAbortMerge = useCallback(async (): Promise<void> => {
-    if (!activeWorktreeId || !worktreePath || conflictOperation !== 'merge' || isAbortingMerge) {
-      return
-    }
+  const handleAbortOperation = useCallback(
+    async (requestedOperation: AbortConflictOperation): Promise<void> => {
+      if (
+        !activeWorktreeId ||
+        !worktreePath ||
+        conflictOperation !== requestedOperation ||
+        isAbortingOperation
+      ) {
+        return
+      }
 
-    const confirmed = await confirmAction({
-      title: 'Abort merge?',
-      description:
-        'This cancels the merge in progress and can discard conflict resolutions made during this merge.',
-      confirmLabel: 'Abort merge',
-      confirmVariant: 'destructive'
-    })
-    if (!confirmed) {
-      return
-    }
-
-    const connectionId = getConnectionId(activeWorktreeId) ?? undefined
-    setAbortMergeInFlightByWorktree((prev) => ({ ...prev, [activeWorktreeId]: true }))
-    setRemoteActionErrors((prev) => ({ ...prev, [activeWorktreeId]: null }))
-    try {
-      await abortRuntimeGitMerge({
-        settings: useAppStore.getState().settings,
-        worktreeId: activeWorktreeId,
-        worktreePath,
-        connectionId
+      const isRebase = requestedOperation === 'rebase'
+      const label = isRebase ? 'rebase' : 'merge'
+      const title = isRebase ? 'Abort rebase?' : 'Abort merge?'
+      const description = isRebase
+        ? 'This cancels the rebase in progress and can discard conflict resolutions made during this rebase.'
+        : 'This cancels the merge in progress and can discard conflict resolutions made during this merge.'
+      const confirmed = await confirmAction({
+        title,
+        description,
+        confirmLabel: `Abort ${label}`,
+        confirmVariant: 'destructive'
       })
-      await refreshActiveGitStatusAfterMutation()
-      void refreshGitHistoryRef.current()
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to abort merge'
-      toast.error('Abort merge failed', { description: message })
-      setRemoteActionErrors((prev) => ({
-        ...prev,
-        [activeWorktreeId]: { kind: 'abort_merge', message }
-      }))
-    } finally {
-      setAbortMergeInFlightByWorktree((prev) => ({ ...prev, [activeWorktreeId]: false }))
-    }
-  }, [
-    activeWorktreeId,
-    confirmAction,
-    conflictOperation,
-    isAbortingMerge,
-    refreshActiveGitStatusAfterMutation,
-    worktreePath
-  ])
+      if (!confirmed) {
+        return
+      }
+
+      const connectionId = getConnectionId(activeWorktreeId) ?? undefined
+      setAbortOperationInFlightByWorktree((prev) => ({ ...prev, [activeWorktreeId]: true }))
+      setRemoteActionErrors((prev) => ({ ...prev, [activeWorktreeId]: null }))
+      try {
+        const context = {
+          settings: useAppStore.getState().settings,
+          worktreeId: activeWorktreeId,
+          worktreePath,
+          connectionId
+        }
+        const abortGitOperation = isRebase ? abortRuntimeGitRebase : abortRuntimeGitMerge
+        await abortGitOperation(context)
+      } catch (error) {
+        const message = error instanceof Error ? error.message : `Failed to abort ${label}`
+        toast.error(`Abort ${label} failed`, { description: message })
+        setRemoteActionErrors((prev) => ({
+          ...prev,
+          [activeWorktreeId]: { kind: isRebase ? 'abort_rebase' : 'abort_merge', message }
+        }))
+      } finally {
+        setAbortOperationInFlightByWorktree((prev) => ({ ...prev, [activeWorktreeId]: false }))
+        refreshSourceControlAfterRemoteAction({
+          refreshGitStatus: refreshActiveGitStatusAfterMutation,
+          refreshBranchCompare: refreshBranchCompareRef.current,
+          refreshGitHistory: refreshGitHistoryRef.current
+        })
+      }
+    },
+    [
+      activeWorktreeId,
+      confirmAction,
+      conflictOperation,
+      isAbortingOperation,
+      refreshActiveGitStatusAfterMutation,
+      worktreePath
+    ]
+  )
+
+  const handleAbortMerge = useCallback(async (): Promise<void> => {
+    await handleAbortOperation('merge')
+  }, [handleAbortOperation])
+
+  const handleAbortRebase = useCallback(async (): Promise<void> => {
+    await handleAbortOperation('rebase')
+  }, [handleAbortOperation])
+
+  const handleAbortOperationForConflict = useCallback(
+    (operation: GitConflictOperation): void => {
+      if (operation === 'merge') {
+        void handleAbortMerge()
+        return
+      }
+      if (operation === 'rebase') {
+        void handleAbortRebase()
+      }
+    },
+    [handleAbortMerge, handleAbortRebase]
+  )
 
   // Why: compound actions must commit first and only run the follow-up remote
   // op when the commit succeeds. handleCommit's return value carries that
@@ -2631,7 +2673,7 @@ function SourceControlInner(): React.JSX.Element {
       hasMessage: commitMessage.trim().length > 0,
       hasUnresolvedConflicts: unresolvedConflicts.length > 0,
       isCommitting,
-      isRemoteOperationActive: isRemoteOperationActive || isAbortingMerge,
+      isRemoteOperationActive: isRemoteOperationActive || isAbortingOperation,
       upstreamStatus: remoteStatus,
       prState: hostedReview?.state ?? null,
       isPRStateLoading: isHostedReviewStateLoading,
@@ -2649,7 +2691,7 @@ function SourceControlInner(): React.JSX.Element {
     hasUnstagedChanges,
     hasPartiallyStagedChanges,
     isCommitting,
-    isAbortingMerge,
+    isAbortingOperation,
     isRemoteOperationActive,
     inFlightRemoteOpKind,
     hostedReviewCreation,
@@ -2671,7 +2713,7 @@ function SourceControlInner(): React.JSX.Element {
         hasMessage: commitMessage.trim().length > 0,
         hasUnresolvedConflicts: unresolvedConflicts.length > 0,
         isCommitting,
-        isRemoteOperationActive: isRemoteOperationActive || isAbortingMerge,
+        isRemoteOperationActive: isRemoteOperationActive || isAbortingOperation,
         conflictOperation,
         upstreamStatus: remoteStatus,
         prState: hostedReview?.state ?? null,
@@ -2690,7 +2732,7 @@ function SourceControlInner(): React.JSX.Element {
       hasPartiallyStagedChanges,
       isCommitting,
       conflictOperation,
-      isAbortingMerge,
+      isAbortingOperation,
       isRemoteOperationActive,
       inFlightRemoteOpKind,
       hostedReviewCreation,
@@ -2728,6 +2770,9 @@ function SourceControlInner(): React.JSX.Element {
         case 'abort_merge':
           void handleAbortMerge()
           return
+        case 'abort_rebase':
+          void handleAbortRebase()
+          return
         case 'create_pr':
           void handleCreatePullRequest()
           return
@@ -2755,6 +2800,7 @@ function SourceControlInner(): React.JSX.Element {
       handleCommit,
       handleCreatePullRequest,
       handleAbortMerge,
+      handleAbortRebase,
       isCreatingPr,
       prGenerating,
       runCompoundCommitAction,
@@ -4008,8 +4054,8 @@ function SourceControlInner(): React.JSX.Element {
                 conflictOperation={conflictOperation}
                 unresolvedCount={unresolvedConflictReviewEntries.length}
                 isResolvingWithAI={isLaunchingConflictAgent}
-                isAbortingMerge={isAbortingMerge}
-                onAbortMerge={() => void handleAbortMerge()}
+                isAbortingOperation={isAbortingOperation}
+                onAbortOperation={handleAbortOperationForConflict}
                 onResolveWithAI={() => {
                   void handleResolveConflictsWithAI()
                 }}
@@ -4035,8 +4081,8 @@ function SourceControlInner(): React.JSX.Element {
             <div className="px-3 pb-2">
               <OperationBanner
                 conflictOperation={conflictOperation}
-                isAbortingMerge={isAbortingMerge}
-                onAbortMerge={() => void handleAbortMerge()}
+                isAbortingOperation={isAbortingOperation}
+                onAbortOperation={handleAbortOperationForConflict}
               />
             </div>
           )}
@@ -4148,7 +4194,7 @@ function SourceControlInner(): React.JSX.Element {
                 }
                 stagedCount={grouped.staged.length}
                 hasUnresolvedConflicts={unresolvedConflicts.length > 0}
-                isRemoteOperationActive={isRemoteOperationActive || isAbortingMerge}
+                isRemoteOperationActive={isRemoteOperationActive || isAbortingOperation}
                 inFlightRemoteOpKind={inFlightRemoteOpKind}
                 primaryAction={primaryAction}
                 dropdownItems={dropdownItems}
@@ -5857,16 +5903,16 @@ export function ConflictSummaryCard({
   conflictOperation,
   unresolvedCount,
   isResolvingWithAI,
-  isAbortingMerge = false,
-  onAbortMerge,
+  isAbortingOperation = false,
+  onAbortOperation,
   onResolveWithAI,
   onReview
 }: {
   conflictOperation: GitConflictOperation
   unresolvedCount: number
   isResolvingWithAI: boolean
-  isAbortingMerge?: boolean
-  onAbortMerge?: () => void
+  isAbortingOperation?: boolean
+  onAbortOperation?: (operation: GitConflictOperation) => void
   onResolveWithAI: () => void
   onReview: () => void
 }): React.JSX.Element {
@@ -5919,17 +5965,17 @@ export function ConflictSummaryCard({
           <GitMerge className="size-3.5" />
           Review conflicts
         </Button>
-        {conflictOperation === 'merge' && onAbortMerge ? (
+        {(conflictOperation === 'merge' || conflictOperation === 'rebase') && onAbortOperation ? (
           <Button
             type="button"
             variant="destructive"
             size="sm"
             className="mt-1.5 h-7 w-full text-xs"
-            disabled={isResolvingWithAI || isAbortingMerge}
-            onClick={onAbortMerge}
+            disabled={isResolvingWithAI || isAbortingOperation}
+            onClick={() => onAbortOperation(conflictOperation)}
           >
-            {isAbortingMerge ? <RefreshCw className="size-3.5 animate-spin" /> : null}
-            Abort merge
+            {isAbortingOperation ? <RefreshCw className="size-3.5 animate-spin" /> : null}
+            {conflictOperation === 'rebase' ? 'Abort rebase' : 'Abort merge'}
           </Button>
         ) : null}
       </div>
@@ -5942,14 +5988,14 @@ export function ConflictSummaryCard({
 // rebase steps, or after resolving all conflicts but before --continue. The
 // user needs to see the operation state so they know the worktree is mid-rebase
 // and that they should run `git rebase --continue` or `--abort`.
-function OperationBanner({
+export function OperationBanner({
   conflictOperation,
-  isAbortingMerge = false,
-  onAbortMerge
+  isAbortingOperation = false,
+  onAbortOperation
 }: {
   conflictOperation: GitConflictOperation
-  isAbortingMerge?: boolean
-  onAbortMerge?: () => void
+  isAbortingOperation?: boolean
+  onAbortOperation?: (operation: GitConflictOperation) => void
 }): React.JSX.Element {
   const label =
     conflictOperation === 'merge'
@@ -5968,17 +6014,17 @@ function OperationBanner({
         <Icon className="size-4 shrink-0 text-amber-600 dark:text-amber-400" />
         <span className="text-xs font-medium text-foreground">{label}</span>
       </div>
-      {conflictOperation === 'merge' && onAbortMerge ? (
+      {(conflictOperation === 'merge' || conflictOperation === 'rebase') && onAbortOperation ? (
         <Button
           type="button"
           variant="destructive"
           size="sm"
           className="mt-2 h-7 w-full text-xs"
-          disabled={isAbortingMerge}
-          onClick={onAbortMerge}
+          disabled={isAbortingOperation}
+          onClick={() => onAbortOperation(conflictOperation)}
         >
-          {isAbortingMerge ? <RefreshCw className="size-3.5 animate-spin" /> : null}
-          Abort merge
+          {isAbortingOperation ? <RefreshCw className="size-3.5 animate-spin" /> : null}
+          {conflictOperation === 'rebase' ? 'Abort rebase' : 'Abort merge'}
         </Button>
       ) : null}
     </div>
