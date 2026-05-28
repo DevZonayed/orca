@@ -31,6 +31,7 @@ import { getGitHubPRCacheKey, getLegacyGitHubPRCacheKey } from './github-cache-k
 import { moveFocusToRendererBeforeFocusedWebviewHidden } from './browser-webview-cleanup'
 import { toast } from 'sonner'
 import { requestVirtualizedScrollAnchorRecord } from '@/hooks/requestVirtualizedScrollAnchorRecord'
+import { branchName } from '@/lib/git-utils'
 export type { WorktreeSlice, WorktreeDeleteState } from './worktree-helpers'
 
 // Why: old runtime servers only have `worktree.list`; preserve the large-list
@@ -859,7 +860,11 @@ export const createWorktreeSlice: StateCreator<AppState, [], [], WorktreeSlice> 
           return worktree
         }
         changed = true
-        return { ...worktree, head: nextHead, branch: nextBranch }
+        // Why: terminal branch switches only patch branch/head here; auto-derived
+        // titles need the same branch derivation that full worktree listing uses.
+        const wasAutoDerived = worktree.displayName === branchName(worktree.branch)
+        const nextDisplayName = wasAutoDerived ? branchName(nextBranch) : worktree.displayName
+        return { ...worktree, head: nextHead, branch: nextBranch, displayName: nextDisplayName }
       })
 
       if (!changed) {
