@@ -56,6 +56,7 @@ import type {
   TabGroupLayoutNode,
   TuiAgent
 } from '../../shared/types'
+import type { FeatureInteractionId } from '../../shared/feature-interactions'
 import { FOLDER_WORKSPACE_INSTANCE_SEPARATOR, splitWorktreeId } from '../../shared/worktree-id'
 import { isFolderRepo } from '../../shared/repo-kind'
 import { getNextProjectGroupOrder } from '../../shared/project-groups'
@@ -439,6 +440,7 @@ type RuntimeStore = {
   getWorkspaceSession?: Store['getWorkspaceSession']
   getUI?: Store['getUI']
   updateUI?: Store['updateUI']
+  recordFeatureInteraction?: Store['recordFeatureInteraction']
   listAutomations?: Store['listAutomations']
   listAutomationRuns?: Store['listAutomationRuns']
   createAutomation?: Store['createAutomation']
@@ -1328,6 +1330,13 @@ export class OrcaRuntimeService {
     }
     this.store.updateUI(updates)
     return this.store.getUI()
+  }
+
+  recordFeatureInteraction(id: FeatureInteractionId): PersistedUIState {
+    if (!this.store?.recordFeatureInteraction) {
+      throw new Error('runtime_unavailable')
+    }
+    return this.store.recordFeatureInteraction(id)
   }
 
   getClientSettings(): Pick<
@@ -9289,7 +9298,8 @@ export class OrcaRuntimeService {
         worktreeId,
         afterTabId: afterDesktopTabId,
         targetGroupId: opts.targetGroupId,
-        command: opts.command
+        command: opts.command,
+        activate: opts.activate
       })
     })
 

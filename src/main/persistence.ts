@@ -86,6 +86,11 @@ import { normalizeTaskProviderSettings } from '../shared/task-providers'
 import { normalizeOpenInApplications } from '../shared/open-in-applications'
 import { normalizeTerminalShortcutPolicy } from '../shared/keybindings'
 import {
+  normalizeFeatureInteractions,
+  type FeatureInteractionId
+} from '../shared/feature-interactions'
+import { normalizeFeatureTipIds } from '../shared/feature-tips'
+import {
   DEFAULT_WORKSPACE_STATUS_ID,
   clampWorkspaceBoardColumnWidth,
   clampWorkspaceBoardOpacity,
@@ -232,6 +237,31 @@ function normalizeGroupBy(groupBy: unknown): PersistedState['ui']['groupBy'] {
     return 'none'
   }
   return getDefaultUIState().groupBy
+}
+
+function mergeFeatureInteractions(
+  current: PersistedState['ui']['featureInteractions'],
+  incoming: PersistedState['ui']['featureInteractions']
+): PersistedState['ui']['featureInteractions'] {
+  const currentNormalized = normalizeFeatureInteractions(current)
+  const incomingNormalized = normalizeFeatureInteractions(incoming)
+  const merged = { ...currentNormalized }
+  for (const [id, incomingRecord] of Object.entries(incomingNormalized)) {
+    const currentRecord = currentNormalized[id as keyof typeof currentNormalized]
+    merged[id as keyof typeof merged] = currentRecord
+      ? {
+          firstInteractedAt: Math.min(
+            currentRecord.firstInteractedAt,
+            incomingRecord.firstInteractedAt
+          ),
+          interactionCount: Math.max(
+            currentRecord.interactionCount,
+            incomingRecord.interactionCount
+          )
+        }
+      : incomingRecord
+  }
+  return merged
 }
 
 function normalizeSortBy(sortBy: unknown): PersistedState['ui']['sortBy'] {
@@ -2385,6 +2415,7 @@ export class Store {
       updatedAt: now
     }
     this.state.automations = [...(this.state.automations ?? []), automation]
+    this.recordFeatureInteraction('automation-created')
     this.flush()
     return automation
   }
@@ -2483,6 +2514,9 @@ export class Store {
       createdAt: now
     }
     this.state.automationRuns = [...(this.state.automationRuns ?? []), run]
+    if (trigger === 'manual') {
+      this.recordFeatureInteraction('automation-run')
+    }
     this.flush()
     return run
   }
@@ -2717,7 +2751,9 @@ export class Store {
       workspaceBoardCompact: normalizeWorkspaceBoardCompact(this.state.ui?.workspaceBoardCompact),
       workspaceBoardColumnWidth: clampWorkspaceBoardColumnWidth(
         this.state.ui?.workspaceBoardColumnWidth
-      )
+      ),
+      featureTipsSeenIds: normalizeFeatureTipIds(this.state.ui?.featureTipsSeenIds),
+      featureInteractions: normalizeFeatureInteractions(this.state.ui?.featureInteractions)
     }
   }
 
@@ -2751,9 +2787,38 @@ export class Store {
       ),
       workspaceBoardColumnWidth: clampWorkspaceBoardColumnWidth(
         updates.workspaceBoardColumnWidth ?? this.state.ui?.workspaceBoardColumnWidth
-      )
+      ),
+      featureTipsSeenIds:
+        updates.featureTipsSeenIds !== undefined
+          ? normalizeFeatureTipIds(updates.featureTipsSeenIds)
+          : normalizeFeatureTipIds(this.state.ui?.featureTipsSeenIds),
+      // Why: runtime RPCs and the renderer can both record education state.
+      // Merge instead of replacing so a stale renderer snapshot cannot erase
+      // runtime-only feature interactions.
+      featureInteractions:
+        updates.featureInteractions !== undefined
+          ? mergeFeatureInteractions(
+              this.state.ui?.featureInteractions,
+              updates.featureInteractions
+            )
+          : normalizeFeatureInteractions(this.state.ui?.featureInteractions)
     }
     this.scheduleSave()
+  }
+
+  recordFeatureInteraction(id: FeatureInteractionId): PersistedState['ui'] {
+    const featureInteractions = normalizeFeatureInteractions(this.state.ui?.featureInteractions)
+    const existing = featureInteractions[id]
+    this.updateUI({
+      featureInteractions: {
+        ...featureInteractions,
+        [id]: {
+          firstInteractedAt: existing?.firstInteractedAt ?? Date.now(),
+          interactionCount: (existing?.interactionCount ?? 0) + 1
+        }
+      }
+    })
+    return this.getUI()
   }
 
   // ── Onboarding ────────────────────────────────────────────────────

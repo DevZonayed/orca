@@ -14,7 +14,13 @@ import {
 } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
-import type { Repo, TerminalTab, WorktreeLineage, WorkspaceSessionState } from '../shared/types'
+import type {
+  PersistedState,
+  Repo,
+  TerminalTab,
+  WorktreeLineage,
+  WorkspaceSessionState
+} from '../shared/types'
 import { isTerminalLeafId, makePaneKey } from '../shared/stable-pane-id'
 import { MAX_BROWSER_HISTORY_ENTRIES } from '../shared/workspace-session-browser-history'
 
@@ -614,6 +620,35 @@ describe('Store', () => {
     expect(duplicate.id).toBe(first.id)
     expect(duplicate.title).toBe('Nightly run 1')
     expect(second.title).toBe('Nightly run 2')
+  })
+
+  it('records feature interactions when automations are created or manually queued', async () => {
+    const store = await createStore()
+    store.addRepo(makeRepo())
+    const automation = store.createAutomation({
+      name: 'Nightly',
+      prompt: 'Run checks',
+      agentId: 'claude',
+      projectId: 'r1',
+      workspaceMode: 'existing',
+      workspaceId: 'wt1',
+      timezone: 'UTC',
+      rrule: 'FREQ=DAILY;BYHOUR=9;BYMINUTE=0',
+      dtstart: new Date('2026-05-13T00:00:00Z').getTime()
+    })
+
+    store.createAutomationRun(automation, new Date('2026-05-13T09:00:00Z').getTime(), 'scheduled')
+    store.createAutomationRun(automation, new Date('2026-05-14T09:00:00Z').getTime(), 'manual')
+
+    expect(store.getUI().featureInteractions?.['automation-created']?.interactionCount).toBe(1)
+    expect(store.getUI().featureInteractions?.['automation-run']?.interactionCount).toBe(1)
+    const persisted = readDataFile() as PersistedState
+    expect(persisted.ui?.featureInteractions?.['automation-created']).toMatchObject({
+      interactionCount: 1
+    })
+    expect(persisted.ui?.featureInteractions?.['automation-run']).toMatchObject({
+      interactionCount: 1
+    })
   })
 
   it('snapshots automation run workspace names for deleted-workspace history', async () => {
@@ -2104,6 +2139,85 @@ describe('Store', () => {
 
     const store = await createStore()
     expect(store.getUI().rightSidebarTab).toBe('explorer')
+  })
+
+  it('updateUI merges feature interactions instead of replacing stale snapshots', async () => {
+    const store = await createStore()
+
+    store.updateUI({
+      featureInteractions: {
+        'agent-browser-use': { firstInteractedAt: 100, interactionCount: 1 }
+      }
+    })
+    store.updateUI({
+      featureInteractions: {
+        tasks: { firstInteractedAt: 200, interactionCount: 1 }
+      }
+    })
+
+    expect(store.getUI().featureInteractions).toEqual({
+      'agent-browser-use': { firstInteractedAt: 100, interactionCount: 1 },
+      tasks: { firstInteractedAt: 200, interactionCount: 1 }
+    })
+  })
+
+  it('normalizes malformed persisted feature discovery state on read', async () => {
+    writeDataFile({
+      schemaVersion: 1,
+      repos: [],
+      worktreeMeta: {},
+      settings: {},
+      ui: {
+        featureTipsSeenIds: ['voice-dictation', 'unknown-tip', 'voice-dictation'],
+        featureInteractions: {
+          tasks: { firstInteractedAt: 100 },
+          automations: { firstInteractedAt: 150, interactionCount: 4 },
+          browser: { firstInteractedAt: Number.NaN },
+          unknown: { firstInteractedAt: 200 }
+        }
+      },
+      githubCache: { pr: {}, issue: {} },
+      workspaceSession: {}
+    })
+
+    const store = await createStore()
+
+    expect(store.getUI().featureTipsSeenIds).toEqual(['voice-dictation'])
+    expect(store.getUI().featureInteractions).toEqual({
+      tasks: { firstInteractedAt: 100, interactionCount: 1 },
+      automations: { firstInteractedAt: 150, interactionCount: 4 }
+    })
+  })
+
+  it('normalizes feature tip ids from direct UI writes', async () => {
+    const store = await createStore()
+
+    store.updateUI({
+      featureTipsSeenIds: ['voice-dictation', 'unknown-tip', 'voice-dictation'] as never
+    })
+
+    expect(store.getUI().featureTipsSeenIds).toEqual(['voice-dictation'])
+  })
+
+  it('recordFeatureInteraction increments from the current persisted UI state', async () => {
+    const store = await createStore()
+
+    store.updateUI({
+      featureInteractions: {
+        tasks: { firstInteractedAt: 100, interactionCount: 2 }
+      }
+    })
+
+    const ui = store.recordFeatureInteraction('tasks')
+
+    expect(ui.featureInteractions?.tasks).toEqual({
+      firstInteractedAt: 100,
+      interactionCount: 3
+    })
+    expect(store.getUI().featureInteractions?.tasks).toEqual({
+      firstInteractedAt: 100,
+      interactionCount: 3
+    })
   })
 
   it('updateUI restores fixed card properties from direct UI writes', async () => {
