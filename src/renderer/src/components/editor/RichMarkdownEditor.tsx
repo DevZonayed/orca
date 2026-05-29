@@ -1336,9 +1336,7 @@ export default function RichMarkdownEditor({
     }
   })
 
-  useEffect(() => {
-    editorRef.current = editor ?? null
-  }, [editor])
+  editorRef.current = editor ?? null
 
   const clearAnnotationHighlight = useCallback((): void => {
     const ed = editorRef.current
@@ -1507,10 +1505,7 @@ export default function RichMarkdownEditor({
   }, [editor, markdownDocuments])
 
   const handleLocalImagePick = useLocalImagePick(editor, filePath, worktreeId, runtimeEnvironmentId)
-
-  useEffect(() => {
-    handleLocalImagePickRef.current = handleLocalImagePick
-  }, [handleLocalImagePick])
+  handleLocalImagePickRef.current = handleLocalImagePick
 
   const {
     handleLinkSave,
@@ -1556,9 +1551,7 @@ export default function RichMarkdownEditor({
     rootRef,
     scrollContainerRef
   })
-  useEffect(() => {
-    openSearchRef.current = openSearch
-  }, [openSearch])
+  openSearchRef.current = openSearch
 
   const navigateToTableOfContentsItem = useCallback(
     (id: string): void => {
@@ -1675,9 +1668,7 @@ export default function RichMarkdownEditor({
     setAnnotationTarget(null)
   }, [annotationTarget, canAnnotateRichMarkdown, markdownComments, markdownSourceLineOffset])
 
-  useEffect(() => {
-    handleEmojiPickRef.current = openEmojiMenu
-  }, [openEmojiMenu])
+  handleEmojiPickRef.current = openEmojiMenu
 
   const filteredSlashCommands = useMemo(() => {
     const query = slashMenu?.query.trim().toLowerCase() ?? ''
