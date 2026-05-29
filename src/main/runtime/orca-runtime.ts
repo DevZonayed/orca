@@ -5843,7 +5843,8 @@ export class OrcaRuntimeService {
     repoSelector: string,
     limit?: number,
     query?: string,
-    before?: string
+    before?: string,
+    noCache?: boolean
   ): Promise<Awaited<ReturnType<typeof listWorkItems>>> {
     const repo = await this.resolveRepoSelector(repoSelector)
     return listWorkItems(
@@ -5852,7 +5853,8 @@ export class OrcaRuntimeService {
       query,
       before,
       repo.issueSourcePreference,
-      repo.connectionId ?? null
+      repo.connectionId ?? null,
+      noCache
     )
   }
 
