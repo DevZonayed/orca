@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { usePrefersReducedMotion } from '@/hooks/usePrefersReducedMotion'
 import { usePetUrl } from './usePetUrl'
 import type { DetectedSpriteCacheEntry } from './pet-blob-cache'
@@ -261,25 +261,47 @@ export function PetOverlay(): React.JSX.Element {
   const { url, sprite, detected } = usePetUrl()
   const size = useAppStore((s) => s.petSize)
 
-  const [position, setPosition] = useState<Position>(() => {
+  const [positionState, setPositionState] = useState<{
+    size: number
+    position: Position
+  }>(() => {
     // Why: read the persisted size eagerly via getState so the initial clamp
     // uses the user's last pet size — useState's lazy initializer runs
     // before the `size` prop binding settles, and `loadStoredPosition` would
     // otherwise default to SIZE and clip a previously-saved position.
     const currentSize = useAppStore.getState().petSize ?? SIZE
-    return loadStoredPosition(currentSize) ?? defaultPosition(currentSize)
+    return {
+      size: currentSize,
+      position: loadStoredPosition(currentSize) ?? defaultPosition(currentSize)
+    }
   })
+  let position = positionState.position
+  if (positionState.size !== size) {
+    position = clampToViewport(positionState.position, size)
+    setPositionState({ size, position })
+  }
+  const setPosition = useCallback(
+    (nextPosition: Position | ((current: Position) => Position)): void => {
+      setPositionState((current) => {
+        const currentPosition =
+          current.size === size ? current.position : clampToViewport(current.position, size)
+        return {
+          size,
+          position:
+            typeof nextPosition === 'function' ? nextPosition(currentPosition) : nextPosition
+        }
+      })
+    },
+    [size]
+  )
   const [dragging, setDragging] = useState(false)
   const dragOffsetRef = useRef<Position>({ x: 0, y: 0 })
 
   useEffect(() => {
-    const clampPosition = (): void => setPosition((prev) => clampToViewport(prev, size))
-    // Why: resizing the pet or the window uses the same viewport boundary; keep
-    // that clamp in one Effect so size changes do not need a second render pass.
-    clampPosition()
-    window.addEventListener('resize', clampPosition)
-    return () => window.removeEventListener('resize', clampPosition)
-  }, [size])
+    const onResize = (): void => setPosition((prev) => clampToViewport(prev, size))
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [setPosition, size])
 
   useEffect(() => {
     if (dragging) {
