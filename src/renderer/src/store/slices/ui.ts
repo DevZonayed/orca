@@ -58,6 +58,10 @@ import {
 } from '../../../../shared/workspace-statuses'
 import { normalizeKagiSessionLink } from '../../../../shared/browser-url'
 import type { OrcaHookScriptKind } from '../../lib/orca-hook-trust'
+import {
+  filterSetupScriptPromptDismissalsToValidRepos,
+  getSetupScriptPromptDismissalKey
+} from '../../lib/setup-script-prompt'
 import { DEFAULT_PET_ID, isBundledPetId } from '../../components/pet/pet-models'
 import { revokeCustomPetBlobUrl } from '../../components/pet/pet-blob-cache'
 import { isGitRepoKind } from '../../../../shared/repo-kind'
@@ -191,19 +195,6 @@ function filterTrustedOrcaHooksToValidRepos(
   for (const [repoId, entry] of Object.entries(trust)) {
     if (validRepoIds.has(repoId)) {
       next[repoId] = entry
-    }
-  }
-  return next
-}
-
-function filterRepoIdListToValidRepos(value: unknown, validRepoIds: Set<string>): string[] {
-  if (!Array.isArray(value)) {
-    return []
-  }
-  const next: string[] = []
-  for (const repoId of value) {
-    if (typeof repoId === 'string' && validRepoIds.has(repoId) && !next.includes(repoId)) {
-      next.push(repoId)
     }
   }
   return next
@@ -1031,10 +1022,11 @@ export const createUISlice: StateCreator<AppState, [], [], UISlice> = (set, get)
   setupScriptPromptDismissedRepoIds: [],
   dismissSetupScriptPrompt: (repoId) =>
     set((s) => {
-      if (!repoId || s.setupScriptPromptDismissedRepoIds.includes(repoId)) {
+      const dismissalKey = getSetupScriptPromptDismissalKey(repoId)
+      if (!repoId || s.setupScriptPromptDismissedRepoIds.includes(dismissalKey)) {
         return s
       }
-      const next = [...s.setupScriptPromptDismissedRepoIds, repoId]
+      const next = [...s.setupScriptPromptDismissedRepoIds, dismissalKey]
       window.api.ui.set({ setupScriptPromptDismissedRepoIds: next }).catch(console.error)
       return { setupScriptPromptDismissedRepoIds: next }
     }),
@@ -1328,7 +1320,7 @@ export const createUISlice: StateCreator<AppState, [], [], UISlice> = (set, get)
           ui.trustedOrcaHooks ?? {},
           validRepoIds
         ),
-        setupScriptPromptDismissedRepoIds: filterRepoIdListToValidRepos(
+        setupScriptPromptDismissedRepoIds: filterSetupScriptPromptDismissalsToValidRepos(
           ui.setupScriptPromptDismissedRepoIds,
           validRepoIds
         ),

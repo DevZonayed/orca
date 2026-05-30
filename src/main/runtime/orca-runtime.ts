@@ -54,7 +54,8 @@ import type {
   ProjectGroupImportMode,
   ProjectGroupImportResult,
   TabGroupLayoutNode,
-  TuiAgent
+  TuiAgent,
+  WorkspaceCreateTelemetrySource
 } from '../../shared/types'
 import type { FeatureInteractionId } from '../../shared/feature-interactions'
 import { FOLDER_WORKSPACE_INSTANCE_SEPARATOR, splitWorktreeId } from '../../shared/worktree-id'
@@ -7406,6 +7407,7 @@ export class OrcaRuntimeService {
     linkedGitLabIssue?: number | null
     comment?: string
     displayName?: string
+    telemetrySource?: WorkspaceCreateTelemetrySource
     workspaceStatus?: string
     manualOrder?: number
     sparseCheckout?: { directories: string[]; presetId?: string }

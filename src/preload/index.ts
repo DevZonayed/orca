@@ -1954,8 +1954,12 @@ const api = {
   hooks: {
     check: (args: {
       repoId: string
-    }): Promise<{ hasHooks: boolean; hooks: unknown; mayNeedUpdate: boolean }> =>
-      ipcRenderer.invoke('hooks:check', args),
+    }): Promise<{
+      status?: 'ok' | 'error'
+      hasHooks: boolean
+      hooks: unknown
+      mayNeedUpdate: boolean
+    }> => ipcRenderer.invoke('hooks:check', args),
 
     inspectSetupScriptImports: (args: { repoId: string }): Promise<unknown[]> =>
       ipcRenderer.invoke('hooks:inspectSetupScriptImports', args),
@@ -1970,6 +1974,7 @@ const api = {
     readIssueCommand: (args: {
       repoId: string
     }): Promise<{
+      status?: 'ok' | 'error'
       localContent: string | null
       sharedContent: string | null
       effectiveContent: string | null

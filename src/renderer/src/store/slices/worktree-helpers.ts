@@ -8,6 +8,7 @@ import type {
   TuiAgent,
   WorkspaceCreateTelemetrySource,
   WorkspaceStatus,
+  WorktreeStartupLaunch,
   Worktree,
   WorktreeBaseStatusEvent,
   WorktreeLineage,
@@ -95,7 +96,8 @@ export type WorktreeSlice = {
     branchNameOverride?: string,
     workspaceStatus?: WorkspaceStatus,
     linkedGitLabMR?: number,
-    linkedGitLabIssue?: number
+    linkedGitLabIssue?: number,
+    startup?: WorktreeStartupLaunch
   ) => Promise<CreateWorktreeResult>
   removeWorktree: (
     worktreeId: string,

@@ -6060,14 +6060,17 @@ function DiffCommentsInlineList({
 
   const [copiedId, showCopiedId] = useCopyFeedbackState<string | null>(null)
 
-  const handleCopyOne = useCallback(async (c: DiffComment): Promise<void> => {
-    try {
-      await window.api.ui.writeClipboardText(formatDiffComment(c))
-      showCopiedId(c.id)
-    } catch {
-      // Why: swallow — clipboard write can fail when the window isn't focused.
-    }
-  }, [showCopiedId])
+  const handleCopyOne = useCallback(
+    async (c: DiffComment): Promise<void> => {
+      try {
+        await window.api.ui.writeClipboardText(formatDiffComment(c))
+        showCopiedId(c.id)
+      } catch {
+        // Why: swallow — clipboard write can fail when the window isn't focused.
+      }
+    },
+    [showCopiedId]
+  )
 
   if (comments.length === 0) {
     return (
