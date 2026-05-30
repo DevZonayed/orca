@@ -731,10 +731,13 @@ export const createWorktreeSlice: StateCreator<AppState, [], [], WorktreeSlice> 
     }
   },
 
-  fetchWorktrees: async (repoId) => {
+  fetchWorktrees: async (repoId, options) => {
     try {
       const settings = get().settings
       const detected = await listDetectedWorktreesForRepo(settings, repoId)
+      if (options?.requireAuthoritative && !detected.authoritative) {
+        return false
+      }
       const worktrees = toVisibleWorktrees(detected)
       const current = get().worktreesByRepo[repoId]
       if (areWorktreesEqual(current, worktrees)) {
@@ -752,7 +755,7 @@ export const createWorktreeSlice: StateCreator<AppState, [], [], WorktreeSlice> 
           }
         })
         await refreshRemoteWorktreeLineageBestEffort(settings, set)
-        return
+        return detected.authoritative
       }
 
       // Why: `git worktree list` can fail transiently (e.g. concurrent git
@@ -766,7 +769,7 @@ export const createWorktreeSlice: StateCreator<AppState, [], [], WorktreeSlice> 
         set((s) => ({
           detectedWorktreesByRepo: { ...s.detectedWorktreesByRepo, [repoId]: detected }
         }))
-        return
+        return false
       }
 
       set((s) => {
@@ -786,8 +789,10 @@ export const createWorktreeSlice: StateCreator<AppState, [], [], WorktreeSlice> 
         }
       })
       await refreshRemoteWorktreeLineageBestEffort(settings, set)
+      return detected.authoritative
     } catch (err) {
       console.error(`Failed to fetch worktrees for repo ${repoId}:`, err)
+      return false
     }
   },
 
