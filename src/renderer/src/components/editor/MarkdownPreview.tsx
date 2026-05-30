@@ -29,16 +29,10 @@ import {
   CornerDownLeft,
   MessageSquare,
   Plus,
-  Send,
   X
 } from 'lucide-react'
 import type { Components } from 'react-markdown'
 import { Button } from '@/components/ui/button'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuTrigger
-} from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import { useAppStore } from '@/store'
 import { toast } from 'sonner'
@@ -89,8 +83,7 @@ import {
   sortMarkdownReviewNotes,
   type MarkdownReviewNote
 } from '@/lib/markdown-review-notes'
-import { QuickLaunchAgentMenuItems } from '@/components/tab-bar/QuickLaunchButton'
-import { focusTerminalTabSurface } from '@/lib/focus-terminal-tab-surface'
+import { NotesSendMenu, type NotesSendMenuScope } from './NotesSendMenu'
 import { findWorktreeById } from '@/store/slices/worktree-helpers'
 import { dirname } from '@/lib/path'
 
@@ -571,6 +564,17 @@ export default function MarkdownPreview({
     () => formatMarkdownReviewNotes(unsentMarkdownReviewNotes, renderedContent),
     [renderedContent, unsentMarkdownReviewNotes]
   )
+  const unsentMarkdownReviewScope = useMemo<NotesSendMenuScope<MarkdownReviewNote>[]>(
+    () => [
+      {
+        id: 'all',
+        label: 'All unsent notes',
+        notes: unsentMarkdownReviewNotes,
+        prompt: unsentMarkdownReviewPrompt
+      }
+    ],
+    [unsentMarkdownReviewNotes, unsentMarkdownReviewPrompt]
+  )
   const canShowReviewTools = Boolean(
     markdownAnnotationsEnabled && sourceWorktree && sourceRelativePath !== null
   )
@@ -1017,6 +1021,18 @@ export default function MarkdownPreview({
                   sentAt={comment.sentAt}
                   onDelete={() => void deleteDiffComment(sourceWorktree.id, comment.id)}
                   onSubmitEdit={(body) => updateDiffComment(sourceWorktree.id, comment.id, body)}
+                  headerActions={
+                    <MarkdownSingleNoteSendMenu
+                      worktreeId={sourceWorktree.id}
+                      filePath={filePath}
+                      content={renderedContent}
+                      note={comment as MarkdownReviewNote}
+                      modeSlot="preview-inline"
+                      onDelivered={(notes) =>
+                        void clearDeliveredDiffComments(sourceWorktree.id, notes)
+                      }
+                    />
+                  }
                 />
               </div>
             ))}
@@ -1029,10 +1045,13 @@ export default function MarkdownPreview({
       activeReviewCommentId,
       attentionReviewCommentId,
       addDiffComment,
+      clearDeliveredDiffComments,
       deleteDiffComment,
+      filePath,
       getMarkdownCommentsForRange,
       markdownAnnotationsEnabled,
       content,
+      renderedContent,
       sourceRelativePath,
       sourceWorktree,
       updateDiffComment
@@ -1636,36 +1655,14 @@ export default function MarkdownPreview({
               {reviewNotesCopied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
             </button>
             {sourceWorktree ? (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <button
-                    type="button"
-                    className="markdown-review-icon-button"
-                    disabled={unsentMarkdownReviewNotes.length === 0}
-                    title={
-                      unsentMarkdownReviewNotes.length === 0
-                        ? 'All notes sent'
-                        : 'Send notes to a new agent'
-                    }
-                    aria-label="Send notes to a new agent"
-                  >
-                    <Send className="size-3.5" />
-                  </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="min-w-[180px]">
-                  <QuickLaunchAgentMenuItems
-                    worktreeId={sourceWorktree.id}
-                    groupId={sourceWorktree.id}
-                    onFocusTerminal={focusTerminalTabSurface}
-                    prompt={unsentMarkdownReviewPrompt}
-                    promptDelivery="submit-after-ready"
-                    launchSource="notes_send"
-                    onPromptDelivered={() =>
-                      void clearDeliveredDiffComments(sourceWorktree.id, unsentMarkdownReviewNotes)
-                    }
-                  />
-                </DropdownMenuContent>
-              </DropdownMenu>
+              <NotesSendMenu
+                worktreeId={sourceWorktree.id}
+                groupId={sourceWorktree.id}
+                modeIdParts={['markdown-notes', sourceWorktree.id, filePath, 'preview-toolbar']}
+                scopes={unsentMarkdownReviewScope}
+                triggerClassName="markdown-review-icon-button"
+                onDelivered={(notes) => void clearDeliveredDiffComments(sourceWorktree.id, notes)}
+              />
             ) : null}
           </div>
         ) : null}
@@ -1719,6 +1716,42 @@ export default function MarkdownPreview({
         />
       ) : null}
     </div>
+  )
+}
+
+function MarkdownSingleNoteSendMenu({
+  worktreeId,
+  filePath,
+  content,
+  note,
+  modeSlot,
+  onDelivered
+}: {
+  worktreeId: string
+  filePath: string
+  content: string
+  note: MarkdownReviewNote
+  modeSlot: string
+  onDelivered: (notes: readonly MarkdownReviewNote[]) => void
+}): React.JSX.Element {
+  return (
+    <NotesSendMenu
+      worktreeId={worktreeId}
+      groupId={worktreeId}
+      modeIdParts={['markdown-notes', worktreeId, filePath, modeSlot, note.id]}
+      scopes={[
+        {
+          id: 'note',
+          label: 'This note',
+          notes: note.sentAt ? [] : [note],
+          prompt: formatMarkdownReviewNotes([note], content)
+        }
+      ]}
+      targetModeLabel="This note"
+      triggerClassName="markdown-review-icon-button"
+      disabledTooltip="Note already sent"
+      onDelivered={onDelivered}
+    />
   )
 }
 

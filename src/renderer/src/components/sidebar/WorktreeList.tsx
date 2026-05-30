@@ -62,6 +62,7 @@ import {
 } from './smart-attention'
 import { track } from '@/lib/telemetry'
 import { tabHasLivePty } from '@/lib/tab-has-live-pty'
+import { deriveRunningAgentSendTargets } from '@/lib/running-agent-targets'
 import {
   type GroupHeaderRow,
   type ProjectGroupOrdering,
@@ -327,6 +328,7 @@ type VirtualizedWorktreeViewportProps = {
   activeModal: string
   pendingRevealWorktree: PendingSidebarWorktreeReveal | null
   clearPendingRevealWorktreeId: () => void
+  agentSendTargetWorktreeId: string | null
   worktrees: Worktree[]
   selectedWorktreeIds: ReadonlySet<string>
   selectedWorktrees: readonly Worktree[]
@@ -667,6 +669,7 @@ const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktreeViewp
   activeModal,
   pendingRevealWorktree,
   clearPendingRevealWorktreeId,
+  agentSendTargetWorktreeId,
   worktrees,
   selectedWorktreeIds,
   selectedWorktrees,
@@ -1081,7 +1084,7 @@ const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktreeViewp
       return
     }
 
-    {
+    if (agentSendTargetWorktreeId !== pendingRevealWorktree.worktreeId) {
       const targetWorktree = worktrees.find((w) => w.id === pendingRevealWorktree.worktreeId)
       if (targetWorktree && !targetWorktree.isPinned) {
         const seen = new Set<string>()
@@ -1205,6 +1208,7 @@ const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktreeViewp
     })
   }, [
     pendingRevealWorktree,
+    agentSendTargetWorktreeId,
     groupBy,
     worktrees,
     repoMap,
@@ -2759,6 +2763,8 @@ const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktreeViewp
               const paddingLeft = basePadding + paddingDepth * LINEAGE_INDENT
               const worktreeDragGroupKey = groupKeyByWorktreeId.get(itemRow.worktree.id)
               const worktreeDragGroupIndex = groupIndexByWorktreeId.get(itemRow.worktree.id)
+              const revealHighlightTone =
+                agentSendTargetWorktreeId === itemRow.worktree.id ? 'ai' : 'default'
               return (
                 <div
                   key={itemRow.worktree.id}
@@ -2773,8 +2779,6 @@ const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktreeViewp
                     // Why: avoid transitioning 'transform' to prevent browser-side lag and flashing
                     // when TanStack Virtual programmatically repositions adjacent rows.
                     'relative transition-[opacity,filter] duration-150 ease-out',
-                    highlightedRevealWorktreeId === itemRow.worktree.id &&
-                      'scroll-to-current-workspace-reveal-highlight',
                     worktreeDragState.draggingWorktreeId === itemRow.worktree.id &&
                       // Why: the fixed drag preview is the visible affordance; leaving the
                       // source row translucent lets it bleed through sticky headers/footers.
@@ -2805,6 +2809,8 @@ const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktreeViewp
                     // running active-card side effects such as SSH reconnect UI.
                     isActiveSurface={forceActiveSurface || activeWorktreeId === itemRow.worktree.id}
                     isMultiSelected={selectedWorktreeIds.has(itemRow.worktree.id)}
+                    revealHighlight={highlightedRevealWorktreeId === itemRow.worktree.id}
+                    revealHighlightTone={revealHighlightTone}
                     selectedWorktrees={selectedWorktrees}
                     nativeDragEnabled={false}
                     onSelectionGesture={onSelectionGesture}
@@ -2831,6 +2837,8 @@ const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktreeViewp
 
             const renderLineageChildCard = (child: WorktreeItemRow) => {
               const isActive = activeWorktreeId === child.worktree.id
+              const revealHighlightTone =
+                agentSendTargetWorktreeId === child.worktree.id ? 'ai' : 'default'
               const handleClick = (event: React.MouseEvent<HTMLDivElement>) => {
                 event.preventDefault()
                 event.stopPropagation()
@@ -2866,8 +2874,11 @@ const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktreeViewp
                       aria-current={isActive ? 'page' : undefined}
                       className={cn(
                         'relative flex cursor-pointer items-start gap-1.5 rounded-md border border-transparent px-2 py-1.5 transition-colors',
-                        highlightedRevealWorktreeId === child.worktree.id &&
+                        highlightedRevealWorktreeId === child.worktree.id && [
                           'scroll-to-current-workspace-reveal-highlight',
+                          revealHighlightTone === 'ai' &&
+                            'scroll-to-current-workspace-reveal-highlight--ai'
+                        ],
                         isActive
                           ? 'border-black/[0.015] bg-black/[0.08] shadow-[0_1px_2px_rgba(0,0,0,0.04)] dark:border-border/40 dark:bg-white/[0.10] dark:shadow-[0_1px_2px_rgba(0,0,0,0.03)]'
                           : 'worktree-sidebar-card-hover'
@@ -3127,6 +3138,36 @@ const WorktreeList = React.memo(function WorktreeList({
   const pendingRevealWorktree = useAppStore((s) => s.pendingRevealWorktree)
   const revealWorktreeInSidebar = useAppStore((s) => s.revealWorktreeInSidebar)
   const clearPendingRevealWorktreeId = useAppStore((s) => s.clearPendingRevealWorktreeId)
+  const agentSendPopoverTargetMode = useAppStore((s) => s.agentSendPopoverTargetMode)
+  const agentTargetStatusByPaneKey = useAppStore((s) => s.agentStatusByPaneKey)
+  const agentTargetStatusEpoch = useAppStore((s) => s.agentStatusEpoch)
+  const agentTargetTabsByWorktree = useAppStore((s) => s.tabsByWorktree)
+  const agentTargetTerminalLayoutsByTabId = useAppStore((s) => s.terminalLayoutsByTabId)
+  const agentSendTargetWorktreeId = useMemo(() => {
+    void agentTargetStatusEpoch
+    if (!agentSendPopoverTargetMode) {
+      return null
+    }
+    const targets = deriveRunningAgentSendTargets(
+      {
+        agentStatusByPaneKey: agentTargetStatusByPaneKey,
+        tabsByWorktree: agentTargetTabsByWorktree,
+        terminalLayoutsByTabId: agentTargetTerminalLayoutsByTabId
+      },
+      agentSendPopoverTargetMode.worktreeId
+    )
+    return targets.some((target) => target.status === 'eligible')
+      ? agentSendPopoverTargetMode.worktreeId
+      : null
+  }, [
+    // Why: eligibility can flip when the stale-boundary scheduler bumps this
+    // epoch without replacing the status map.
+    agentTargetStatusEpoch,
+    agentSendPopoverTargetMode,
+    agentTargetStatusByPaneKey,
+    agentTargetTabsByWorktree,
+    agentTargetTerminalLayoutsByTabId
+  ])
 
   // Read tabsByWorktree when needed for filtering or sorting
   const needsActivityMaps = !showSleepingWorkspaces || sortBy === 'smart'
@@ -3408,8 +3449,19 @@ const WorktreeList = React.memo(function WorktreeList({
       repoMap,
       worktreeLineageById
     })
+    if (
+      agentSendTargetWorktreeId &&
+      !ids.includes(agentSendTargetWorktreeId) &&
+      worktreeMap.has(agentSendTargetWorktreeId)
+    ) {
+      // Why: send-target mode is a temporary picker overlay on the current
+      // sidebar. Make the target card reachable without rewriting the user's
+      // filters; closing the popover naturally restores the filtered view.
+      ids.push(agentSendTargetWorktreeId)
+    }
     return ids.map((id) => worktreeMap.get(id)).filter((w): w is Worktree => w != null)
   }, [
+    agentSendTargetWorktreeId,
     filterRepoIds,
     showSleepingWorkspaces,
     hideDefaultBranchWorkspace,
@@ -3431,6 +3483,61 @@ const WorktreeList = React.memo(function WorktreeList({
   // header order from the sorted visible worktree stream instead.
   const repos = useAppStore((s) => s.repos)
   const projectGroups = useAppStore((s) => s.projectGroups ?? EMPTY_PROJECT_GROUPS)
+  const effectiveCollapsedGroups = useMemo(() => {
+    if (!agentSendTargetWorktreeId) {
+      return collapsedGroups
+    }
+    const targetWorktree = worktreeMap.get(agentSendTargetWorktreeId)
+    if (!targetWorktree) {
+      return collapsedGroups
+    }
+    const next = new Set(collapsedGroups)
+    if (targetWorktree.isPinned) {
+      next.delete(PINNED_GROUP_KEY)
+    } else {
+      for (const groupKey of getGroupKeysForWorktree(
+        groupBy,
+        targetWorktree,
+        repoMap,
+        prCache,
+        workspaceStatuses,
+        settings,
+        projectGroups
+      )) {
+        next.delete(groupKey)
+      }
+    }
+
+    const seen = new Set<string>()
+    let current: Worktree | undefined = targetWorktree
+    while (current && !seen.has(current.id)) {
+      seen.add(current.id)
+      const lineage = worktreeLineageById[current.id]
+      const parent = lineage ? worktreeMap.get(lineage.parentWorktreeId) : undefined
+      if (
+        !lineage ||
+        !parent ||
+        current.instanceId !== lineage.worktreeInstanceId ||
+        parent.instanceId !== lineage.parentWorktreeInstanceId
+      ) {
+        break
+      }
+      next.delete(getLineageGroupKey(parent.id))
+      current = parent
+    }
+    return next
+  }, [
+    agentSendTargetWorktreeId,
+    collapsedGroups,
+    groupBy,
+    prCache,
+    projectGroups,
+    repoMap,
+    settings,
+    workspaceStatuses,
+    worktreeLineageById,
+    worktreeMap
+  ])
   const repoOrder = useMemo(() => {
     const map = new Map<string, number>()
     repos.forEach((r, i) => map.set(r.id, i))
@@ -3527,7 +3634,7 @@ const WorktreeList = React.memo(function WorktreeList({
         worktrees,
         repoMap,
         prCache,
-        collapsedGroups,
+        effectiveCollapsedGroups,
         repoOrder,
         workspaceStatuses,
         projectGroupOrdering,
@@ -3544,7 +3651,7 @@ const WorktreeList = React.memo(function WorktreeList({
       worktrees,
       repoMap,
       prCache,
-      collapsedGroups,
+      effectiveCollapsedGroups,
       repoOrder,
       workspaceStatuses,
       projectGroupOrdering,
@@ -4070,7 +4177,7 @@ const WorktreeList = React.memo(function WorktreeList({
         groupBy={groupBy}
         projectGroupOrdering={projectGroupOrdering}
         toggleGroup={toggleGroup}
-        collapsedGroups={collapsedGroups}
+        collapsedGroups={effectiveCollapsedGroups}
         handleCreateForRepo={handleCreateForRepo}
         handleOpenRepoSettings={handleOpenRepoSettings}
         handleOpenWorktreeVisibility={handleOpenWorktreeVisibility}
@@ -4086,6 +4193,7 @@ const WorktreeList = React.memo(function WorktreeList({
         activeModal={activeModal}
         pendingRevealWorktree={pendingRevealWorktree}
         clearPendingRevealWorktreeId={clearPendingRevealWorktreeId}
+        agentSendTargetWorktreeId={agentSendTargetWorktreeId}
         worktrees={worktrees}
         selectedWorktreeIds={selectedWorktreeIds}
         selectedWorktrees={selectedWorktrees}
