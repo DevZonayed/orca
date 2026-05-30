@@ -108,14 +108,15 @@ describe('filesystem-auth path containment', () => {
     })
 
     try {
-      const { isDescendantOrEqual: isDescendantOrEqualWithWinPath } = await import(
-        './filesystem-auth'
-      )
+      const { isDescendantOrEqual: isDescendantOrEqualWithWinPath } =
+        await import('./filesystem-auth')
 
-      expect(isDescendantOrEqualWithWinPath(String.raw`c:\repo\src\app.ts`, String.raw`C:\Repo`))
-        .toBe(true)
-      expect(isDescendantOrEqualWithWinPath(String.raw`D:\repo\src\app.ts`, String.raw`C:\Repo`))
-        .toBe(false)
+      expect(
+        isDescendantOrEqualWithWinPath(String.raw`c:\repo\src\app.ts`, String.raw`C:\Repo`)
+      ).toBe(true)
+      expect(
+        isDescendantOrEqualWithWinPath(String.raw`D:\repo\src\app.ts`, String.raw`C:\Repo`)
+      ).toBe(false)
     } finally {
       vi.doUnmock('path')
       vi.doUnmock('../repo-worktrees')
