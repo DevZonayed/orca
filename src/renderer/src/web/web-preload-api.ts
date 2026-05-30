@@ -512,6 +512,9 @@ function createWebPreloadApi(): Partial<PreloadApi> {
     pwsh: {
       isAvailable: () => callRuntimeResult<boolean>('host.pwsh.isAvailable').catch(() => false)
     },
+    gitBash: {
+      isAvailable: () => callRuntimeResult<boolean>('host.gitBash.isAvailable').catch(() => false)
+    },
     agentStatus: {
       onSet: () => noopUnsubscribe,
       getSnapshot: () => Promise.resolve([]),

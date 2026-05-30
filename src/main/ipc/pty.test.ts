@@ -2402,7 +2402,7 @@ describe('registerPtyHandlers', () => {
       expect(env.PYTHONUTF8).toBe('0')
     })
 
-    it('passes no encoding args for unrecognized shells', () => {
+    it('launches Git Bash from COMSPEC as an interactive login shell', () => {
       process.env.COMSPEC = 'C:\\Program Files\\Git\\bin\\bash.exe'
 
       registerPtyHandlers(mainWindow as never)
@@ -2410,8 +2410,10 @@ describe('registerPtyHandlers', () => {
 
       expect(spawnMock).toHaveBeenCalledWith(
         'C:\\Program Files\\Git\\bin\\bash.exe',
-        [],
-        expect.any(Object)
+        ['--login', '-i'],
+        expect.objectContaining({
+          env: expect.objectContaining({ CHERE_INVOKING: '1' })
+        })
       )
     })
 

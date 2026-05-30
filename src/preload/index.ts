@@ -437,6 +437,10 @@ const api = {
     isAvailable: (): Promise<boolean> => ipcRenderer.invoke('pwsh:isAvailable')
   },
 
+  gitBash: {
+    isAvailable: (): Promise<boolean> => ipcRenderer.invoke('gitBash:isAvailable')
+  },
+
   repos: {
     list: (): Promise<unknown[]> => ipcRenderer.invoke('repos:list'),
 

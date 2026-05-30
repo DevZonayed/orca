@@ -31,8 +31,15 @@ import { resolveWindowsShellLaunchTarget } from './windows-shell-launch'
 import { focusTerminalTabSurface } from '@/lib/focus-terminal-tab-surface'
 import { useDetectedAgents } from '@/hooks/useDetectedAgents'
 import { launchAgentInNewTab } from '@/lib/launch-agent-in-new-tab'
-import { useWindowsTerminalCapabilities } from '@/lib/windows-terminal-capabilities'
+import {
+  getWindowsTerminalCapabilityOwnerKey,
+  useWindowsTerminalCapabilities
+} from '@/lib/windows-terminal-capabilities'
 import { useShortcutLabel } from '@/hooks/useShortcutLabel'
+import {
+  type BuiltInWindowsTerminalShell,
+  WINDOWS_GIT_BASH_SHELL
+} from '../../../../shared/windows-terminal-shell'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -170,6 +177,13 @@ function TabBarInner({
   const activeRuntimeEnvironmentId = useAppStore(
     (s) => s.settings?.activeRuntimeEnvironmentId?.trim() || null
   )
+  const worktreeHasRemoteConnection = useAppStore((s) => {
+    const worktree = Object.values(s.worktreesByRepo ?? {})
+      .flat()
+      .find((entry) => entry.id === worktreeId)
+    const repo = worktree ? s.repos?.find((entry) => entry.id === worktree.repoId) : null
+    return Boolean(repo?.connectionId)
+  })
   const unifiedNewTabLauncherEnabled = useAppStore(
     (s) => s.settings?.experimentalUnifiedNewTabLauncher === true
   )
@@ -224,8 +238,15 @@ function TabBarInner({
       cancelled = true
     }
   }, [activeRuntimeEnvironmentId])
-  const shouldShowWindowsShellMenu = isWindows || runtimeHostPlatform === 'win32'
-  const windowsTerminalCapabilities = useWindowsTerminalCapabilities(shouldShowWindowsShellMenu)
+  // Why: SSH-backed PTYs ignore local Windows shell overrides; showing these
+  // entries there promises PowerShell/CMD/Git Bash but opens the remote shell.
+  const shouldShowWindowsShellMenu =
+    (isWindows || runtimeHostPlatform === 'win32') && !worktreeHasRemoteConnection
+  const windowsTerminalCapabilities = useWindowsTerminalCapabilities(
+    shouldShowWindowsShellMenu,
+    false,
+    getWindowsTerminalCapabilityOwnerKey(activeRuntimeEnvironmentId)
+  )
   const resolvedGroupId = groupId ?? worktreeId
 
   const statusByRelativePath = useMemo(() => buildStatusMap(gitStatusEntries), [gitStatusEntries])
@@ -652,17 +673,20 @@ function TabBarInner({
             // shells as flat items — default pinned to the top with the
             // Ctrl+T hint — matches the "no popouts, show all options at
             // once" rec. Each entry uses a shell-specific icon (ShellIcon)
-            // so PowerShell / CMD / WSL are distinguishable at a glance.
+            // so PowerShell / CMD / Git Bash / WSL are distinguishable at a glance.
             // Labels use "CMD Prompt" instead of "Command Prompt" to keep
             // each row narrow enough that the shortcut hint fits without
             // wrapping.
             (() => {
               const allShells: {
                 label: string
-                shell: 'powershell.exe' | 'cmd.exe' | 'wsl.exe'
+                shell: BuiltInWindowsTerminalShell
               }[] = [
                 { label: 'PowerShell', shell: 'powershell.exe' },
                 { label: 'CMD Prompt', shell: 'cmd.exe' },
+                ...(windowsTerminalCapabilities.gitBashAvailable
+                  ? ([{ label: 'Git Bash', shell: WINDOWS_GIT_BASH_SHELL }] as const)
+                  : []),
                 ...(windowsTerminalCapabilities.wslAvailable
                   ? ([{ label: 'WSL', shell: 'wsl.exe' }] as const)
                   : [])
