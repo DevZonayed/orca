@@ -381,6 +381,16 @@ function appendWorktreeRows(
   }
 }
 
+function orderMainWorktreeFirst(worktrees: Worktree[]): Worktree[] {
+  const mainWorktrees = worktrees.filter((worktree) => worktree.isMainWorktree)
+  if (mainWorktrees.length === 0) {
+    return worktrees
+  }
+  // Why: project groups are scanned by repo; keep the repo's canonical
+  // workspace anchored even when dynamic sorts rank a child workspace first.
+  return [...mainWorktrees, ...worktrees.filter((worktree) => !worktree.isMainWorktree)]
+}
+
 /**
  * Build the flat row list consumed by the virtualizer.
  * Extracted here to keep WorktreeList.tsx under the line-count lint limit.
@@ -593,7 +603,8 @@ export function buildRows(
             result.push(buildImportedWorktreesCardRow(candidate, 'repo-group'))
           }
         }
-        appendWorktreeRows(result, group.items, repoMap, lineageById, worktreeMap, {
+        const items = groupBy === 'repo' ? orderMainWorktreeFirst(group.items) : group.items
+        appendWorktreeRows(result, items, repoMap, lineageById, worktreeMap, {
           nestLineage,
           collapsedGroups
         })
