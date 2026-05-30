@@ -1,3 +1,5 @@
+/* eslint-disable max-lines -- Why: daemon connection, RPC, event, and disconnect behavior share one socket test harness. */
+import { EventEmitter } from 'events'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createServer, type Server, type Socket } from 'net'
 import { tmpdir } from 'os'
@@ -36,6 +38,7 @@ describe('DaemonClient', () => {
   })
 
   afterEach(async () => {
+    vi.useRealTimers()
     client?.disconnect()
     await new Promise<void>((resolve) => {
       if (server?.listening) {
@@ -174,6 +177,33 @@ describe('DaemonClient', () => {
       } finally {
         vi.useRealTimers()
       }
+    })
+
+    it('removes hello startup listeners after timeout', async () => {
+      vi.useFakeTimers()
+
+      client = new DaemonClient({ socketPath, tokenPath })
+      const write = vi.fn(() => true)
+      const destroy = vi.fn()
+      const socket = new EventEmitter() as Socket
+      socket.write = write as unknown as Socket['write']
+      socket.destroy = destroy as unknown as Socket['destroy']
+      const sendHello = (
+        client as unknown as {
+          sendHello(socket: Socket, token: string, role: 'control' | 'stream'): Promise<void>
+        }
+      ).sendHello.bind(client)
+
+      const promise = sendHello(socket, 'test-token-123', 'control')
+      const rejection = expect(promise).rejects.toThrow('Hello response timed out')
+      await vi.advanceTimersByTimeAsync(5000)
+
+      await rejection
+      expect(write).toHaveBeenCalledOnce()
+      expect(destroy).toHaveBeenCalledOnce()
+      expect(socket.listenerCount('data')).toBe(0)
+      expect(socket.listenerCount('error')).toBe(0)
+      expect(socket.listenerCount('close')).toBe(0)
     })
 
     it('rejects when the daemon closes before hello completes', async () => {
