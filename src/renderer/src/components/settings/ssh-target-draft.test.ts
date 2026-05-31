@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   EMPTY_FORM,
   applyParsedSshHostInput,
+  getEditingTargetForSshTarget,
   getSshTargetDraftConnectionFields,
   parseSshHostInput
 } from './ssh-target-draft'
@@ -139,5 +140,49 @@ describe('getSshTargetDraftConnectionFields', () => {
       username: 'deploy'
     })
     expect(Number.isNaN(fields.port)).toBe(true)
+  })
+})
+
+describe('getEditingTargetForSshTarget', () => {
+  it('recomputes implicit configHost when a manual target host is edited', () => {
+    const draft = getEditingTargetForSshTarget({
+      id: 'ssh-1',
+      label: 'Server',
+      configHost: 'old.example.com',
+      host: 'old.example.com',
+      port: 22,
+      username: ''
+    })
+
+    expect(
+      getSshTargetDraftConnectionFields({
+        ...draft,
+        host: 'new.example.com'
+      })
+    ).toEqual({
+      host: 'new.example.com',
+      configHost: 'new.example.com',
+      username: '',
+      port: 22
+    })
+  })
+
+  it('preserves explicit SSH config aliases when editing imported targets', () => {
+    const draft = getEditingTargetForSshTarget({
+      id: 'ssh-1',
+      label: 'Production',
+      configHost: 'prod',
+      host: 'prod.internal',
+      port: 22,
+      username: 'deploy'
+    })
+
+    expect(draft.configHost).toBe('prod')
+    expect(getSshTargetDraftConnectionFields(draft)).toEqual({
+      host: 'prod.internal',
+      configHost: 'prod',
+      username: 'deploy',
+      port: 22
+    })
   })
 })
