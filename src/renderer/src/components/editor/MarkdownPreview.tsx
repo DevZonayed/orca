@@ -1774,11 +1774,12 @@ function MarkdownAnnotationComposer({
 }): React.JSX.Element {
   const [body, setBody] = useState('')
   const [submitting, setSubmitting] = useState(false)
-  const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const mountedRef = useMountedRef()
 
-  useEffect(() => {
-    textareaRef.current?.focus()
+  const focusTextareaRef = useCallback((textarea: HTMLTextAreaElement | null): void => {
+    // Why: opening an annotation composer should focus the draft field on the
+    // mount edge; no external subscription is needed.
+    textarea?.focus()
   }, [])
 
   const trimmed = body.trim()
@@ -1807,7 +1808,7 @@ function MarkdownAnnotationComposer({
     <div className="markdown-annotation-composer" onClick={(event) => event.stopPropagation()}>
       <div className="orca-diff-comment-popover-label">Selected text</div>
       <textarea
-        ref={textareaRef}
+        ref={focusTextareaRef}
         className="orca-diff-comment-popover-textarea"
         placeholder="Add note for the AI"
         value={body}
