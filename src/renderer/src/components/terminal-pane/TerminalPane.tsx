@@ -1412,8 +1412,14 @@ export default function TerminalPane({
     cancelPendingRenameFrames()
   }, [cancelPendingRenameFrames])
 
-  useEffect(
-    () => () => {
+  const setContainerRef = useCallback(
+    (node: HTMLDivElement | null): void => {
+      containerRef.current = node
+      if (node !== null) {
+        return
+      }
+      // Why: inline title rename focus/blur frames are owned by the terminal
+      // container; invalidate them when that DOM owner detaches.
       closeRenameSession()
     },
     [closeRenameSession]
@@ -1686,7 +1692,7 @@ export default function TerminalPane({
   return (
     <>
       <div
-        ref={containerRef}
+        ref={setContainerRef}
         className="absolute inset-0 min-h-0 min-w-0"
         data-native-file-drop-target="terminal"
         data-terminal-tab-id={tabId}
