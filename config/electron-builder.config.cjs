@@ -1,6 +1,7 @@
 const { chmodSync, existsSync, readdirSync } = require('node:fs')
 const { execFileSync } = require('node:child_process')
 const { join, resolve } = require('node:path')
+const electronBuilderNativeRebuild = require('./scripts/electron-builder-native-rebuild.cjs')
 
 const isMacRelease = process.env.ORCA_MAC_RELEASE === '1'
 const featureWallResources = {
@@ -230,11 +231,13 @@ module.exports = {
     artifactName: 'orca-ide-${version}.${arch}.${ext}',
     depends: ['python3', 'python3-gobject', 'at-spi2-core', 'xdotool', 'xclip']
   },
+  beforeBuild: electronBuilderNativeRebuild,
   // Why: must be true so that electron-builder rebuilds native modules
   // (node-pty) for each target architecture when producing dual-arch macOS
   // builds (x64 + arm64). With npmRebuild disabled, CI on an arm64 runner
   // packages arm64 binaries into the x64 DMG, causing "posix_spawnp failed"
-  // on Intel Macs.
+  // on Intel Macs. The beforeBuild hook performs Orca's targeted rebuild and
+  // returns false so electron-builder does not rebuild optional cpu-features.
   npmRebuild: true,
   publish: {
     provider: 'github',
