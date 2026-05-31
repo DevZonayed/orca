@@ -392,11 +392,12 @@ function normalizeSshTarget(t: SshTarget): SshTarget {
   delete target.remoteWorkspaceSyncEnabled
   delete target.remoteWorkspaceSyncGracePeriodSeconds
   delete target.relayGracePeriodSeconds
+  // Why: synced legacy targets ignored stale relayGracePeriodSeconds values.
+  // Prefer the synced grace so a user's "unlimited" (0) survives migration.
   const relayGracePeriodSeconds =
-    currentGracePeriodSeconds ??
-    (legacySyncEnabled === true && typeof legacyGracePeriodSeconds === 'number'
+    legacySyncEnabled === true && typeof legacyGracePeriodSeconds === 'number'
       ? legacyGracePeriodSeconds
-      : undefined)
+      : currentGracePeriodSeconds
   const normalized: SshTarget = {
     ...target,
     configHost: target.configHost ?? target.label ?? target.host
