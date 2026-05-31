@@ -1,6 +1,6 @@
 import { FLOATING_TERMINAL_WORKTREE_ID } from '../../../shared/constants'
 import type { BrowserTab, TerminalTab } from '../../../shared/types'
-import { createUntitledMarkdownFile } from './create-untitled-markdown'
+import { createUntitledMarkdownFileWithTemplateSelection } from './create-untitled-markdown'
 import { getConnectionId } from './connection-context'
 import { detectLanguage } from './language-detect'
 import type { AppState } from '@/store/types'
@@ -84,12 +84,15 @@ export async function createFloatingWorkspaceMarkdownTab(
   if (!floatingMarkdownDirectory) {
     return
   }
-  const fileInfo = await createUntitledMarkdownFile(
+  const fileInfo = await createUntitledMarkdownFileWithTemplateSelection(
     floatingMarkdownDirectory,
     FLOATING_TERMINAL_WORKTREE_ID,
     getConnectionId(FLOATING_TERMINAL_WORKTREE_ID) ?? undefined,
     { activeRuntimeEnvironmentId: null }
   )
+  if (!fileInfo) {
+    return
+  }
   store.openFile(
     {
       ...fileInfo,

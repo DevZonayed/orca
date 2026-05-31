@@ -21,7 +21,7 @@ import {
 const activateWebRuntimeSessionTabMock = vi.hoisted(() => vi.fn())
 const createWebRuntimeSessionBrowserTabMock = vi.hoisted(() => vi.fn())
 const createWebRuntimeSessionTerminalMock = vi.hoisted(() => vi.fn())
-const createUntitledMarkdownFileMock = vi.hoisted(() => vi.fn())
+const createUntitledMarkdownFileWithTemplateSelectionMock = vi.hoisted(() => vi.fn())
 const focusTerminalTabSurfaceMock = vi.hoisted(() => vi.fn())
 const isWebRuntimeSessionActiveMock = vi.hoisted(() => vi.fn())
 
@@ -33,7 +33,8 @@ vi.mock('@/runtime/web-runtime-session', () => ({
 }))
 
 vi.mock('./create-untitled-markdown', () => ({
-  createUntitledMarkdownFile: createUntitledMarkdownFileMock
+  createUntitledMarkdownFileWithTemplateSelection:
+    createUntitledMarkdownFileWithTemplateSelectionMock
 }))
 
 vi.mock('./connection-context', () => ({
@@ -423,7 +424,7 @@ describe('createFloatingWorkspaceBrowserTab', () => {
 
 describe('createFloatingWorkspaceMarkdownTab', () => {
   beforeEach(() => {
-    createUntitledMarkdownFileMock.mockReset()
+    createUntitledMarkdownFileWithTemplateSelectionMock.mockReset()
   })
 
   it('creates floating markdown tabs without activating the main workspace', async () => {
@@ -439,11 +440,11 @@ describe('createFloatingWorkspaceMarkdownTab', () => {
       activeGroupIdByWorktree: { [FLOATING_TERMINAL_WORKTREE_ID]: 'floating-group' },
       openFile: vi.fn()
     }
-    createUntitledMarkdownFileMock.mockResolvedValue(fileInfo)
+    createUntitledMarkdownFileWithTemplateSelectionMock.mockResolvedValue(fileInfo)
 
     await createFloatingWorkspaceMarkdownTab(store as never, '/tmp/orca/floating-workspace')
 
-    expect(createUntitledMarkdownFileMock).toHaveBeenCalledWith(
+    expect(createUntitledMarkdownFileWithTemplateSelectionMock).toHaveBeenCalledWith(
       '/tmp/orca/floating-workspace',
       FLOATING_TERMINAL_WORKTREE_ID,
       undefined,
@@ -454,6 +455,24 @@ describe('createFloatingWorkspaceMarkdownTab', () => {
       targetGroupId: 'floating-group',
       suppressActiveRuntimeFallback: true
     })
+  })
+
+  it('does not open a floating markdown tab when template selection is cancelled', async () => {
+    const store = {
+      activeGroupIdByWorktree: { [FLOATING_TERMINAL_WORKTREE_ID]: 'floating-group' },
+      openFile: vi.fn()
+    }
+    createUntitledMarkdownFileWithTemplateSelectionMock.mockResolvedValue(null)
+
+    await createFloatingWorkspaceMarkdownTab(store as never, '/tmp/orca/floating-workspace')
+
+    expect(createUntitledMarkdownFileWithTemplateSelectionMock).toHaveBeenCalledWith(
+      '/tmp/orca/floating-workspace',
+      FLOATING_TERMINAL_WORKTREE_ID,
+      undefined,
+      { activeRuntimeEnvironmentId: null }
+    )
+    expect(store.openFile).not.toHaveBeenCalled()
   })
 })
 
