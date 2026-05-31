@@ -112,6 +112,10 @@ import { BrowserMobileDriverOverlay } from './BrowserMobileDriverOverlay'
 import { getShortcutPlatform, useShortcutLabel } from '@/hooks/useShortcutLabel'
 import { getRemoteBrowserFrameStyle } from './remote-browser-frame-style'
 import {
+  getRemoteBrowserKeyboardShortcut,
+  getRemoteBrowserKeypressKey
+} from './remote-browser-keyboard'
+import {
   consumeBrowserFocusRequest,
   ORCA_BROWSER_FOCUS_REQUEST_EVENT,
   type BrowserFocusRequestDetail
@@ -521,52 +525,6 @@ function fileUrlToAbsolutePath(url: string): string | null {
 function getNotebookPathFromBrowserUrl(url: string): string | null {
   const filePath = fileUrlToAbsolutePath(url)
   return filePath?.toLowerCase().endsWith('.ipynb') ? filePath : null
-}
-
-function getRemoteBrowserKeypressKey(event: React.KeyboardEvent): string | null {
-  if (event.key.length === 1) {
-    return event.key === ' ' ? 'Space' : event.key
-  }
-  if (event.metaKey || event.ctrlKey || event.altKey) {
-    return null
-  }
-  const supported = new Set([
-    'Enter',
-    'Backspace',
-    'Delete',
-    'Tab',
-    'Escape',
-    'ArrowUp',
-    'ArrowDown',
-    'ArrowLeft',
-    'ArrowRight',
-    'Home',
-    'End',
-    'PageUp',
-    'PageDown'
-  ])
-  return supported.has(event.key) ? event.key : null
-}
-
-function getRemoteBrowserKeyboardShortcut(event: React.KeyboardEvent): string | null {
-  const modifiers: string[] = []
-  if (event.metaKey) {
-    modifiers.push('Meta')
-  }
-  if (event.ctrlKey) {
-    modifiers.push('Control')
-  }
-  if (event.altKey) {
-    modifiers.push('Alt')
-  }
-  if (event.shiftKey && event.key.length !== 1) {
-    modifiers.push('Shift')
-  }
-  if (modifiers.length === 0 || ['Meta', 'Control', 'Alt', 'Shift'].includes(event.key)) {
-    return null
-  }
-  const key = event.key.length === 1 ? event.key.toLowerCase() : event.key
-  return `${modifiers.join('+')}+${key}`
 }
 
 function getRemoteBrowserMouseButton(button: number): 'left' | 'middle' | 'right' | null {
@@ -2157,7 +2115,13 @@ function RemoteBrowserPagePane({
           { ...params, key },
           { timeoutMs: 15_000, suppressFeatureInteraction: true }
         )
-        if (key === 'Enter' || key === 'Meta+r' || key === 'Control+r') {
+        if (
+          key === 'Enter' ||
+          key === 'Meta+r' ||
+          key === 'Meta+Shift+r' ||
+          key === 'Control+r' ||
+          key === 'Control+Shift+r'
+        ) {
           scheduleRemoteTabInfoRefresh(operationToken, 400)
         }
       } catch (error) {
