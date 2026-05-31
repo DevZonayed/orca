@@ -1928,6 +1928,7 @@ const api = {
   session: {
     get: () => ipcRenderer.invoke('session:get'),
     set: (args) => ipcRenderer.invoke('session:set', args),
+    patch: (args) => ipcRenderer.invoke('session:patch', args),
     /** Synchronous session save for beforeunload — blocks until flushed to disk. */
     setSync: (args) => {
       ipcRenderer.sendSync('session:set-sync', args)
