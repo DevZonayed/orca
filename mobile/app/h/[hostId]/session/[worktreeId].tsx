@@ -1168,17 +1168,6 @@ export default function SessionScreen() {
     [clearToastHideTimer]
   )
 
-  useEffect(() => {
-    return () => {
-      // Why: toast timers can outlive quick route changes; bump the sequence
-      // so pending animation callbacks cannot clear a newer/unmounted surface.
-      toastSeqRef.current += 1
-      clearToastHideTimer()
-      clearDelayedActionTimers()
-      clearTerminalLiveInputFocusTimer(liveInputFocusTimerRef)
-    }
-  }, [clearDelayedActionTimers, clearToastHideTimer])
-
   const dictation = useMobileDictation({
     client,
     enabled: canSend,
@@ -2977,9 +2966,21 @@ export default function SessionScreen() {
     },
     [stopAccessoryRepeat]
   )
-  useEffect(() => {
-    return () => stopAccessoryRepeat()
-  }, [stopAccessoryRepeat])
+  const setMobileSessionRootRef = useCallback(
+    (node: View | null): void => {
+      if (node !== null) {
+        return
+      }
+      // Why: route-level timers can outlive quick session changes; clear them
+      // from the root lifecycle without passive cleanup-only Effects.
+      toastSeqRef.current += 1
+      clearToastHideTimer()
+      clearDelayedActionTimers()
+      clearTerminalLiveInputFocusTimer(liveInputFocusTimerRef)
+      stopAccessoryRepeat()
+    },
+    [clearDelayedActionTimers, clearToastHideTimer, stopAccessoryRepeat]
+  )
 
   const handleSelectionMode = useCallback((handle: string, active: boolean) => {
     if (handle !== activeHandleRef.current) return
@@ -3662,7 +3663,7 @@ export default function SessionScreen() {
               : []
 
   return (
-    <View style={styles.container}>
+    <View ref={setMobileSessionRootRef} style={styles.container}>
       <View style={styles.kavInner}>
         <SafeAreaView style={styles.sessionChrome} edges={['top']}>
           <View style={styles.sessionTopBar}>
