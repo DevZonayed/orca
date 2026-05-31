@@ -1,5 +1,29 @@
 export const TERMINAL_PATH_EXISTS_CACHE_MAX_ENTRIES = 1024
 
+// Why: POSIX-looking SSH paths are only meaningful inside their connection;
+// local/runtime keys keep the legacy scope so existing hover probes stay hot.
+export function getTerminalPathExistsCacheKey({
+  absolutePath,
+  connectionId,
+  isRemoteRuntimePath,
+  runtimeEnvironmentId
+}: {
+  absolutePath: string
+  connectionId?: string | null
+  isRemoteRuntimePath?: boolean
+  runtimeEnvironmentId?: string | null
+}): string {
+  const runtimeId = runtimeEnvironmentId?.trim()
+  if (isRemoteRuntimePath && runtimeId) {
+    return `${runtimeId}\0${absolutePath}`
+  }
+  const sshConnectionId = connectionId?.trim()
+  if (sshConnectionId) {
+    return `ssh:${sshConnectionId}\0${absolutePath}`
+  }
+  return `${runtimeId || 'active'}\0${absolutePath}`
+}
+
 export function readTerminalPathExistsCache(
   cache: Map<string, boolean>,
   key: string

@@ -1010,6 +1010,58 @@ describe('createFilePathLinkProvider range bounds', () => {
     expect(pathExistsCache.get('active\0/repo/fresh.ts')).toBe(true)
   })
 
+  it('does not reuse SSH path-exists cache entries across connections', async () => {
+    setPlatform('Macintosh')
+    const pathExistsCache = new Map<string, boolean>()
+    const rows = [makeBufferLine('shared.ts')]
+    const pane = makePane(rows)
+    const managerRef = {
+      current: { getPanes: () => [pane] } as unknown as PaneManager
+    }
+    const deps = {
+      worktreeId: 'wt-1',
+      worktreePath: '/repo',
+      startupCwd: '/repo',
+      managerRef,
+      linkProviderDisposablesRef: { current: new Map<number, IDisposable>() },
+      pathExistsCache
+    }
+
+    vi.mocked(getConnectionId).mockReturnValue('ssh-one')
+    const firstProvider = createFilePathLinkProvider(
+      1,
+      deps,
+      { textContent: '', style: { display: '' } } as unknown as HTMLElement,
+      getTerminalFileOpenHint()
+    )
+    const firstLinks = await new Promise<ILink[]>((resolve) => {
+      firstProvider.provideLinks(1, (provided) => resolve(provided ?? []))
+    })
+    expect(firstLinks.map((link) => link.text)).toEqual(['shared.ts'])
+    expect(statMock).toHaveBeenCalledWith({
+      filePath: '/repo/shared.ts',
+      connectionId: 'ssh-one'
+    })
+
+    vi.mocked(getConnectionId).mockReturnValue('ssh-two')
+    statMock.mockRejectedValueOnce(new Error('ENOENT'))
+    const secondProvider = createFilePathLinkProvider(
+      1,
+      deps,
+      { textContent: '', style: { display: '' } } as unknown as HTMLElement,
+      getTerminalFileOpenHint()
+    )
+    const secondLinks = await new Promise<ILink[]>((resolve) => {
+      secondProvider.provideLinks(1, (provided) => resolve(provided ?? []))
+    })
+
+    expect(secondLinks).toEqual([])
+    expect(statMock).toHaveBeenLastCalledWith({
+      filePath: '/repo/shared.ts',
+      connectionId: 'ssh-two'
+    })
+  })
+
   it('opens a single-row file path from a direct modifier-click fallback', async () => {
     setPlatform('Macintosh')
     const pathExists = createDeferred<boolean>()
