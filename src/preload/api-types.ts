@@ -1072,6 +1072,7 @@ export type PreloadApi = {
        *  scope the cross-window invalidation broadcast correctly and avoid
        *  evicting an unrelated PR/issue that happens to share the number. */
       type?: 'issue' | 'pr'
+      prRepo?: GitHubOwnerRepo | null
     }) => Promise<GitHubCommentResult>
     addPRReviewCommentReply: (args: {
       repoPath: string
@@ -1082,6 +1083,7 @@ export type PreloadApi = {
       threadId?: string
       path?: string
       line?: number
+      prRepo?: GitHubOwnerRepo | null
     }) => Promise<GitHubCommentResult>
     addPRReviewComment: (
       args: GitHubPRReviewCommentInput & { repoId?: string }
