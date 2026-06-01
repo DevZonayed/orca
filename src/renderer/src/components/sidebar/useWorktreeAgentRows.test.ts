@@ -1,3 +1,5 @@
+/* eslint-disable max-lines -- Why: this suite covers one row-building seam
+   shared by retention, stale decay, and orchestration lineage regressions. */
 import { describe, expect, it } from 'vitest'
 import {
   AGENT_STATUS_STALE_AFTER_MS,
@@ -109,6 +111,166 @@ describe('buildWorktreeAgentRows', () => {
     const done = rows.find((r) => r.paneKey === PANE_KEY_2)
     expect(working?.state).toBe('idle')
     expect(done?.state).toBe('done')
+  })
+
+  it('renders live worktree-attributed entries even when their tab is absent', () => {
+    const rows = buildWorktreeAgentRows({
+      tabs: [],
+      entries: [
+        makeEntry(PANE_KEY_1, 1000, {
+          state: 'working',
+          worktreeId: 'wt-1',
+          tabId: 'tab-1',
+          prompt: 'child agent'
+        })
+      ],
+      retained: [],
+      now: 2000
+    })
+
+    expect(rows.map((row) => row.paneKey)).toEqual([PANE_KEY_1])
+    expect(rows[0]).toMatchObject({
+      state: 'working',
+      tab: {
+        id: 'tab-1',
+        worktreeId: 'wt-1'
+      }
+    })
+  })
+
+  it('uses runtime orchestration metadata for hook-reported live rows', () => {
+    const parent = makeEntry(PANE_KEY_1, 1000, {
+      prompt: 'parent',
+      state: 'working'
+    })
+    const child = makeEntry(PANE_KEY_2, 1200, {
+      prompt: 'child',
+      state: 'working'
+    })
+    const rows = applyAgentRowLineage(
+      buildWorktreeAgentRows({
+        tabs: [makeTab('tab-1'), makeTab('tab-2')],
+        entries: [parent, child],
+        retained: [],
+        runtimeAgentOrchestrationByPaneKey: {
+          [PANE_KEY_2]: {
+            taskId: 'task-1',
+            dispatchId: 'ctx-1',
+            parentPaneKey: PANE_KEY_1
+          }
+        },
+        now: 2000
+      })
+    )
+
+    expect(rows.map((row) => row.paneKey)).toEqual([PANE_KEY_1, PANE_KEY_2])
+    expect(rows[0].lineage).toMatchObject({ depth: 0, childCount: 1 })
+    expect(rows[1].lineage).toMatchObject({ depth: 1, childCount: 0 })
+    expect(rows[1].entry.orchestration).toMatchObject({ parentPaneKey: PANE_KEY_1 })
+  })
+
+  it('does not override current hook dispatch identity with mismatched runtime metadata', () => {
+    const currentParent = makeEntry(PANE_KEY_1, 1000, {
+      prompt: 'current parent',
+      state: 'done'
+    })
+    const staleParent = makeEntry(PANE_KEY_3, 1100, {
+      prompt: 'stale parent',
+      state: 'working'
+    })
+    const child = makeEntry(PANE_KEY_2, 1200, {
+      prompt: 'child',
+      state: 'working',
+      orchestration: {
+        taskId: 'task-2',
+        dispatchId: 'ctx-2',
+        parentPaneKey: PANE_KEY_1,
+        parentTerminalHandle: 'term-current'
+      }
+    })
+    const rows = applyAgentRowLineage(
+      buildWorktreeAgentRows({
+        tabs: [makeTab('tab-1'), makeTab('tab-2'), makeTab('tab-3')],
+        entries: [currentParent, staleParent, child],
+        retained: [],
+        runtimeAgentOrchestrationByPaneKey: {
+          [PANE_KEY_2]: {
+            taskId: 'task-1',
+            dispatchId: 'ctx-1',
+            parentPaneKey: PANE_KEY_3,
+            parentTerminalHandle: 'term-stale'
+          }
+        },
+        now: 2000
+      })
+    )
+
+    expect(rows.map((row) => row.paneKey)).toEqual([PANE_KEY_1, PANE_KEY_2, PANE_KEY_3])
+    expect(rows[0].lineage).toMatchObject({ depth: 0, childCount: 1 })
+    expect(rows[1].lineage).toMatchObject({ depth: 1, childCount: 0 })
+    expect(rows[1].entry.orchestration).toEqual({
+      taskId: 'task-2',
+      dispatchId: 'ctx-2',
+      parentPaneKey: PANE_KEY_1,
+      parentTerminalHandle: 'term-current'
+    })
+  })
+
+  it('uses runtime orchestration metadata for retained child rows', () => {
+    const parent = makeEntry(PANE_KEY_1, 1000, {
+      prompt: 'parent',
+      state: 'done'
+    })
+    const retainedChild = makeRetained(PANE_KEY_2, 'wt-1', 1200)
+    const rows = applyAgentRowLineage(
+      buildWorktreeAgentRows({
+        tabs: [makeTab('tab-1')],
+        entries: [parent],
+        retained: [retainedChild],
+        runtimeAgentOrchestrationByPaneKey: {
+          [PANE_KEY_2]: {
+            taskId: 'task-1',
+            dispatchId: 'ctx-1',
+            parentPaneKey: PANE_KEY_1
+          }
+        },
+        now: 2000
+      })
+    )
+
+    expect(rows.map((row) => row.paneKey)).toEqual([PANE_KEY_1, PANE_KEY_2])
+    expect(rows[0].lineage).toMatchObject({ depth: 0, childCount: 1 })
+    expect(rows[1].lineage).toMatchObject({ depth: 1, childCount: 0 })
+    expect(rows[1].entry.orchestration).toMatchObject({ parentPaneKey: PANE_KEY_1 })
+  })
+
+  it('groups child rows by parent terminal handle when parent pane key is missing', () => {
+    const parent = makeEntry(PANE_KEY_1, 1000, {
+      prompt: 'parent',
+      state: 'done',
+      terminalHandle: 'term-parent'
+    })
+    const child = makeEntry(PANE_KEY_2, 1200, {
+      prompt: 'child',
+      state: 'done',
+      orchestration: {
+        taskId: 'task-1',
+        dispatchId: 'ctx-1',
+        parentTerminalHandle: 'term-parent'
+      }
+    })
+    const rows = applyAgentRowLineage(
+      buildWorktreeAgentRows({
+        tabs: [makeTab('tab-1'), makeTab('tab-2')],
+        entries: [parent, child],
+        retained: [],
+        now: 2000
+      })
+    )
+
+    expect(rows.map((row) => row.paneKey)).toEqual([PANE_KEY_1, PANE_KEY_2])
+    expect(rows[0].lineage).toMatchObject({ depth: 0, childCount: 1 })
+    expect(rows[1].lineage).toMatchObject({ depth: 1, childCount: 0 })
   })
 })
 
