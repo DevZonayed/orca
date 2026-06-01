@@ -10,7 +10,7 @@ import type {
 export type WorktreeStatus = 'active' | 'working' | 'permission' | 'done' | 'inactive'
 
 type WorktreeStatusHeuristicOptions = {
-  freshHookLeafIdsByTabId?: Record<string, ReadonlySet<string>>
+  agentStatusPaneIdsByTabId?: Record<string, ReadonlySet<string>>
   terminalLayoutsByTabId?: Record<string, TerminalLayoutSnapshot | undefined>
   terminalLayoutRootsByTabId?: Record<string, TerminalPaneLayoutNode | null | undefined>
 }
@@ -71,7 +71,7 @@ function tabHasStatus(
   status: 'permission' | 'working',
   options: WorktreeStatusHeuristicOptions
 ): boolean {
-  const hookLeafIds = options.freshHookLeafIdsByTabId?.[tab.id]
+  const agentStatusPaneIds = options.agentStatusPaneIdsByTabId?.[tab.id]
   const paneTitles = runtimePaneTitlesByTabId[tab.id]
   if (paneTitles && Object.keys(paneTitles).length > 0) {
     const tabLayoutRoot =
@@ -80,11 +80,15 @@ function tabHasStatus(
     for (const [runtimePaneId, title] of paneTitleEntries) {
       const leafId = resolveRuntimePaneTitleLeafIdFromRoot(tabLayoutRoot, runtimePaneId)
       // Why: runtime titles can arrive before layout hydration in SSH/replay
-      // paths. With exactly one title and one hook leaf, the tab is
-      // unambiguous enough to prefer hook authority over a stale spinner.
-      const hasSingleUnmappedHookLeaf =
-        leafId === null && hookLeafIds?.size === 1 && paneTitleEntries.length === 1
-      if ((leafId !== null && hookLeafIds?.has(leafId)) || hasSingleUnmappedHookLeaf) {
+      // paths. With exactly one title and one authoritative agent row, the tab
+      // is unambiguous enough to prefer that row over a stale spinner.
+      const hasSingleUnmappedAgentStatusPane =
+        leafId === null && agentStatusPaneIds?.size === 1 && paneTitleEntries.length === 1
+      if (
+        agentStatusPaneIds?.has(runtimePaneId) ||
+        (leafId !== null && agentStatusPaneIds?.has(leafId)) ||
+        hasSingleUnmappedAgentStatusPane
+      ) {
         continue
       }
       if (detectAgentStatusFromTitle(title) === status) {
@@ -94,9 +98,9 @@ function tabHasStatus(
     return false
   }
   // Why: a tab-level title does not identify which split pane it came from.
-  // Once any fresh hook owns a leaf in that tab, prefer the hook overlay to
-  // avoid resurrecting stale "working" titles for a completed pane.
-  if (hookLeafIds && hookLeafIds.size > 0) {
+  // Once any visible agent row owns a pane in that tab, prefer the row state
+  // to avoid resurrecting stale "working" titles for a completed pane.
+  if (agentStatusPaneIds && agentStatusPaneIds.size > 0) {
     return false
   }
   return detectAgentStatusFromTitle(tab.title) === status
@@ -127,13 +131,15 @@ export function getWorktreeStatusLabel(status: WorktreeStatus): string {
  *   worktree.
  * - `hasLiveDone`: any fresh hook entry in {done} for a tab in this worktree.
  * - `hasRetainedDone`: any retained-agent snapshot scoped to this worktreeId.
+ * - `agentStatusPaneIdsByTabId`: stable leaf ids and legacy runtime pane ids
+ *   whose visible agent rows should override title-derived heuristics.
  */
 export function resolveWorktreeStatus(args: {
   tabs: readonly Pick<TerminalTab, 'id' | 'title'>[]
   browserTabs: readonly { id: string }[]
   ptyIdsByTabId: Record<string, string[]>
   runtimePaneTitlesByTabId?: Record<string, Record<number, string>>
-  freshHookLeafIdsByTabId?: Record<string, ReadonlySet<string>>
+  agentStatusPaneIdsByTabId?: Record<string, ReadonlySet<string>>
   terminalLayoutsByTabId?: Record<string, TerminalLayoutSnapshot | undefined>
   terminalLayoutRootsByTabId?: Record<string, TerminalPaneLayoutNode | null | undefined>
   hasPermission: boolean
@@ -147,7 +153,7 @@ export function resolveWorktreeStatus(args: {
     args.ptyIdsByTabId,
     args.runtimePaneTitlesByTabId ?? {},
     {
-      freshHookLeafIdsByTabId: args.freshHookLeafIdsByTabId,
+      agentStatusPaneIdsByTabId: args.agentStatusPaneIdsByTabId,
       terminalLayoutsByTabId: args.terminalLayoutsByTabId,
       terminalLayoutRootsByTabId: args.terminalLayoutRootsByTabId
     }

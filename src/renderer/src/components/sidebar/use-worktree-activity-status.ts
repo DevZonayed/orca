@@ -22,7 +22,7 @@ export function useWorktreeActivityStatus(worktreeId: string): WorktreeStatus {
   const terminalLayoutRootsByTabId = useAppStore(
     useShallow((s) => selectTerminalLayoutRootsForWorktree(s, worktreeId))
   )
-  const { hasPermission, hasLiveWorking, hasLiveDone, hasRetainedDone, freshHookLeafIdsByTabId } =
+  const { hasPermission, hasLiveWorking, hasLiveDone, hasRetainedDone, agentStatusPaneIdsByTabId } =
     useAppStore(useShallow((s) => selectWorktreeAgentActivitySummary(s, worktreeId)))
 
   // Why: compact and detailed cards need the same status-dot semantics:
@@ -35,7 +35,7 @@ export function useWorktreeActivityStatus(worktreeId: string): WorktreeStatus {
         browserTabs,
         ptyIdsByTabId: ptyIdsForWorktree,
         runtimePaneTitlesByTabId: runtimePaneTitlesForWorktree,
-        freshHookLeafIdsByTabId,
+        agentStatusPaneIdsByTabId,
         terminalLayoutRootsByTabId,
         hasPermission,
         hasLiveWorking,
@@ -47,7 +47,7 @@ export function useWorktreeActivityStatus(worktreeId: string): WorktreeStatus {
       browserTabs,
       ptyIdsForWorktree,
       runtimePaneTitlesForWorktree,
-      freshHookLeafIdsByTabId,
+      agentStatusPaneIdsByTabId,
       terminalLayoutRootsByTabId,
       hasPermission,
       hasLiveWorking,

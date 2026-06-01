@@ -26,7 +26,7 @@ describe('resolveWorktreeStatus terminal layout roots', () => {
           2: 'bash'
         }
       },
-      freshHookLeafIdsByTabId: {
+      agentStatusPaneIdsByTabId: {
         'tab-1': new Set([LEAF_ID_1])
       },
       terminalLayoutRootsByTabId: {
