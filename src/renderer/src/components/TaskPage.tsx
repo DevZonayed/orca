@@ -1872,15 +1872,61 @@ function PRReviewCell({
     }
   }
 
-  const requestReviewer = async (reviewer: GitHubAssignableUser): Promise<void> => {
-    if (selectedReviewerLogins.has(reviewer.login.toLowerCase())) {
+  const handleRemoveReviewers = async (reviewersToRemove: string[]): Promise<void> => {
+    if (!repo || submitting) {
       return
     }
+    const selected = new Set(localReviewRequests.map((reviewer) => reviewer.login.toLowerCase()))
+    const logins = reviewersToRemove
+      .map((reviewer) => reviewer.trim().replace(/^@/, ''))
+      .filter((reviewer) => reviewer.length > 0 && selected.has(reviewer.toLowerCase()))
+    if (logins.length === 0) {
+      return
+    }
+    setSubmitting(true)
+    try {
+      const target = getActiveRuntimeTarget(settings)
+      const result =
+        target.kind === 'environment'
+          ? await callRuntimeRpc<{ ok: boolean; error?: string }>(
+              target,
+              'github.removePRReviewers',
+              { repo: repo.id, prNumber: item.number, reviewers: logins },
+              { timeoutMs: 30_000 }
+            )
+          : await window.api.gh.removePRReviewers({
+              repoPath: repo.path,
+              repoId: repo.id,
+              prNumber: item.number,
+              reviewers: logins
+            })
+      if (result.ok) {
+        toast.success(logins.length === 1 ? 'Reviewer removed' : 'Reviewers removed')
+        const removed = new Set(logins.map((login) => login.toLowerCase()))
+        const nextReviewRequests = localReviewRequests.filter(
+          (reviewer) => !removed.has(reviewer.login.toLowerCase())
+        )
+        setLocalReviewRequests(nextReviewRequests)
+        patchWorkItem(item.id, { reviewRequests: nextReviewRequests }, item.repoId)
+        setReviewerInput('')
+      } else {
+        toast.error(result.error)
+      }
+    } catch {
+      toast.error('Failed to remove reviewer')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const requestReviewer = async (reviewer: GitHubAssignableUser): Promise<void> => {
     // Close the popover immediately so the UI feels responsive; the GitHub
-    // request runs in the background and toasts on completion.
+    // request/remove runs in the background and toasts on completion.
     setOpen(false)
     setReviewerInput('')
-    await handleRequestReview([reviewer.login])
+    await (selectedReviewerLogins.has(reviewer.login.toLowerCase())
+      ? handleRemoveReviewers([reviewer.login])
+      : handleRequestReview([reviewer.login]))
   }
 
   const handleReviewerPickerOpenChange = (nextOpen: boolean): void => {
@@ -1964,6 +2010,9 @@ function PRReviewCell({
         className="w-[330px] overflow-hidden rounded-md border-border/70 p-0"
         align="start"
         onClick={(event) => event.stopPropagation()}
+        onOpenAutoFocus={(event) => {
+          event.preventDefault()
+        }}
       >
         <div className="border-b border-border/70 px-3 py-2">
           <div className="text-[13px] font-semibold text-foreground">
