@@ -1,4 +1,4 @@
-import { ONBOARDING_FINAL_STEP } from '../../../src/shared/constants'
+import { ONBOARDING_FINAL_STEP, ONBOARDING_FLOW_VERSION } from '../../../src/shared/constants'
 import { FEATURE_INTERACTION_IDS } from '../../../src/shared/feature-interactions'
 
 const SEEN_FIRST_RUN_FEATURE_TIP_IDS = ['voice-dictation', 'orca-cli'] as const
@@ -21,6 +21,7 @@ export function getE2ECompletedOnboardingProfile() {
       }
     },
     onboarding: {
+      flowVersion: ONBOARDING_FLOW_VERSION,
       closedAt: 1,
       outcome: 'completed',
       lastCompletedStep: ONBOARDING_FINAL_STEP
