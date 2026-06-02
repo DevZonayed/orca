@@ -7601,6 +7601,7 @@ export class OrcaRuntimeService {
     activate?: boolean
     setupDecision?: 'run' | 'skip' | 'inherit'
     createdWithAgent?: TuiAgent
+    pendingFirstAgentMessageRename?: boolean
     startup?: WorktreeStartupLaunch
     startupDraft?: string
     startupDraftPaste?: WorktreeStartupDraftPaste
@@ -7976,6 +7977,9 @@ export class OrcaRuntimeService {
         : {}),
       ...(args.linkedGitLabMR !== undefined ? { linkedGitLabMR: args.linkedGitLabMR } : {}),
       ...(effectiveCreatedWithAgent ? { createdWithAgent: effectiveCreatedWithAgent } : {}),
+      ...(args.pendingFirstAgentMessageRename === true && effectiveCreatedWithAgent
+        ? { pendingFirstAgentMessageRename: true }
+        : {}),
       ...(args.comment !== undefined ? { comment: args.comment } : {}),
       ...(args.manualOrder !== undefined ? { manualOrder: args.manualOrder } : {}),
       ...(args.workspaceStatus !== undefined ? { workspaceStatus: args.workspaceStatus } : {})
@@ -8237,6 +8241,7 @@ export class OrcaRuntimeService {
       runHooks?: boolean
       setupDecision?: 'run' | 'skip' | 'inherit'
       createdWithAgent?: TuiAgent
+      pendingFirstAgentMessageRename?: boolean
       startup?: WorktreeStartupLaunch
       startupDraftPaste?: WorktreeStartupDraftPaste
     }
@@ -8271,7 +8276,10 @@ export class OrcaRuntimeService {
         ...(args.pushTarget ? { pushTarget: args.pushTarget } : {}),
         ...(args.workspaceStatus ? { workspaceStatus: args.workspaceStatus as never } : {}),
         ...(args.manualOrder !== undefined ? { manualOrder: args.manualOrder } : {}),
-        ...(args.createdWithAgent ? { createdWithAgent: args.createdWithAgent } : {})
+        ...(args.createdWithAgent ? { createdWithAgent: args.createdWithAgent } : {}),
+        ...(args.pendingFirstAgentMessageRename === true
+          ? { pendingFirstAgentMessageRename: true }
+          : {})
       },
       repo,
       this.store as unknown as Store,
@@ -8831,7 +8839,13 @@ export class OrcaRuntimeService {
     }
     this.store.setWorktreeMeta(
       worktree.id,
-      stripOrcaProvenanceMetaUpdates(omitUndefinedProperties(metaUpdates))
+      stripOrcaProvenanceMetaUpdates(
+        omitUndefinedProperties(
+          metaUpdates.displayName !== undefined
+            ? { ...metaUpdates, pendingFirstAgentMessageRename: false }
+            : metaUpdates
+        )
+      )
     )
     // Why: unlike renderer-initiated optimistic updates, CLI callers need an
     // explicit push so the editor refreshes metadata changed outside the UI.
