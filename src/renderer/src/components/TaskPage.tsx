@@ -2555,6 +2555,29 @@ export default function TaskPage(): React.JSX.Element {
     () => SOURCE_OPTIONS.filter((source) => visibleTaskProviders.includes(source.id)),
     [visibleTaskProviders]
   )
+  const hideTaskSource = useCallback(
+    (provider: TaskProvider, label: string) => {
+      const visibleWithoutProvider = preferredVisibleTaskProviders.filter(
+        (visibleProvider) => visibleProvider !== provider
+      )
+      // Why: an empty provider list normalizes back to "all providers"; keep
+      // one other source visible so opting out actually hides this provider.
+      const nextVisibleTaskProviders: TaskProvider[] =
+        visibleWithoutProvider.length > 0 ? visibleWithoutProvider : ['github']
+      const nextDefaultTaskSource = resolveVisibleTaskProvider(
+        defaultTaskSource,
+        nextVisibleTaskProviders
+      )
+
+      void updateSettings({
+        visibleTaskProviders: nextVisibleTaskProviders,
+        defaultTaskSource: nextDefaultTaskSource
+      }).catch(() => {
+        toast.error(`Failed to hide ${label}.`)
+      })
+    },
+    [defaultTaskSource, preferredVisibleTaskProviders, updateSettings]
+  )
 
   // Why: seed the preset + query from the user's saved default synchronously
   // so the first fetch effect issues exactly one request keyed to the final
@@ -4055,7 +4078,7 @@ export default function TaskPage(): React.JSX.Element {
       !newIssueOpen &&
       !newLinearIssueOpen &&
       !linearConnectOpen &&
-    activeModal === 'none',
+      activeModal === 'none',
     'tasks_open'
   )
 
@@ -4117,11 +4140,7 @@ export default function TaskPage(): React.JSX.Element {
     return sortedAvailableJiraProjects.filter((project) =>
       getJiraProjectSearchText(project, includeJiraSiteNameInProjectLabel).includes(query)
     )
-  }, [
-    includeJiraSiteNameInProjectLabel,
-    newJiraIssueProjectQuery,
-    sortedAvailableJiraProjects
-  ])
+  }, [includeJiraSiteNameInProjectLabel, newJiraIssueProjectQuery, sortedAvailableJiraProjects])
 
   const newJiraIssueTargetProject = useMemo(
     () =>
@@ -7610,19 +7629,23 @@ export default function TaskPage(): React.JSX.Element {
                 <p className="mt-2 max-w-sm text-sm text-muted-foreground">
                   Browse, edit, create, and start work from Jira issues directly from here.
                 </p>
-                <Button
-                  className="mt-5"
-                  onClick={() => {
-                    setJiraSiteUrlDraft('')
-                    setJiraEmailDraft('')
-                    setJiraApiTokenDraft('')
-                    setJiraConnectState('idle')
-                    setJiraConnectError(null)
-                    setJiraConnectOpen(true)
-                  }}
-                >
-                  Connect Jira
-                </Button>
+                <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
+                  <Button
+                    onClick={() => {
+                      setJiraSiteUrlDraft('')
+                      setJiraEmailDraft('')
+                      setJiraApiTokenDraft('')
+                      setJiraConnectState('idle')
+                      setJiraConnectError(null)
+                      setJiraConnectOpen(true)
+                    }}
+                  >
+                    Connect Jira
+                  </Button>
+                  <Button variant="outline" onClick={() => hideTaskSource('jira', 'Jira')}>
+                    Hide Jira
+                  </Button>
+                </div>
               </div>
             ) : (
               <div className="flex min-h-0 max-h-full flex-col overflow-hidden rounded-md rounded-t-none border border-t-0 border-border/50 bg-background shadow-sm">
@@ -9408,9 +9431,7 @@ export default function TaskPage(): React.JSX.Element {
                       role="combobox"
                       aria-expanded={newJiraIssueProjectComboboxOpen}
                       onKeyDown={handleNewJiraIssueProjectTriggerKeyDown}
-                      disabled={
-                        newJiraIssueSubmitting || sortedAvailableJiraProjects.length === 0
-                      }
+                      disabled={newJiraIssueSubmitting || sortedAvailableJiraProjects.length === 0}
                       className="h-9 w-full justify-between px-3 text-left text-xs font-normal"
                     >
                       {newJiraIssueTargetProject ? (
