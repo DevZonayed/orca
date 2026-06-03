@@ -129,21 +129,14 @@ export function computeVisibleWorktreeIds(
   return addVisibleLineageAncestors(
     all.map((w) => w.id),
     lineageAncestorById,
-    opts.worktreeLineageById,
-    {
-      canRestoreAncestor: (worktree) =>
-        opts.showSleepingWorkspaces || !isSleptWorkspace(worktree.id, opts.sleptWorktreeIds)
-    }
+    opts.worktreeLineageById
   )
 }
 
 function addVisibleLineageAncestors(
   ids: string[],
   worktreeById: Map<string, Worktree>,
-  lineageById: Record<string, WorktreeLineage>,
-  opts: {
-    canRestoreAncestor: (worktree: Worktree) => boolean
-  }
+  lineageById: Record<string, WorktreeLineage>
 ): string[] {
   const result: string[] = []
   const included = new Set<string>()
@@ -163,11 +156,10 @@ function addVisibleLineageAncestors(
     if (
       parent &&
       worktree.instanceId === lineage.worktreeInstanceId &&
-      parent.instanceId === lineage.parentWorktreeInstanceId &&
-      opts.canRestoreAncestor(parent)
+      parent.instanceId === lineage.parentWorktreeInstanceId
     ) {
-      // Why: lineage can restore structural parents, but the explicit sleep
-      // filter is a user request to keep slept workspaces out of navigation.
+      // Why: sidebar lineage is structural. If a filtered child is visible,
+      // its valid parent must be rendered too so the hierarchy remains legible.
       addWithAncestors(parent.id)
     }
     visiting.delete(id)
