@@ -698,6 +698,7 @@ export type PreloadApi = {
           | 'displayName'
           | 'badgeColor'
           | 'repoIcon'
+          | 'upstream'
           | 'hookSettings'
           | 'worktreeBaseRef'
           | 'worktreeBasePath'
@@ -950,6 +951,10 @@ export type PreloadApi = {
   gh: {
     viewer: () => Promise<GitHubViewer | null>
     repoSlug: (args: {
+      repoPath: string
+      repoId?: string
+    }) => Promise<{ owner: string; repo: string } | null>
+    repoUpstream: (args: {
       repoPath: string
       repoId?: string
     }) => Promise<{ owner: string; repo: string } | null>
