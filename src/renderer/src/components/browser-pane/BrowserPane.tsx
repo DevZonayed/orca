@@ -123,6 +123,7 @@ import {
   RuntimeRpcCallError,
   type RuntimeClientTarget
 } from '@/runtime/runtime-rpc-client'
+import { toRuntimeWorktreeSelector } from '@/runtime/runtime-worktree-selector'
 import type {
   BrowserBackResult,
   BrowserGotoResult,
@@ -849,6 +850,7 @@ function RemoteBrowserPagePane({
   const isActiveRef = useRef(isActive)
   const currentBrowserTabIdRef = useRef(browserTab.id)
   const currentBrowserTabUrlRef = useRef(browserTab.url)
+  const runtimeWorktree = useMemo(() => toRuntimeWorktreeSelector(worktreeId), [worktreeId])
   const activeRuntimeEnvironmentId = settings?.activeRuntimeEnvironmentId?.trim() ?? null
   const activeRuntimeEnvironmentIdRef = useRef<string | null>(activeRuntimeEnvironmentId)
   const startRemoteStreamRef = useRef<
@@ -1000,7 +1002,7 @@ function RemoteBrowserPagePane({
         target,
         'browser.viewport',
         {
-          worktree: `id:${worktreeId}`,
+          worktree: runtimeWorktree,
           page: pageId,
           width: size.width,
           height: size.height,
@@ -1016,7 +1018,7 @@ function RemoteBrowserPagePane({
           target,
           'browser.eval',
           {
-            worktree: `id:${worktreeId}`,
+            worktree: runtimeWorktree,
             page: pageId,
             expression: 'JSON.stringify({ width: window.innerWidth, height: window.innerHeight })'
           },
@@ -1027,7 +1029,7 @@ function RemoteBrowserPagePane({
         remoteCssViewportSizeRef.current = size
       }
     },
-    [readRemoteViewportSize, runtimeTarget, worktreeId]
+    [readRemoteViewportSize, runtimeTarget, runtimeWorktree]
   )
 
   const enqueueRemoteInput = useCallback((operation: () => Promise<void>): Promise<void> => {
@@ -1232,11 +1234,11 @@ function RemoteBrowserPagePane({
       void callRuntimeRpc(
         { kind: 'environment', environmentId: removedHandle.environmentId },
         'browser.tabClose',
-        { worktree: `id:${worktreeId}`, page: removedHandle.remotePageId },
+        { worktree: runtimeWorktree, page: removedHandle.remotePageId },
         { timeoutMs: 15_000, suppressFeatureInteraction: true }
       ).catch(() => {})
     }
-  }, [activeRuntimeEnvironmentId, browserTab.id, worktreeId])
+  }, [activeRuntimeEnvironmentId, browserTab.id, runtimeWorktree])
 
   const applyRemoteTabInfo = useCallback(
     (tab: Pick<BrowserTabInfo, 'url' | 'title'>): void => {
@@ -1339,14 +1341,14 @@ function RemoteBrowserPagePane({
         const created = await callRuntimeRpc<{ browserPageId: string }>(
           target,
           'browser.tabCreate',
-          { worktree: `id:${worktreeId}`, url: initialUrl },
+          { worktree: runtimeWorktree, url: initialUrl },
           { timeoutMs: 30_000, suppressFeatureInteraction: true }
         )
         if (!isCurrentRemoteOperationToken(token)) {
           void callRuntimeRpc(
             target,
             'browser.tabClose',
-            { worktree: `id:${worktreeId}`, page: created.browserPageId },
+            { worktree: runtimeWorktree, page: created.browserPageId },
             { timeoutMs: 15_000, suppressFeatureInteraction: true }
           ).catch(() => {})
           return null
@@ -1393,7 +1395,7 @@ function RemoteBrowserPagePane({
       closeMissingRemotePage,
       isCurrentRemoteOperationToken,
       setRemoteBrowserPageHandle,
-      worktreeId
+      runtimeWorktree
     ]
   )
 
@@ -1405,12 +1407,12 @@ function RemoteBrowserPagePane({
       const shown = await callRuntimeRpc<{ tab: BrowserTabInfo }>(
         { kind: 'environment', environmentId: token.environmentId },
         'browser.tabShow',
-        { worktree: `id:${worktreeId}`, page: token.remotePageId },
+        { worktree: runtimeWorktree, page: token.remotePageId },
         { timeoutMs: 15_000, suppressFeatureInteraction: true }
       )
       return shown.tab
     },
-    [isCurrentRemoteOperationToken, worktreeId]
+    [isCurrentRemoteOperationToken, runtimeWorktree]
   )
   fetchRemoteTabInfoRef.current = fetchRemoteTabInfo
 
@@ -1568,7 +1570,7 @@ function RemoteBrowserPagePane({
             selector: target.environmentId,
             method: 'browser.screencast',
             params: withBrowserPaneUiRuntimeRpcSource({
-              worktree: `id:${worktreeId}`,
+              worktree: runtimeWorktree,
               page: pageId,
               format: 'jpeg',
               quality: 70,
@@ -1644,7 +1646,7 @@ function RemoteBrowserPagePane({
       syncRemoteViewport,
       updateStreamFrame,
       waitForRemoteViewportSize,
-      worktreeId
+      runtimeWorktree
     ]
   )
 
@@ -1830,8 +1832,8 @@ function RemoteBrowserPagePane({
       try {
         const params =
           method === 'browser.goto'
-            ? { worktree: `id:${worktreeId}`, page: pageId, url: url ?? 'about:blank' }
-            : { worktree: `id:${worktreeId}`, page: pageId }
+            ? { worktree: runtimeWorktree, page: pageId, url: url ?? 'about:blank' }
+            : { worktree: runtimeWorktree, page: pageId }
         const result = await callRuntimeRpc<
           BrowserGotoResult | BrowserBackResult | BrowserReloadResult
         >(target, method, params, { timeoutMs: 30_000, suppressFeatureInteraction: true })
@@ -1868,7 +1870,7 @@ function RemoteBrowserPagePane({
       isCurrentRemoteOperationToken,
       onUpdatePageState,
       runtimeTarget,
-      worktreeId
+      runtimeWorktree
     ]
   )
 
@@ -1925,7 +1927,7 @@ function RemoteBrowserPagePane({
         return
       }
       try {
-        const params = { worktree: `id:${worktreeId}`, page: pageId }
+        const params = { worktree: runtimeWorktree, page: pageId }
         await callRuntimeRpc(
           target,
           'browser.mouseMove',
@@ -1972,7 +1974,7 @@ function RemoteBrowserPagePane({
         return
       }
       try {
-        const params = { worktree: `id:${worktreeId}`, page: pageId }
+        const params = { worktree: runtimeWorktree, page: pageId }
         await callRuntimeRpc(
           target,
           'browser.mouseMove',
@@ -2027,7 +2029,7 @@ function RemoteBrowserPagePane({
           target,
           'browser.eval',
           {
-            worktree: `id:${worktreeId}`,
+            worktree: runtimeWorktree,
             page: pageId,
             expression: buildRemoteContextMenuExpression(point.x, point.y)
           },
@@ -2067,7 +2069,7 @@ function RemoteBrowserPagePane({
     if (!target || !pageId || !operationToken) {
       return
     }
-    const params = { worktree: `id:${worktreeId}`, page: pageId }
+    const params = { worktree: runtimeWorktree, page: pageId }
     const key = getRemoteBrowserKeyboardShortcut(event) ?? getRemoteBrowserKeypressKey(event)
     if (!key) {
       return
@@ -2119,7 +2121,7 @@ function RemoteBrowserPagePane({
       pendingRemoteWheelRef.current = null
       remoteWheelInFlightRef.current = true
       const { target, pageId, operationToken, point, dx, dy } = pending
-      const params = { worktree: `id:${worktreeId}`, page: pageId }
+      const params = { worktree: runtimeWorktree, page: pageId }
       void enqueueRemoteInput(async () => {
         if (!isCurrentRemoteOperationToken(operationToken)) {
           return
@@ -2163,7 +2165,7 @@ function RemoteBrowserPagePane({
     enqueueRemoteInput,
     isCurrentRemoteOperationToken,
     scheduleRemoteTabInfoRefresh,
-    worktreeId
+    runtimeWorktree
   ])
 
   const handleRemoteScreenshotWheel = useCallback(
