@@ -54,7 +54,8 @@ export type WorkspaceSessionSnapshot = Pick<
   | 'lastKnownRelayPtyIdByTabId'
   | 'lastVisitedAtByWorktreeId'
   | 'defaultTerminalTabsAppliedByWorktreeId'
->
+> &
+  Partial<Pick<AppState, 'sleptWorktreeIds'>>
 
 // Why: the App-level Zustand subscriber that debounces session writes uses
 // this list as a shallow-equality gate so it only resets the timer when a
@@ -87,7 +88,8 @@ export const SESSION_RELEVANT_FIELDS = [
   'worktreesByRepo',
   'lastKnownRelayPtyIdByTabId',
   'lastVisitedAtByWorktreeId',
-  'defaultTerminalTabsAppliedByWorktreeId'
+  'defaultTerminalTabsAppliedByWorktreeId',
+  'sleptWorktreeIds'
 ] as const satisfies readonly (keyof WorkspaceSessionSnapshot)[]
 
 type _MissingSessionField = Exclude<
@@ -316,6 +318,14 @@ export function buildLastVisitedAtByWorktreeId(
     : undefined
 }
 
+export function buildSleptWorktreeIds(
+  snapshot: WorkspaceSessionSnapshot
+): WorkspaceSessionState['sleptWorktreeIds'] {
+  return snapshot.sleptWorktreeIds && Object.keys(snapshot.sleptWorktreeIds).length > 0
+    ? snapshot.sleptWorktreeIds
+    : undefined
+}
+
 export function buildWorkspaceSessionPayload(
   snapshot: WorkspaceSessionSnapshot
 ): WorkspaceSessionState {
@@ -362,7 +372,8 @@ export function buildWorkspaceSessionPayload(
       snapshot.defaultTerminalTabsAppliedByWorktreeId &&
       Object.keys(snapshot.defaultTerminalTabsAppliedByWorktreeId).length > 0
         ? snapshot.defaultTerminalTabsAppliedByWorktreeId
-        : undefined
+        : undefined,
+    sleptWorktreeIds: buildSleptWorktreeIds(snapshot)
   }
 
   return pruneLocalTerminalScrollbackBuffers(payload, snapshot.repos)
