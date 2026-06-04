@@ -496,14 +496,25 @@ function remapLegacyOnboardingLastCompletedStep(
   if (raw.outcome === 'completed' && lastCompletedStep >= ONBOARDING_FINAL_STEP) {
     return ONBOARDING_FINAL_STEP
   }
+  // Why: v2 was the five-step flow; missing/older versions were seven-step
+  // data where step 4 was removed agent setup, not completed integrations.
+  if (raw.flowVersion === 2) {
+    if (lastCompletedStep === 3) {
+      return 2
+    }
+    if (lastCompletedStep >= 4) {
+      return 3
+    }
+    return lastCompletedStep
+  }
+  if (lastCompletedStep === 3) {
+    return 2
+  }
   if (lastCompletedStep === 4) {
+    return 2
+  }
+  if (lastCompletedStep >= 5) {
     return 3
-  }
-  if (lastCompletedStep === 5 || lastCompletedStep === 6) {
-    return 4
-  }
-  if (lastCompletedStep > 6) {
-    return 4
   }
   return lastCompletedStep
 }
