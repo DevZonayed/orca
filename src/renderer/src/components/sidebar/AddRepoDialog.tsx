@@ -263,13 +263,6 @@ const AddRepoDialog = React.memo(function AddRepoDialog() {
     }
   }, [isOpen, resetState])
 
-  const isInputStep =
-    step === 'add' ||
-    step === 'clone' ||
-    step === 'remote' ||
-    step === 'create' ||
-    step === 'nested'
-
   // Why: handleBack reuses resetState which already aborts clones and resets all fields.
   const handleBack = useCallback(() => {
     if (step === 'nested') {
@@ -296,12 +289,7 @@ const AddRepoDialog = React.memo(function AddRepoDialog() {
           step === 'nested' ? 'max-h-[calc(100vh-2rem)] grid-rows-[auto_auto_minmax(0,1fr)]' : ''
         }`}
       >
-        <AddRepoStepIndicator
-          step={step}
-          isInputStep={isInputStep}
-          isAdding={isAdding}
-          onBack={handleBack}
-        />
+        <AddRepoStepIndicator step={step} isAdding={isAdding} onBack={handleBack} />
         <AddRepoDialogStepContent
           step={step}
           isRuntimeEnvironmentActive={isRuntimeEnvironmentActive}
@@ -372,7 +360,6 @@ const AddRepoDialog = React.memo(function AddRepoDialog() {
           onClone={handleClone}
           onNestedGroupNameChange={setNestedGroupName}
           onNestedSelectedPathsChange={setNestedSelectedPaths}
-          onNestedBack={handleBack}
           onImportNestedRepos={(mode) => void handleImportNestedRepos(mode)}
           onCreateNameChange={(value) => {
             setCreateName(value)
