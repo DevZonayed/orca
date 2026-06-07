@@ -2507,6 +2507,7 @@ export type StatusBarItem =
   | 'codex'
   | 'gemini'
   | 'opencode-go'
+  | 'kimi'
   | 'ssh'
   | 'resource-usage'
   | 'ports'
@@ -2578,6 +2579,8 @@ export type PersistedUIState = {
   _workspaceStatusesDefaultVisualsMigrated?: boolean
   /** One-shot migration flag for adding the default-on Ports status item. */
   _portsStatusBarDefaultAdded?: boolean
+  /** One-shot migration flag for adding the default-on Kimi status item. */
+  _kimiStatusBarDefaultAdded?: boolean
   statusBarItems: StatusBarItem[]
   statusBarVisible: boolean
   dismissedUpdateVersion: string | null
