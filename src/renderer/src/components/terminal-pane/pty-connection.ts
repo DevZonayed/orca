@@ -1395,6 +1395,7 @@ export function connectPanePty(
       : null) ?? (tab?.ptyId ? getRemoteRuntimePtyEnvironmentId(tab.ptyId) : null)
   const activeRuntimeEnvironmentId = state.settings?.activeRuntimeEnvironmentId?.trim() || null
   const runtimeEnvironmentId = remoteRuntimeOwnerForTransport ?? activeRuntimeEnvironmentId
+  const shouldOwnAgentStatusInRenderer = runtimeEnvironmentId !== null || connectionId !== null
   const shouldDeliverStartupViaTerminalPaste = paneStartup?.delivery === 'terminal-paste'
   let lastTerminalInputAt = Number.NEGATIVE_INFINITY
   const markTerminalInputSent = (): void => {
@@ -1422,25 +1423,30 @@ export function connectPanePty(
     onAgentBecameIdle,
     onAgentBecameWorking,
     onAgentExited,
-    // Why: forward OSC 9999 payloads from the PTY stream to the agent-status slice.
-    // Without this, the OSC parser in pty-transport strips sequences from xterm
-    // output but the status never reaches the store or dashboard/hover UI.
-    onAgentStatus: (payload) => {
-      // Why: capture the store snapshot once so the title lookup and the
-      // setAgentStatus call observe the same state. Re-reading getState()
-      // between the two lines opens a brief window where the title could
-      // shift (OSC title update landing in between) and the status would be
-      // stored against a title that was never paired with it.
-      const currentState = useAppStore.getState()
-      const title = currentState.runtimePaneTitlesByTabId?.[deps.tabId]?.[pane.id]
-      currentState.setAgentStatus(cacheKey, payload, title)
-      if (syncAgentTaskCompleteTrackingEnabled()) {
-        agentCompletionCoordinator.observeHookStatus(payload)
-      }
-      if (payload.state === 'working' && pendingTerminalBellNotification) {
-        scheduleTerminalBellNotification()
-      }
-    }
+    // Why: local non-SSH IPC terminals are now model-owned in main:
+    // OrcaRuntimeService parses OSC 9999 before renderer delivery and forwards
+    // through the hook server. Remote-runtime and SSH-connection streams stay
+    // renderer-owned until their model-side fanout can preserve remote identity.
+    ...(shouldOwnAgentStatusInRenderer
+      ? {
+          onAgentStatus: (payload) => {
+            // Why: capture the store snapshot once so the title lookup and the
+            // setAgentStatus call observe the same state. Re-reading getState()
+            // between the two lines opens a brief window where the title could
+            // shift (OSC title update landing in between) and the status would
+            // be stored against a title that was never paired with it.
+            const currentState = useAppStore.getState()
+            const title = currentState.runtimePaneTitlesByTabId?.[deps.tabId]?.[pane.id]
+            currentState.setAgentStatus(cacheKey, payload, title)
+            if (syncAgentTaskCompleteTrackingEnabled()) {
+              agentCompletionCoordinator.observeHookStatus(payload)
+            }
+            if (payload.state === 'working' && pendingTerminalBellNotification) {
+              scheduleTerminalBellNotification()
+            }
+          }
+        }
+      : {})
   }
   const transport = runtimeEnvironmentId
     ? createRemoteRuntimePtyTransport(runtimeEnvironmentId, transportOptions)
