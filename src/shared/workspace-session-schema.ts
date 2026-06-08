@@ -124,9 +124,16 @@ const sleepingAgentSessionsByPaneKeySchema = z.preprocess((raw) => {
 
 // ─── Unified tab model ──────────────────────────────────────────────
 
-const tabContentTypeSchema = z.enum(['terminal', 'editor', 'diff', 'conflict-review', 'browser'])
+const tabContentTypeSchema = z.enum([
+  'terminal',
+  'editor',
+  'diff',
+  'conflict-review',
+  'browser',
+  'simulator'
+])
 
-const workspaceVisibleTabTypeSchema = z.enum(['terminal', 'editor', 'browser'])
+const workspaceVisibleTabTypeSchema = z.enum(['terminal', 'editor', 'browser', 'simulator'])
 
 const tabSchema = z.object({
   id: z.string(),

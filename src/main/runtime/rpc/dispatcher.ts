@@ -20,6 +20,7 @@ import {
   computerErrorData,
   errorResponse,
   mapBrowserError,
+  mapEmulatorError,
   mapRuntimeError,
   successResponse
 } from './errors'
@@ -196,6 +197,9 @@ export class RpcDispatcher {
     if (request.method.startsWith('browser.')) {
       return mapBrowserError(request.id, meta, error)
     }
+    if (request.method.startsWith('emulator.')) {
+      return mapEmulatorError(request.id, meta, error)
+    }
     if (error instanceof ZodError) {
       return this.invalidArgumentResponse(request, meta, formatZodError(error))
     }
@@ -261,6 +265,11 @@ function getRuntimeFeatureInteractionId(
   }
   if (method.startsWith('browser.') && !method.startsWith('browser.profile')) {
     return 'agent-browser-use'
+  }
+  if (method.startsWith('emulator.')) {
+    // Emulator commands are allowed from terminal/CLI (workspace-scoped, like other automation).
+    // Return null to indicate no special feature-interaction restriction (or add 'emulator-use' later).
+    return null
   }
   if (method === 'computer.permissions') {
     return 'computer-use-setup'

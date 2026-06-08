@@ -539,6 +539,7 @@ function createWebPreloadApi(): Partial<PreloadApi> {
     fs: createFileApi(),
     git: createGitApi(),
     browser: createBrowserApi(),
+    emulator: createEmulatorApi(),
     gh: createGitHubApi(),
     gl: createGitLabApi(),
     hostedReview: createRuntimeNamespaceApi('hostedReview'),
@@ -1456,6 +1457,17 @@ function createBrowserApi(): NonNullable<Partial<PreloadApi>['browser']> {
   } as unknown as NonNullable<Partial<PreloadApi>['browser']>
 }
 
+function createEmulatorApi(): NonNullable<Partial<PreloadApi>['emulator']> {
+  return {
+    onPaneFocus: () => noopUnsubscribe,
+    onAutoAttach: () => noopUnsubscribe,
+    startFrameStream: () => Promise.reject(new Error('Mobile emulator is unavailable on web.')),
+    stopFrameStream: () => Promise.resolve(),
+    onFrameStreamFrame: () => noopUnsubscribe,
+    onFrameStreamError: () => noopUnsubscribe
+  } as unknown as NonNullable<Partial<PreloadApi>['emulator']>
+}
+
 function createGitHubApi(): WebGitHubApi {
   const route = <Result>(method: WebGitHubRuntimeMethod, args?: unknown): Promise<Result> =>
     callRuntimeResult<Result>(method, mapRepoPathArg(args))
@@ -1823,6 +1835,7 @@ function createWebUiApi(): NonNullable<Partial<PreloadApi>['ui']> {
     onWorktreeHistoryNavigate: () => noopUnsubscribe,
     onNewBrowserTab: () => noopUnsubscribe,
     onNewMarkdownTab: () => noopUnsubscribe,
+    onNewSimulatorTab: () => noopUnsubscribe,
     onRequestTabCreate: () => noopUnsubscribe,
     replyTabCreate: () => {},
     onRequestTabSetProfile: () => noopUnsubscribe,

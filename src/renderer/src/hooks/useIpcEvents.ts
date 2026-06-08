@@ -44,6 +44,12 @@ import {
   handleSwitchTabAcrossAllTypes,
   handleSwitchTerminalTab
 } from './ipc-tab-switch'
+import { ensureSimulatorTab } from '@/lib/ensure-simulator-tab'
+import { openMobileEmulatorTab } from '@/lib/open-mobile-emulator-tab'
+import {
+  isManualSimulatorLaunchPending,
+  rememberPrelaunchedSimulatorSession
+} from '@/lib/simulator-launch-coordination'
 import {
   normalizeAgentStatusPayload,
   type AgentStatusIpcPayload,
@@ -1701,6 +1707,59 @@ export function useIpcEvents(): void {
         }
       })
     )
+
+    // Why: emulator IPC is additive. Older paired clients and partial test
+    // preload mocks should not crash the whole event hook when it is absent.
+    const unsubscribeNewSimulatorTab = window.api.ui.onNewSimulatorTab?.(() => {
+      if (isRuntimeEnvironmentActive()) {
+        return
+      }
+      const store = useAppStore.getState()
+      const worktreeId = store.activeWorktreeId
+      if (!worktreeId) {
+        return
+      }
+      void openMobileEmulatorTab(worktreeId, { placement: 'rightSplit' })
+    })
+    if (unsubscribeNewSimulatorTab) {
+      unsubs.push(unsubscribeNewSimulatorTab)
+    }
+
+    const unsubscribeEmulatorAutoAttach = window.api.emulator?.onAutoAttach(
+      ({ worktreeId, info }) => {
+        if (isRuntimeEnvironmentActive()) {
+          return
+        }
+        if (isManualSimulatorLaunchPending(worktreeId)) {
+          // Why: manual launches pre-attach first so the ready pane can be
+          // created in the right split instead of as a hidden tab in this group.
+          rememberPrelaunchedSimulatorSession(worktreeId, info)
+          return
+        }
+        ensureSimulatorTab(worktreeId, { surfacePane: false })
+        // Why: watcher may detect a helper while a simulator tab is already mounted; push stream info so the pane updates without re-attach.
+        window.setTimeout(() => {
+          window.dispatchEvent(
+            new CustomEvent('orca:emulator-auto-attach', {
+              detail: { worktreeId, info }
+            })
+          )
+        }, 0)
+      }
+    )
+    if (unsubscribeEmulatorAutoAttach) {
+      unsubs.push(unsubscribeEmulatorAutoAttach)
+    }
+
+    const unsubscribeEmulatorPaneFocus = window.api.emulator?.onPaneFocus(({ worktreeId }) => {
+      if (isRuntimeEnvironmentActive()) {
+        return
+      }
+      ensureSimulatorTab(worktreeId, { surfacePane: true })
+    })
+    if (unsubscribeEmulatorPaneFocus) {
+      unsubs.push(unsubscribeEmulatorPaneFocus)
+    }
 
     // Why: CLI-driven tab creation sends a request with a specific worktreeId and
     // url. The renderer creates the tab and replies with the page ID so the

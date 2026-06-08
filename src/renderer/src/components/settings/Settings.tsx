@@ -41,6 +41,7 @@ import { QuickCommandsPane } from './QuickCommandsPane'
 import { DeveloperPermissionsPane } from './DeveloperPermissionsPane'
 import { ComputerUsePane } from './ComputerUsePane'
 import { MobileSettingsPane } from './MobileSettingsPane'
+import { MobileEmulatorSettingsPane } from './MobileEmulatorSettingsPane'
 import { RuntimeEnvironmentsPane } from './RuntimeEnvironmentsPane'
 import { PrivacyPane } from './PrivacyPane'
 import { AdvancedPane } from './AdvancedPane'
@@ -1113,6 +1114,22 @@ function Settings(): React.JSX.Element {
                         settings={settings}
                         updateSettings={updateSettings}
                         onOpenComputerUse={openComputerUseFromBrowser}
+                      />
+                    ) : null}
+                  </SettingsSection>
+                ) : null}
+
+                {showDesktopOnlySettings && isMac ? (
+                  <SettingsSection
+                    id="mobile-emulator"
+                    title="Mobile Emulator"
+                    description="Configure mobile emulator support for Orca and coding agents."
+                    searchEntries={getSectionSearchEntries('mobile-emulator')}
+                  >
+                    {isSectionMounted('mobile-emulator') ? (
+                      <MobileEmulatorSettingsPane
+                        settings={settings}
+                        updateSettings={updateSettings}
                       />
                     ) : null}
                   </SettingsSection>

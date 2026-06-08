@@ -11,6 +11,8 @@ const PACKAGED_RUNTIME_PACKAGE_ROOTS = [
   'electron-updater',
   'node-pty',
   'posthog-node',
+  // serve-sim (for CLI JS entry + closure + state/middleware + to make packaged require('serve-sim') + its internal relatives work; mirrors other runtime JS like ws/yaml/zod. Natives/dylibs still via extraResources + the node_modules/serve-sim copy in resources from builder. Client if added too.
+  'serve-sim',
   'qrcode',
   'ssh2',
   'tweetnacl',
@@ -50,10 +52,27 @@ function isPackagedExternalSpecifier(specifier) {
 }
 
 function resolvePackageJsonPath(packageName, fromDir = projectDir) {
+  const nested = join(fromDir, 'node_modules', packageName, 'package.json')
+  if (existsSync(nested)) {
+    return nested
+  }
+  // Why: published serve-sim has no "." export (only ./middleware and ./state), so
+  // require.resolve('serve-sim') fails even though the package is present for bridge exec.
+  if (packageName === 'serve-sim') {
+    const direct = join(projectDir, 'node_modules', 'serve-sim', 'package.json')
+    if (existsSync(direct)) {
+      return direct
+    }
+  }
   try {
     return requireFromProject.resolve(`${packageName}/package.json`, { paths: [fromDir] })
   } catch {
-    const entryPath = requireFromProject.resolve(packageName, { paths: [fromDir] })
+    let entryPath
+    try {
+      entryPath = requireFromProject.resolve(packageName, { paths: [fromDir] })
+    } catch {
+      throw new Error(`Could not resolve package ${packageName} from ${fromDir}`)
+    }
     let dir = dirname(entryPath)
     while (dir !== dirname(dir)) {
       const packageJsonPath = join(dir, 'package.json')
@@ -77,6 +96,21 @@ function readPackage(packageName, fromDir = projectDir) {
   }
 }
 
+function isKnownOmittedServeSimDependency(packageName, fromDir) {
+  if (packageName !== 'inspect-webkit') {
+    return false
+  }
+  const serveSimPackageJsonPath = join(projectDir, 'node_modules', 'serve-sim', 'package.json')
+  if (!existsSync(serveSimPackageJsonPath)) {
+    return false
+  }
+  try {
+    return realpathSync(fromDir) === realpathSync(dirname(serveSimPackageJsonPath))
+  } catch {
+    return false
+  }
+}
+
 function collectPackagedRuntimePackages() {
   const packages = new Map()
   const visit = (packageName, fromDir = projectDir) => {
@@ -84,7 +118,17 @@ function collectPackagedRuntimePackages() {
       return
     }
 
-    const packageInfo = readPackage(packageName, fromDir)
+    let packageInfo
+    try {
+      packageInfo = readPackage(packageName, fromDir)
+    } catch (error) {
+      // Why: serve-sim declares inspect-webkit, but current installs omit it.
+      // Keep that escape hatch narrow so broken packages still fail packaging.
+      if (isKnownOmittedServeSimDependency(packageName, fromDir)) {
+        return
+      }
+      throw error
+    }
     if (packages.has(packageInfo.name)) {
       return
     }
