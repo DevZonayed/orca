@@ -293,13 +293,15 @@ import {
   type LinearListFilter
 } from '../linear/issues'
 import {
+  createProject as createLinearProject,
   getCustomView as getLinearCustomView,
   getProject as getLinearProject,
   listCustomViewIssues as listLinearCustomViewIssues,
   listCustomViewProjects as listLinearCustomViewProjects,
   listCustomViews as listLinearCustomViews,
   listProjectIssues as listLinearProjectIssues,
-  listProjects as listLinearProjects
+  listProjects as listLinearProjects,
+  type LinearProjectCreateInput
 } from '../linear/projects'
 import {
   getTeamLabels as getLinearTeamLabels,
@@ -13890,6 +13892,13 @@ export class OrcaRuntimeService {
     force?: boolean
   ): ReturnType<typeof listLinearProjects> {
     return listLinearProjects(query, Math.min(Math.max(1, limit), 50), workspaceId, force)
+  }
+
+  linearCreateProject(
+    input: LinearProjectCreateInput,
+    workspaceId?: string
+  ): ReturnType<typeof createLinearProject> {
+    return createLinearProject(input, workspaceId)
   }
 
   linearGetProject(
