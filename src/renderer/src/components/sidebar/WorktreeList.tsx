@@ -201,7 +201,6 @@ import {
 import { buildImportedWorktreesCardCandidates } from './imported-worktrees-card-candidates'
 import {
   WORKTREE_SECTION_HEADER_PADDING_LEFT,
-  SIDEBAR_TREE_INDENT,
   getProjectGroupHeaderPaddingLeft,
   getWorktreeCardContentIndent
 } from './worktree-list-indentation'
@@ -350,7 +349,9 @@ function getWorktreeVisibilityMenuLabel(repo: Repo): string {
   return visibility === 'show' ? 'Hide non-Orca worktrees' : 'Show hidden worktrees'
 }
 
-const LINEAGE_INDENT = SIDEBAR_TREE_INDENT
+// Why: child workspace cards are already nested inside the parent card body;
+// using the full tree step makes the second-level card drift too far right.
+const LINEAGE_INDENT = 14
 const SIDEBAR_POINTER_DRAG_THRESHOLD_PX = 4
 
 type VirtualizedWorktreeViewportProps = {

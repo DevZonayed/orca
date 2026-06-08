@@ -1109,7 +1109,7 @@ const WorktreeCard = React.memo(function WorktreeCard({
 
         {showLineageChildChip && (
           <div
-            className="relative mt-1 flex min-w-0 justify-start"
+            className="relative -ml-1 mt-1 flex min-w-0 justify-start"
             style={{
               color: 'color-mix(in srgb, var(--muted-foreground) 42%, var(--worktree-sidebar))'
             }}
