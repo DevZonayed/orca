@@ -911,6 +911,7 @@ function resolveRemoteActionError(kind: RemoteOpKind, error: unknown): string {
   return resolveRemoteOperationErrorMessage(error, {
     publish: kind === 'publish',
     isPush: kind === 'push',
+    isForcePush: kind === 'force_push',
     isSync: kind === 'sync',
     isFetch: kind === 'fetch',
     isFastForward: kind === 'fast_forward',
@@ -2153,7 +2154,15 @@ function SourceControlInner(): React.JSX.Element {
   // try/catch here would duplicate the notification.
   const runRemoteAction = useCallback(
     async (
-      kind: 'push' | 'pull' | 'fast_forward' | 'sync' | 'fetch' | 'publish' | 'rebase'
+      kind:
+        | 'push'
+        | 'force_push'
+        | 'pull'
+        | 'fast_forward'
+        | 'sync'
+        | 'fetch'
+        | 'publish'
+        | 'rebase'
     ): Promise<void> => {
       if (!activeWorktreeId || !worktreePath) {
         return
@@ -2180,6 +2189,17 @@ function SourceControlInner(): React.JSX.Element {
             connectionId,
             activeWorktree?.pushTarget,
             forceWithLease ? { forceWithLease: true } : undefined
+          )
+          return
+        }
+        if (kind === 'force_push') {
+          await pushBranch(
+            activeWorktreeId,
+            worktreePath,
+            false,
+            connectionId,
+            activeWorktree?.pushTarget,
+            { forceWithLease: true }
           )
           return
         }
@@ -2998,6 +3018,7 @@ function SourceControlInner(): React.JSX.Element {
           void runRemoteAction('push')
           return
         case 'push':
+        case 'force_push':
         case 'pull':
         case 'fast_forward':
         case 'sync':
@@ -5548,12 +5569,15 @@ export function CommitArea({
   // mismatch keeps the spinner off — the disabled state alone is enough
   // signal there. Commit still spins on isCommitting because that path
   // doesn't go through inFlightRemoteOpKind.
+  const primaryHostsRemoteOperation =
+    primaryAction.kind === inFlightRemoteOpKind ||
+    (primaryAction.kind === 'push' && inFlightRemoteOpKind === 'force_push')
   const showSpinner =
     primaryAction.kind === 'create_pr'
       ? isCreatingPr
       : primaryAction.kind === 'commit'
         ? isCommitting
-        : isRemoteOperationActive && primaryAction.kind === inFlightRemoteOpKind
+        : isRemoteOperationActive && primaryHostsRemoteOperation
   // Why: when the primary doesn't host the in-flight op (e.g. Fetch, or any
   // dropdown action that mismatches the primary's natural label) the click
   // would otherwise be silent — the toast only fires on failure and a
