@@ -242,7 +242,7 @@ export function SetupScriptAction(): React.JSX.Element {
   )
 }
 
-function useSetupTargetWorktree(): Worktree | null {
+export function useSetupTargetWorktree(): Worktree | null {
   const allWorktrees = useAllWorktrees()
   const activeWorktreeId = useAppStore((s) => s.activeWorktreeId)
   return useMemo(
