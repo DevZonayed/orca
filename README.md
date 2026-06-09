@@ -22,7 +22,7 @@
   <a href="#install"><strong>Download 🐋</strong></a>
 </p>
 
-![Orca worktree IDE demo showing Claude Code, Codex, and OpenCode running in parallel across isolated git worktrees](docs/assets/file-drag.gif)
+![Orca mobile companion demo showing the iPhone emulator alongside agent workspaces and source control](docs/assets/orca-mobile-emulator.gif)
 
 ## Supported Agents
 
