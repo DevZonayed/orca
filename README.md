@@ -3,7 +3,7 @@
 </h1>
 
 <p align="center">
-  <a href="https://github.com/stablyai/orca/stargazers"><img src="https://img.shields.io/badge/★-4.5k-6E7681?style=flat-square" alt="GitHub stars" /></a>
+  <a href="https://github.com/stablyai/orca/stargazers"><img src="https://badgen.net/github/stars/stablyai/orca?label=%E2%98%85" alt="GitHub stars" /></a>
 </p>
 
 <p align="center">
@@ -21,8 +21,8 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/github/v/release/stablyai/orca?style=flat-square&label=Release" alt="Latest release" />
-  <img src="https://img.shields.io/github/license/stablyai/orca?style=flat-square" alt="License" />
+  <img src="https://badgen.net/github/release/stablyai/orca/stable" alt="Latest stable release" />
+  <img src="https://badgen.net/github/license/stablyai/orca" alt="License" />
   <img src="https://img.shields.io/badge/macOS%20%7C%20Windows%20%7C%20Linux-4493F8?style=flat-square" alt="Supported platforms: macOS, Windows, and Linux" />
 </p>
 
@@ -69,17 +69,25 @@ Orca supports any CLI agent (_not just this list_).
 
 ## Features
 
-- **No login required** — Bring your own Claude Code, OpenClaude, Codex, Grok, or Antigravity subscription.
-- **Worktree-native** — Every feature gets its own worktree. No stashing, no branch juggling. Spin up and switch instantly.
-- **Multi-agent terminals** — Run multiple AI agents side-by-side in tabs and panes. See which ones are active at a glance.
-- **Agent-ready browser** — Open local apps, inspect pages, annotate UI, and hand precise browser context to agents.
+**Run agents in parallel**
+
+- **Bring your own subscription** — Use Claude Code, OpenClaude, Codex, Grok, Antigravity, OpenCode, or any other CLI agent without an Orca login.
+- **Worktree-native tasks** — Give each task its own worktree so agents can work side-by-side without stashing or branch juggling.
+- **Multi-agent terminals** — Run agents in tabs and split panes, then see active, waiting, and finished sessions at a glance.
+
+**Review and ship**
+
+- **Agent-ready browser** — Open local apps, inspect pages, annotate UI, and pass precise browser context back to agents.
 - **Design Mode** — Iterate on frontend changes with an embedded browser built for visual review and quick fixes.
-- **Built-in source control** — Review AI-generated diffs, make quick edits, and commit without leaving Orca.
-- **GitHub integration** — PRs, issues, and Actions checks linked to each worktree automatically.
-- **SSH support** — Connect to remote machines and run agents on them directly from Orca.
-- **Computer Use** — Let agents operate desktop apps and visible UI when a workflow needs real interaction.
+- **Source control built in** — Review AI-generated diffs, make quick edits, and commit without leaving Orca.
+- **GitHub workflow links** — Keep PRs, issues, and Actions checks connected to the worktree doing the work.
+
+**Work anywhere**
+
+- **SSH support** — Connect to remote machines and run agents there directly from Orca.
 - **Mobile companion** — Monitor and steer agents from your phone, with emulator-friendly mobile workflows.
-- **Notifications** — Know when an agent finishes or needs attention. Mark threads unread to come back later.
+- **Computer Use** — Let agents operate desktop apps and visible UI when a workflow needs real interaction.
+- **Notifications and unread state** — Know when an agent finishes or needs attention, then mark threads unread to come back later.
 
 ---
 
