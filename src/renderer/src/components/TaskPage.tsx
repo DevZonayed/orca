@@ -3735,11 +3735,12 @@ export default function TaskPage(): React.JSX.Element {
         ? linearCustomViewContentsLoading
         : linearLoading
   const activeLinearIssueError =
-    selectedLinearProject && linearProjectTab === 'issues'
+    linearStatus.credentialError ??
+    (selectedLinearProject && linearProjectTab === 'issues'
       ? linearProjectIssuesError
       : selectedLinearCustomView?.model === 'issue'
         ? linearCustomViewContentsError
-        : linearError
+        : linearError)
   const activeLinearIssueCollectionErrors =
     selectedLinearProject && linearProjectTab === 'issues'
       ? linearProjectIssuesResult.errors
@@ -8337,9 +8338,9 @@ export default function TaskPage(): React.JSX.Element {
                   className="min-h-0 flex-1 overflow-y-auto scrollbar-sleek"
                   style={{ scrollbarGutter: 'stable' }}
                 >
-                  {jiraError ? (
+                  {(jiraStatus.credentialError ?? jiraError) ? (
                     <div className="border-b border-border px-4 py-4 text-sm text-destructive">
-                      {jiraError}
+                      {jiraStatus.credentialError ?? jiraError}
                     </div>
                   ) : null}
 
@@ -8354,7 +8355,10 @@ export default function TaskPage(): React.JSX.Element {
                     </div>
                   ) : null}
 
-                  {!jiraLoading && jiraIssues.length === 0 && !jiraError ? (
+                  {!jiraLoading &&
+                  jiraIssues.length === 0 &&
+                  !jiraError &&
+                  !jiraStatus.credentialError ? (
                     <div className="px-4 py-10 text-center">
                       <p className="text-sm font-medium text-foreground">
                         {translate('auto.components.TaskPage.eba87f2edb', 'No Jira issues found')}
