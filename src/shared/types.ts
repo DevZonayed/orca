@@ -26,6 +26,7 @@ import type {
 import type { AgentKind, LaunchSource, RequestKind } from './telemetry-events'
 import type { SleepingAgentSessionRecord } from './agent-session-resume'
 import type { ClaudeAgentTeamsMode } from './claude-agent-teams-tmux-compat'
+import type { TerminalCustomTheme } from './terminal-custom-themes'
 import type { UiLanguage } from './ui-language'
 
 // Re-exported for backward compat with renderer call sites that import
@@ -2039,6 +2040,7 @@ export type GlobalSettings = {
   terminalCursorStyleDefaultedToBlock?: boolean
   terminalCursorBlink: boolean
   terminalThemeDark: string
+  terminalCustomThemes?: TerminalCustomTheme[]
   terminalDividerColorDark: string
   terminalUseSeparateLightTheme: boolean
   terminalThemeLight: string
