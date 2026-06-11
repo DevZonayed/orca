@@ -7511,7 +7511,9 @@
             "e041998cad": "Stop generating"
           },
           "FileExplorer": {
-            "79b1537dd3": "Select a workspace to browse files"
+            "79b1537dd3": "Select a workspace to browse files",
+            "4da4d89845": "Back to Explorer",
+            "6ed5ce817b": "Search"
           },
           "FileExplorerBackgroundMenu": {
             "3b5e2dcb8d": "New Folder",
@@ -7547,7 +7549,8 @@
             "78f133232c": "Show Dotfiles",
             "31b4c3195d": "More Explorer Actions",
             "d95e30fe28": "Refresh Explorer",
-            "6026b16950": "Collapse All"
+            "6026b16950": "Collapse All",
+            "693cbeadd0": "Search"
           },
           "FileExplorerTreeStatus": {
             "ce03835e1f": "No files in this workspace",
