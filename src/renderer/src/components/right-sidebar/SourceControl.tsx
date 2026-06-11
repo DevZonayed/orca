@@ -2014,6 +2014,7 @@ function SourceControlInner(): React.JSX.Element {
           fetchPRForBranch(activeRepo.path, branchName, {
             force: true,
             repoId: activeRepo.id,
+            worktreeId: activeWorktreeId ?? undefined,
             linkedPRNumber: result.number
           })
         ])

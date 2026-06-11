@@ -435,6 +435,8 @@ export default function ChecksPanel(): React.JSX.Element {
     worktreeId: activeWorktreeId,
     worktreePath: activeWorktreePath,
     branch,
+    linkedGitHubPR: activeWorktree?.linkedPR ?? null,
+    linkedGitLabMR: activeWorktree?.linkedGitLabMR ?? null,
     runtimeEnvironmentId,
     repoConnectionId,
     pushTarget: activeWorktreePushTarget
@@ -921,6 +923,7 @@ export default function ChecksPanel(): React.JSX.Element {
     void fetchPRForBranch(repo.path, branch, {
       force: true,
       repoId: repo.id,
+      worktreeId: activeWorktreeId ?? undefined,
       linkedPRNumber: linkedPR,
       fallbackPRNumber: fallbackGitHubPRNumber ?? pr.number
     }).finally(() => {
@@ -1318,6 +1321,7 @@ export default function ChecksPanel(): React.JSX.Element {
       const refreshedPR = await fetchPRForBranch(repo.path, branch, {
         force: true,
         repoId: repo.id,
+        worktreeId: activeWorktreeId ?? undefined,
         linkedPRNumber: linkedPR,
         fallbackPRNumber: fallbackGitHubPRNumber
       })
@@ -1567,6 +1571,7 @@ export default function ChecksPanel(): React.JSX.Element {
     const refreshedPR = await fetchPRForBranch(repo.path, branch, {
       force: true,
       repoId: repo.id,
+      worktreeId: activeWorktreeId ?? undefined,
       linkedPRNumber: linkedPR,
       fallbackPRNumber: fallbackGitHubPRNumber
     })
@@ -1581,6 +1586,7 @@ export default function ChecksPanel(): React.JSX.Element {
   }, [
     activeGitLabReview,
     activeReview?.provider,
+    activeWorktreeId,
     branch,
     fallbackGitHubPRNumber,
     fetchGitLabDetails,
@@ -2041,6 +2047,7 @@ export default function ChecksPanel(): React.JSX.Element {
         const refreshedPR = await fetchPRForBranch(repo.path, branch, {
           force: true,
           repoId: repo.id,
+          worktreeId: activeWorktreeId ?? undefined,
           linkedPRNumber
         })
         if (!isCurrentRequestContext()) {
@@ -2148,6 +2155,7 @@ export default function ChecksPanel(): React.JSX.Element {
       }
     },
     [
+      activeWorktreeId,
       branch,
       fetchHostedReviewForBranch,
       fetchPRChecks,

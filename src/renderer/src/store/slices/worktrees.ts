@@ -1928,6 +1928,7 @@ export const createWorktreeSlice: StateCreator<AppState, [], [], WorktreeSlice> 
       void fetchPRForBranch(repo.path, branch, {
         force: true,
         repoId: repo.id,
+        worktreeId,
         linkedPRNumber: alreadyLinked ? link.number : null,
         fallbackPRNumber: null,
         fallbackPRSource: alreadyLinked ? null : 'explicit'
