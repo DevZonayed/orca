@@ -382,6 +382,7 @@ export function getDefaultPersistedState(homedir: string): PersistedState {
     schemaVersion: SCHEMA_VERSION,
     repos: [],
     projectGroups: [],
+    folderWorkspaces: [],
     sparsePresetsByRepo: {},
     worktreeMeta: {},
     worktreeLineageById: {},
