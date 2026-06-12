@@ -466,30 +466,30 @@
       },
       "folderWorkspacePathStatus": {
         "title": {
-          "missing": "Folder not found",
-          "notDirectory": "Path is not a folder",
-          "ambiguousConnection": "Cannot determine connection",
-          "unavailable": "Cannot check folder"
+          "missing": "Carpeta no encontrada",
+          "notDirectory": "La ruta no es una carpeta",
+          "ambiguousConnection": "No se puede determinar la conexión",
+          "unavailable": "No se puede comprobar la carpeta"
         },
         "description": {
-          "missing": "Orca cannot find {{path}}. Remove and re-import this folder workspace.",
-          "notDirectory": "{{path}} exists, but it is not a folder.",
-          "ambiguousConnection": "Orca cannot tell which SSH connection owns this folder scope.",
-          "unavailable": "Orca cannot verify this folder right now. Check the runtime or SSH connection and try again."
+          "missing": "Orca no puede encontrar {{path}}. Elimina y vuelve a importar este espacio de trabajo de carpeta.",
+          "notDirectory": "{{path}} existe, pero no es una carpeta.",
+          "ambiguousConnection": "Orca no puede determinar qué conexión SSH pertenece a este ámbito de carpeta.",
+          "unavailable": "Orca no puede verificar esta carpeta ahora mismo. Revisa el runtime o la conexión SSH e inténtalo de nuevo."
         },
         "createError": {
           "title": {
-            "missing": "Folder not found",
-            "notDirectory": "Path is not a folder",
-            "ambiguousConnection": "Cannot determine connection",
-            "unavailable": "Cannot check folder",
-            "generic": "Failed to create folder workspace"
+            "missing": "Carpeta no encontrada",
+            "notDirectory": "La ruta no es una carpeta",
+            "ambiguousConnection": "No se puede determinar la conexión",
+            "unavailable": "No se puede comprobar la carpeta",
+            "generic": "No se pudo crear el espacio de trabajo de carpeta"
           },
           "description": {
-            "missing": "Orca cannot find {{path}}. Remove and re-import the folder.",
-            "notDirectory": "{{path}} exists, but it is not a folder.",
-            "ambiguousConnection": "Orca cannot tell which SSH connection owns this folder scope.",
-            "unavailable": "Orca cannot verify this folder right now. Check the runtime or SSH connection and try again."
+            "missing": "Orca no puede encontrar {{path}}. Elimina y vuelve a importar la carpeta.",
+            "notDirectory": "{{path}} existe, pero no es una carpeta.",
+            "ambiguousConnection": "Orca no puede determinar qué conexión SSH pertenece a este ámbito de carpeta.",
+            "unavailable": "Orca no puede verificar esta carpeta ahora mismo. Revisa el runtime o la conexión SSH e inténtalo de nuevo."
           }
         }
       }
@@ -1029,7 +1029,15 @@
         "f660aa1454": "Conectando",
         "7711ad5122": "Comando de configuración local",
         "e5db1b0419": "Comando de configuración combinado",
-        "addProjectBeforeWorkspace": "Agregue un proyecto antes de crear un espacio de trabajo."
+        "addProjectBeforeWorkspace": "Agregue un proyecto antes de crear un espacio de trabajo.",
+        "sshNotConnected": "SSH not connected",
+        "connectingSsh": "Connecting SSH...",
+        "sshAuthenticationFailed": "SSH authentication failed",
+        "preparingSshConnection": "Preparing SSH connection...",
+        "connected": "Connected",
+        "reconnectingSsh": "Reconnecting SSH...",
+        "sshReconnectionFailed": "SSH reconnection failed",
+        "notConnected": "Not connected"
       },
       "NewWorkspaceComposerModal": {
         "fa90f739a5": "Elija el proyecto, el nombre del espacio de trabajo y el agente antes de crear el espacio de trabajo."
@@ -2825,7 +2833,11 @@
           "4f8368c272": "Solo árboles de trabajo Orca",
           "cfe2282ffa": "Desconocido",
           "7765a4c3e1": "n / A",
-          "2d41fd45c6": "• Error del último análisis: {{value0}}"
+          "2d41fd45c6": "• Error del último análisis: {{value0}}",
+          "rangeLast7Days": "Last 7 days",
+          "rangeLast30Days": "Last 30 days",
+          "rangeLast90Days": "Last 90 days",
+          "rangeAllTime": "All time"
         },
         "CodexUsageDailyChart": {
           "1e6f62d7e3": "Razonamiento",
@@ -2874,7 +2886,11 @@
           "bf6cf2d4dd": "Desconocido",
           "ae255c3dba": "n / A",
           "247c93ca92": "• precios inferidos",
-          "8a6655f7a2": "• Error del último análisis: {{value0}}"
+          "8a6655f7a2": "• Error del último análisis: {{value0}}",
+          "rangeLast7Days": "Last 7 days",
+          "rangeLast30Days": "Last 30 days",
+          "rangeLast90Days": "Last 90 days",
+          "rangeAllTime": "All time"
         },
         "OpenCodeUsagePane": {
           "349f7c3f5c": "Total",
@@ -2913,7 +2929,11 @@
           "e04c58327c": "Solo árboles de trabajo Orca",
           "362231082f": "Desconocido",
           "8095a63426": "n / A",
-          "6cc7782458": "• Error del último análisis: {{value0}}"
+          "6cc7782458": "• Error del último análisis: {{value0}}",
+          "rangeLast7Days": "Last 7 days",
+          "rangeLast30Days": "Last 30 days",
+          "rangeLast90Days": "Last 90 days",
+          "rangeAllTime": "All time"
         },
         "ShareUsageButton": {
           "7d6b25323d": "Compartir en X",
@@ -3032,6 +3052,22 @@
               "d9a4b3e2f1c5": "eventos"
             }
           }
+        },
+        "UsageBreakdownSection": {
+          "7765a4c3e1": "n/a",
+          "247c93ca92": "• inferred pricing"
+        },
+        "UsageSessionsTable": {
+          "1afc25eb06": "Turns",
+          "0f03975d59": "Events",
+          "21ea00bfa8": "Cache",
+          "e0b988599d": "Total",
+          "01476891c7": "Last active",
+          "c17bed0416": "Project",
+          "f6a2c8d019": "Model",
+          "faf3444859": "Input",
+          "a8b7487ff7": "Output",
+          "cfe2282ffa": "Unknown"
         }
       },
       "sparse": {
@@ -3521,7 +3557,11 @@
           "376bed88e5": "La conexión al host remoto encontró un error.",
           "4afcca1d24": "Reconectar",
           "11552bf786": "SSH desconectado",
-          "cb5938ae79": "Reconectando..."
+          "cb5938ae79": "Reconectando...",
+          "disconnected": "This remote repository is not connected.",
+          "reconnecting": "Reconnecting to the remote host...",
+          "reconnectionFailed": "Reconnection to the remote host failed.",
+          "authFailed": "Authentication to the remote host failed."
         },
         "SshTargetRow": {
           "4677394048": "Conectando…",
@@ -7579,7 +7619,9 @@
             "f273f2271c": "Agente iniciado. Marcados {{value0}} como resueltos, omitidos {{value1}}, con error {{value2}}.",
             "aa95b81a3a": "Agente iniciado. Marcados {{value0}} como resueltos, omitidos {{value1}}, con error {{value2}}.",
             "495b2f8c4b": "Agente iniciado, pero no se pudieron marcar los comentarios seleccionados como resueltos.",
-            "3c3ad3a1d2": "Agente iniciado. Ningún comentario seleccionado se puede marcar como resuelto en el host."
+            "3c3ad3a1d2": "Agente iniciado. Ningún comentario seleccionado se puede marcar como resuelto en el host.",
+            "b4f3ec62a1": "More {{value0}} actions",
+            "a9d7c128e4": "unlink {{value0}}"
           },
           "CreatePullRequestDialog": {
             "2bc1b4345e": "Cancelar",
@@ -8963,7 +9005,11 @@
             "3c4adfd821": "arreglar la condición de carrera de inicio de sesión",
             "56a0271428": "Espacios de trabajo aislados",
             "ef737dcee1": "GitHub y tareas Lineares",
-            "ac51c061e2": "codex"
+            "ac51c061e2": "codex",
+            "47f16ecf34": "Ship several things at once. Each workspace keeps its branch, terminal, and agent activity together.",
+            "70aa182266": "Hand off a goal and walk away. A coordinator agent fans out and ships parallel PRs.",
+            "f10c14dd9d": "Skip the tab-switching. Pick from your GitHub or Linear backlog and start a workspace in one click.",
+            "5d6ee181b6": "Open any workspace to return to its terminal, then split panes for tests, logs, and agents."
           },
           "FeatureWallBody": {
             "25ec5356d6": "Configuración"
@@ -9036,7 +9082,9 @@
             "6e3f5223c5": "Explorador",
             "ab2901bce6": "cheques",
             "d7f80060ca": "Control de fuente",
-            "8e715588e4": "Buscar"
+            "8e715588e4": "Buscar",
+            "a6c8b9e32f": "Checks passed",
+            "f4d5e1a7b2": "3 checks"
           },
           "ReviewShipAnimatedVisual": {
             "4d99496b8c": "Crear relaciones públicas",

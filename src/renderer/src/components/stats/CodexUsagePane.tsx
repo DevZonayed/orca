@@ -305,7 +305,6 @@ export function CodexUsagePane(): React.JSX.Element {
 
           <CodexUsageDetails
             daily={daily}
-            formatTokens={formatTokens}
             modelBreakdown={modelBreakdown}
             projectBreakdown={projectBreakdown}
             recentSessions={recentSessions}

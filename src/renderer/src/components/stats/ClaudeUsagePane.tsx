@@ -324,7 +324,6 @@ export function ClaudeUsagePane(): React.JSX.Element {
 
           <ClaudeUsageDetails
             daily={daily}
-            formatTokens={formatTokens}
             modelBreakdown={modelBreakdown}
             projectBreakdown={projectBreakdown}
             recentSessions={recentSessions}

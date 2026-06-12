@@ -466,30 +466,30 @@
       },
       "folderWorkspacePathStatus": {
         "title": {
-          "missing": "Folder not found",
-          "notDirectory": "Path is not a folder",
-          "ambiguousConnection": "Cannot determine connection",
-          "unavailable": "Cannot check folder"
+          "missing": "フォルダーが見つかりません",
+          "notDirectory": "パスはフォルダーではありません",
+          "ambiguousConnection": "接続を特定できません",
+          "unavailable": "フォルダーを確認できません"
         },
         "description": {
-          "missing": "Orca cannot find {{path}}. Remove and re-import this folder workspace.",
-          "notDirectory": "{{path}} exists, but it is not a folder.",
-          "ambiguousConnection": "Orca cannot tell which SSH connection owns this folder scope.",
-          "unavailable": "Orca cannot verify this folder right now. Check the runtime or SSH connection and try again."
+          "missing": "Orca は {{path}} を見つけられません。このフォルダーワークスペースを削除して再インポートしてください。",
+          "notDirectory": "{{path}} は存在しますが、フォルダーではありません。",
+          "ambiguousConnection": "Orca はこのフォルダースコープをどの SSH 接続が所有しているか判別できません。",
+          "unavailable": "Orca は現在このフォルダーを確認できません。ランタイムまたは SSH 接続を確認して再試行してください。"
         },
         "createError": {
           "title": {
-            "missing": "Folder not found",
-            "notDirectory": "Path is not a folder",
-            "ambiguousConnection": "Cannot determine connection",
-            "unavailable": "Cannot check folder",
-            "generic": "Failed to create folder workspace"
+            "missing": "フォルダーが見つかりません",
+            "notDirectory": "パスはフォルダーではありません",
+            "ambiguousConnection": "接続を特定できません",
+            "unavailable": "フォルダーを確認できません",
+            "generic": "フォルダーワークスペースの作成に失敗しました"
           },
           "description": {
-            "missing": "Orca cannot find {{path}}. Remove and re-import the folder.",
-            "notDirectory": "{{path}} exists, but it is not a folder.",
-            "ambiguousConnection": "Orca cannot tell which SSH connection owns this folder scope.",
-            "unavailable": "Orca cannot verify this folder right now. Check the runtime or SSH connection and try again."
+            "missing": "Orca は {{path}} を見つけられません。フォルダーを削除して再インポートしてください。",
+            "notDirectory": "{{path}} は存在しますが、フォルダーではありません。",
+            "ambiguousConnection": "Orca はこのフォルダースコープをどの SSH 接続が所有しているか判別できません。",
+            "unavailable": "Orca は現在このフォルダーを確認できません。ランタイムまたは SSH 接続を確認して再試行してください。"
           }
         }
       }
@@ -1029,7 +1029,15 @@
         "f660aa1454": "接続中",
         "7711ad5122": "ローカルセットアップコマンド",
         "e5db1b0419": "組み合わせセットアップコマンド",
-        "addProjectBeforeWorkspace": "ワークスペースを作成する前にプロジェクトを追加します。"
+        "addProjectBeforeWorkspace": "ワークスペースを作成する前にプロジェクトを追加します。",
+        "sshNotConnected": "SSH not connected",
+        "connectingSsh": "Connecting SSH...",
+        "sshAuthenticationFailed": "SSH authentication failed",
+        "preparingSshConnection": "Preparing SSH connection...",
+        "connected": "Connected",
+        "reconnectingSsh": "Reconnecting SSH...",
+        "sshReconnectionFailed": "SSH reconnection failed",
+        "notConnected": "Not connected"
       },
       "NewWorkspaceComposerModal": {
         "fa90f739a5": "ワークスペースを作成する前に、プロジェクト、ワークスペース名、および agent を選択します。"
@@ -2825,7 +2833,11 @@
           "4f8368c272": "Orca ワークツリーのみ",
           "cfe2282ffa": "未知",
           "7765a4c3e1": "該当なし",
-          "2d41fd45c6": "• 最終スキャン エラー: {{value0}}"
+          "2d41fd45c6": "• 最終スキャン エラー: {{value0}}",
+          "rangeLast7Days": "Last 7 days",
+          "rangeLast30Days": "Last 30 days",
+          "rangeLast90Days": "Last 90 days",
+          "rangeAllTime": "All time"
         },
         "CodexUsageDailyChart": {
           "1e6f62d7e3": "推論",
@@ -2874,7 +2886,11 @@
           "bf6cf2d4dd": "未知",
           "ae255c3dba": "該当なし",
           "247c93ca92": "• 推定価格",
-          "8a6655f7a2": "• 最終スキャン エラー: {{value0}}"
+          "8a6655f7a2": "• 最終スキャン エラー: {{value0}}",
+          "rangeLast7Days": "Last 7 days",
+          "rangeLast30Days": "Last 30 days",
+          "rangeLast90Days": "Last 90 days",
+          "rangeAllTime": "All time"
         },
         "OpenCodeUsagePane": {
           "349f7c3f5c": "合計",
@@ -2913,7 +2929,11 @@
           "e04c58327c": "Orca ワークツリーのみ",
           "362231082f": "未知",
           "8095a63426": "該当なし",
-          "6cc7782458": "• 最終スキャン エラー: {{value0}}"
+          "6cc7782458": "• 最終スキャン エラー: {{value0}}",
+          "rangeLast7Days": "Last 7 days",
+          "rangeLast30Days": "Last 30 days",
+          "rangeLast90Days": "Last 90 days",
+          "rangeAllTime": "All time"
         },
         "ShareUsageButton": {
           "7d6b25323d": "Xで共有する",
@@ -3032,6 +3052,22 @@
               "d9a4b3e2f1c5": "イベント"
             }
           }
+        },
+        "UsageBreakdownSection": {
+          "7765a4c3e1": "n/a",
+          "247c93ca92": "• inferred pricing"
+        },
+        "UsageSessionsTable": {
+          "1afc25eb06": "Turns",
+          "0f03975d59": "Events",
+          "21ea00bfa8": "Cache",
+          "e0b988599d": "Total",
+          "01476891c7": "Last active",
+          "c17bed0416": "Project",
+          "f6a2c8d019": "Model",
+          "faf3444859": "Input",
+          "a8b7487ff7": "Output",
+          "cfe2282ffa": "Unknown"
         }
       },
       "sparse": {
@@ -3502,7 +3538,11 @@
           "376bed88e5": "リモート ホストへの接続でエラーが発生しました。",
           "4afcca1d24": "再接続",
           "11552bf786": "SSHが切断されました",
-          "cb5938ae79": "再接続中..."
+          "cb5938ae79": "再接続中...",
+          "disconnected": "This remote repository is not connected.",
+          "reconnecting": "Reconnecting to the remote host...",
+          "reconnectionFailed": "Reconnection to the remote host failed.",
+          "authFailed": "Authentication to the remote host failed."
         },
         "SshTargetRow": {
           "4677394048": "接続中…",
@@ -7579,7 +7619,9 @@
             "f273f2271c": "agent を開始しました。{{value0}} 件を解決済みにし、{{value1}} 件をスキップ、{{value2}} 件が失敗しました。",
             "aa95b81a3a": "agent を開始しました。{{value0}} 件を解決済みにし、{{value1}} 件をスキップ、{{value2}} 件が失敗しました。",
             "495b2f8c4b": "agent を開始しましたが、選択したコメントを解決済みにできませんでした。",
-            "3c3ad3a1d2": "agent を開始しました。選択したコメントにホスト上で解決済みにできるものはありません。"
+            "3c3ad3a1d2": "agent を開始しました。選択したコメントにホスト上で解決済みにできるものはありません。",
+            "b4f3ec62a1": "More {{value0}} actions",
+            "a9d7c128e4": "unlink {{value0}}"
           },
           "CreatePullRequestDialog": {
             "2bc1b4345e": "キャンセル",
@@ -8963,7 +9005,11 @@
             "3c4adfd821": "ログイン競合状態を修正",
             "56a0271428": "隔離されたワークスペース",
             "ef737dcee1": "GitHub とLinearタスク",
-            "ac51c061e2": "codex"
+            "ac51c061e2": "codex",
+            "47f16ecf34": "Ship several things at once. Each workspace keeps its branch, terminal, and agent activity together.",
+            "70aa182266": "Hand off a goal and walk away. A coordinator agent fans out and ships parallel PRs.",
+            "f10c14dd9d": "Skip the tab-switching. Pick from your GitHub or Linear backlog and start a workspace in one click.",
+            "5d6ee181b6": "Open any workspace to return to its terminal, then split panes for tests, logs, and agents."
           },
           "FeatureWallBody": {
             "25ec5356d6": "設定"
@@ -9036,7 +9082,9 @@
             "6e3f5223c5": "エクスプローラ",
             "ab2901bce6": "チェック",
             "d7f80060ca": "ソース管理",
-            "8e715588e4": "検索"
+            "8e715588e4": "検索",
+            "a6c8b9e32f": "Checks passed",
+            "f4d5e1a7b2": "3 checks"
           },
           "ReviewShipAnimatedVisual": {
             "4d99496b8c": "PRを作成する",

@@ -466,30 +466,30 @@
       },
       "folderWorkspacePathStatus": {
         "title": {
-          "missing": "Folder not found",
-          "notDirectory": "Path is not a folder",
-          "ambiguousConnection": "Cannot determine connection",
-          "unavailable": "Cannot check folder"
+          "missing": "未找到文件夹",
+          "notDirectory": "路径不是文件夹",
+          "ambiguousConnection": "无法确定连接",
+          "unavailable": "无法检查文件夹"
         },
         "description": {
-          "missing": "Orca cannot find {{path}}. Remove and re-import this folder workspace.",
-          "notDirectory": "{{path}} exists, but it is not a folder.",
-          "ambiguousConnection": "Orca cannot tell which SSH connection owns this folder scope.",
-          "unavailable": "Orca cannot verify this folder right now. Check the runtime or SSH connection and try again."
+          "missing": "Orca 找不到 {{path}}。请移除并重新导入此文件夹工作区。",
+          "notDirectory": "{{path}} 存在，但它不是文件夹。",
+          "ambiguousConnection": "Orca 无法判断哪个 SSH 连接拥有此文件夹范围。",
+          "unavailable": "Orca 现在无法验证此文件夹。请检查运行时或 SSH 连接，然后重试。"
         },
         "createError": {
           "title": {
-            "missing": "Folder not found",
-            "notDirectory": "Path is not a folder",
-            "ambiguousConnection": "Cannot determine connection",
-            "unavailable": "Cannot check folder",
-            "generic": "Failed to create folder workspace"
+            "missing": "未找到文件夹",
+            "notDirectory": "路径不是文件夹",
+            "ambiguousConnection": "无法确定连接",
+            "unavailable": "无法检查文件夹",
+            "generic": "创建文件夹工作区失败"
           },
           "description": {
-            "missing": "Orca cannot find {{path}}. Remove and re-import the folder.",
-            "notDirectory": "{{path}} exists, but it is not a folder.",
-            "ambiguousConnection": "Orca cannot tell which SSH connection owns this folder scope.",
-            "unavailable": "Orca cannot verify this folder right now. Check the runtime or SSH connection and try again."
+            "missing": "Orca 找不到 {{path}}。请移除并重新导入该文件夹。",
+            "notDirectory": "{{path}} 存在，但它不是文件夹。",
+            "ambiguousConnection": "Orca 无法判断哪个 SSH 连接拥有此文件夹范围。",
+            "unavailable": "Orca 现在无法验证此文件夹。请检查运行时或 SSH 连接，然后重试。"
           }
         }
       }
@@ -1029,7 +1029,15 @@
         "f660aa1454": "连接中",
         "7711ad5122": "本地设置命令",
         "e5db1b0419": "组合设置命令",
-        "addProjectBeforeWorkspace": "在创建工作区之前添加项目。"
+        "addProjectBeforeWorkspace": "在创建工作区之前添加项目。",
+        "sshNotConnected": "SSH not connected",
+        "connectingSsh": "Connecting SSH...",
+        "sshAuthenticationFailed": "SSH authentication failed",
+        "preparingSshConnection": "Preparing SSH connection...",
+        "connected": "Connected",
+        "reconnectingSsh": "Reconnecting SSH...",
+        "sshReconnectionFailed": "SSH reconnection failed",
+        "notConnected": "Not connected"
       },
       "NewWorkspaceComposerModal": {
         "fa90f739a5": "创建工作区之前选择项目、工作区名称和 Agent。"
@@ -2825,7 +2833,11 @@
           "4f8368c272": "仅 Orca 工作树",
           "cfe2282ffa": "未知",
           "7765a4c3e1": "不适用",
-          "2d41fd45c6": "• 上次扫描错误：{{value0}}"
+          "2d41fd45c6": "• 上次扫描错误：{{value0}}",
+          "rangeLast7Days": "Last 7 days",
+          "rangeLast30Days": "Last 30 days",
+          "rangeLast90Days": "Last 90 days",
+          "rangeAllTime": "All time"
         },
         "CodexUsageDailyChart": {
           "1e6f62d7e3": "推理",
@@ -2874,7 +2886,11 @@
           "bf6cf2d4dd": "未知",
           "ae255c3dba": "不适用",
           "247c93ca92": "• 推断定价",
-          "8a6655f7a2": "• 上次扫描错误：{{value0}}"
+          "8a6655f7a2": "• 上次扫描错误：{{value0}}",
+          "rangeLast7Days": "Last 7 days",
+          "rangeLast30Days": "Last 30 days",
+          "rangeLast90Days": "Last 90 days",
+          "rangeAllTime": "All time"
         },
         "OpenCodeUsagePane": {
           "349f7c3f5c": "全部的",
@@ -2913,7 +2929,11 @@
           "e04c58327c": "仅 Orca 工作树",
           "362231082f": "未知",
           "8095a63426": "不适用",
-          "6cc7782458": "• 上次扫描错误：{{value0}}"
+          "6cc7782458": "• 上次扫描错误：{{value0}}",
+          "rangeLast7Days": "Last 7 days",
+          "rangeLast30Days": "Last 30 days",
+          "rangeLast90Days": "Last 90 days",
+          "rangeAllTime": "All time"
         },
         "ShareUsageButton": {
           "7d6b25323d": "分享到 X",
@@ -3032,6 +3052,22 @@
               "d9a4b3e2f1c5": "事件"
             }
           }
+        },
+        "UsageBreakdownSection": {
+          "7765a4c3e1": "n/a",
+          "247c93ca92": "• inferred pricing"
+        },
+        "UsageSessionsTable": {
+          "1afc25eb06": "Turns",
+          "0f03975d59": "Events",
+          "21ea00bfa8": "Cache",
+          "e0b988599d": "Total",
+          "01476891c7": "Last active",
+          "c17bed0416": "Project",
+          "f6a2c8d019": "Model",
+          "faf3444859": "Input",
+          "a8b7487ff7": "Output",
+          "cfe2282ffa": "Unknown"
         }
       },
       "sparse": {
@@ -3502,7 +3538,11 @@
           "376bed88e5": "与远程主机的连接遇到错误。",
           "4afcca1d24": "重新连接",
           "11552bf786": "SSH 已断开",
-          "cb5938ae79": "正在重新连接..."
+          "cb5938ae79": "正在重新连接...",
+          "disconnected": "This remote repository is not connected.",
+          "reconnecting": "Reconnecting to the remote host...",
+          "reconnectionFailed": "Reconnection to the remote host failed.",
+          "authFailed": "Authentication to the remote host failed."
         },
         "SshTargetRow": {
           "4677394048": "正在连接…",
@@ -7579,7 +7619,9 @@
             "f273f2271c": "已启动 agent。已标记 {{value0}} 个为已解决，跳过 {{value1}} 个，失败 {{value2}} 个。",
             "aa95b81a3a": "已启动 agent。已标记 {{value0}} 个为已解决，跳过 {{value1}} 个，失败 {{value2}} 个。",
             "495b2f8c4b": "已启动 agent，但无法将选中的评论标记为已解决。",
-            "3c3ad3a1d2": "已启动 agent。选中的评论中没有可在托管平台上标记为已解决的评论。"
+            "3c3ad3a1d2": "已启动 agent。选中的评论中没有可在托管平台上标记为已解决的评论。",
+            "b4f3ec62a1": "More {{value0}} actions",
+            "a9d7c128e4": "unlink {{value0}}"
           },
           "CreatePullRequestDialog": {
             "2bc1b4345e": "取消",
@@ -8963,7 +9005,11 @@
             "3c4adfd821": "修复登录竞争条件",
             "56a0271428": "独立的工作区",
             "ef737dcee1": "GitHub 和 Linear 任务",
-            "ac51c061e2": "codex"
+            "ac51c061e2": "codex",
+            "47f16ecf34": "Ship several things at once. Each workspace keeps its branch, terminal, and agent activity together.",
+            "70aa182266": "Hand off a goal and walk away. A coordinator agent fans out and ships parallel PRs.",
+            "f10c14dd9d": "Skip the tab-switching. Pick from your GitHub or Linear backlog and start a workspace in one click.",
+            "5d6ee181b6": "Open any workspace to return to its terminal, then split panes for tests, logs, and agents."
           },
           "FeatureWallBody": {
             "25ec5356d6": "设置"
@@ -9036,7 +9082,9 @@
             "6e3f5223c5": "探险家",
             "ab2901bce6": "检查项",
             "d7f80060ca": "源代码控制",
-            "8e715588e4": "搜索"
+            "8e715588e4": "搜索",
+            "a6c8b9e32f": "Checks passed",
+            "f4d5e1a7b2": "3 checks"
           },
           "ReviewShipAnimatedVisual": {
             "4d99496b8c": "创建PR",

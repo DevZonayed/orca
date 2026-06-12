@@ -325,8 +325,6 @@ export function OpenCodeUsagePane(): React.JSX.Element {
 
           <OpenCodeUsageDetails
             daily={daily}
-            formatCost={formatCost}
-            formatTokens={formatTokens}
             modelBreakdown={modelBreakdown}
             projectBreakdown={projectBreakdown}
             recentSessions={recentSessions}

@@ -1029,7 +1029,15 @@
         "f660aa1454": "Connecting",
         "7711ad5122": "Local setup command",
         "e5db1b0419": "Combined setup command",
-        "addProjectBeforeWorkspace": "Add a project before creating a workspace."
+        "addProjectBeforeWorkspace": "Add a project before creating a workspace.",
+        "sshNotConnected": "SSH not connected",
+        "connectingSsh": "Connecting SSH...",
+        "sshAuthenticationFailed": "SSH authentication failed",
+        "preparingSshConnection": "Preparing SSH connection...",
+        "connected": "Connected",
+        "reconnectingSsh": "Reconnecting SSH...",
+        "sshReconnectionFailed": "SSH reconnection failed",
+        "notConnected": "Not connected"
       },
       "NewWorkspaceComposerModal": {
         "fa90f739a5": "Choose the project, workspace name, and agent before creating the workspace."
@@ -2825,7 +2833,11 @@
           "4f8368c272": "Orca worktrees only",
           "cfe2282ffa": "Unknown",
           "7765a4c3e1": "n/a",
-          "2d41fd45c6": " • Last scan error: {{value0}}"
+          "2d41fd45c6": " • Last scan error: {{value0}}",
+          "rangeLast7Days": "Last 7 days",
+          "rangeLast30Days": "Last 30 days",
+          "rangeLast90Days": "Last 90 days",
+          "rangeAllTime": "All time"
         },
         "CodexUsageDailyChart": {
           "1e6f62d7e3": "Reasoning",
@@ -2874,7 +2886,11 @@
           "bf6cf2d4dd": "Unknown",
           "ae255c3dba": "n/a",
           "247c93ca92": "• inferred pricing",
-          "8a6655f7a2": " • Last scan error: {{value0}}"
+          "8a6655f7a2": " • Last scan error: {{value0}}",
+          "rangeLast7Days": "Last 7 days",
+          "rangeLast30Days": "Last 30 days",
+          "rangeLast90Days": "Last 90 days",
+          "rangeAllTime": "All time"
         },
         "OpenCodeUsagePane": {
           "349f7c3f5c": "Total",
@@ -2913,7 +2929,11 @@
           "e04c58327c": "Orca worktrees only",
           "362231082f": "Unknown",
           "8095a63426": "n/a",
-          "6cc7782458": " • Last scan error: {{value0}}"
+          "6cc7782458": " • Last scan error: {{value0}}",
+          "rangeLast7Days": "Last 7 days",
+          "rangeLast30Days": "Last 30 days",
+          "rangeLast90Days": "Last 90 days",
+          "rangeAllTime": "All time"
         },
         "ShareUsageButton": {
           "7d6b25323d": "Share on X",
@@ -3032,6 +3052,22 @@
               "d9a4b3e2f1c5": "events"
             }
           }
+        },
+        "UsageBreakdownSection": {
+          "7765a4c3e1": "n/a",
+          "247c93ca92": "• inferred pricing"
+        },
+        "UsageSessionsTable": {
+          "1afc25eb06": "Turns",
+          "0f03975d59": "Events",
+          "21ea00bfa8": "Cache",
+          "e0b988599d": "Total",
+          "01476891c7": "Last active",
+          "c17bed0416": "Project",
+          "f6a2c8d019": "Model",
+          "faf3444859": "Input",
+          "a8b7487ff7": "Output",
+          "cfe2282ffa": "Unknown"
         }
       },
       "sparse": {
@@ -3521,7 +3557,11 @@
           "376bed88e5": "The connection to the remote host encountered an error.",
           "4afcca1d24": "Reconnect",
           "11552bf786": "SSH Disconnected",
-          "cb5938ae79": "Reconnecting..."
+          "cb5938ae79": "Reconnecting...",
+          "disconnected": "This remote repository is not connected.",
+          "reconnecting": "Reconnecting to the remote host...",
+          "reconnectionFailed": "Reconnection to the remote host failed.",
+          "authFailed": "Authentication to the remote host failed."
         },
         "SshTargetRow": {
           "4677394048": "Connecting…",
@@ -7579,7 +7619,9 @@
             "f273f2271c": "Started the agent. Marked {{value0}} resolved, skipped {{value1}}, failed {{value2}}.",
             "aa95b81a3a": "Started the agent. Marked {{value0}} resolved, skipped {{value1}}, failed {{value2}}.",
             "495b2f8c4b": "Started the agent, but could not mark the selected comments resolved.",
-            "3c3ad3a1d2": "Started the agent. No selected comments can be marked resolved on the host."
+            "3c3ad3a1d2": "Started the agent. No selected comments can be marked resolved on the host.",
+            "b4f3ec62a1": "More {{value0}} actions",
+            "a9d7c128e4": "unlink {{value0}}"
           },
           "CreatePullRequestDialog": {
             "2bc1b4345e": "Cancel",
@@ -8963,7 +9005,11 @@
             "3c4adfd821": "fix login race condition",
             "56a0271428": "Isolated workspaces",
             "ef737dcee1": "GitHub & Linear tasks",
-            "ac51c061e2": "codex"
+            "ac51c061e2": "codex",
+            "47f16ecf34": "Ship several things at once. Each workspace keeps its branch, terminal, and agent activity together.",
+            "70aa182266": "Hand off a goal and walk away. A coordinator agent fans out and ships parallel PRs.",
+            "f10c14dd9d": "Skip the tab-switching. Pick from your GitHub or Linear backlog and start a workspace in one click.",
+            "5d6ee181b6": "Open any workspace to return to its terminal, then split panes for tests, logs, and agents."
           },
           "FeatureWallBody": {
             "25ec5356d6": "Setup"
@@ -9036,7 +9082,9 @@
             "6e3f5223c5": "Explorer",
             "ab2901bce6": "Checks",
             "d7f80060ca": "Source Control",
-            "8e715588e4": "Search"
+            "8e715588e4": "Search",
+            "a6c8b9e32f": "Checks passed",
+            "f4d5e1a7b2": "3 checks"
           },
           "ReviewShipAnimatedVisual": {
             "4d99496b8c": "Create PR",
