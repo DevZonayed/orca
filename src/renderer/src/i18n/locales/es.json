@@ -1552,7 +1552,9 @@
         "a2a279b32a": "Se agotó el tiempo de guardado o falló. Corregir errores antes de cerrar.",
         "46e08bc5c8": "Este archivo tiene cambios no guardados.",
         "61ed600d29": "\"{{value0}}\" tiene cambios no guardados. ¿Quieres guardar antes de cerrar?",
-        "cdc9ac4b2d": "editor"
+        "cdc9ac4b2d": "editor",
+        "e57db40c11": "Could not build launch command for {{value0}}.",
+        "5b2c1a9e44": "No agent CLI detected — install one or pick a default agent in Settings."
       },
       "TerminalSearch": {
         "db234b7519": "Cerca",

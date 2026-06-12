@@ -1552,7 +1552,9 @@
         "a2a279b32a": "保存がタイムアウトしたか失敗しました。閉じる前にエラーを修正してください。",
         "46e08bc5c8": "このファイルには保存されていない変更が含まれています。",
         "61ed600d29": "「{{value0}}」には未保存の変更があります。閉じる前に保存しますか?",
-        "cdc9ac4b2d": "エディタ"
+        "cdc9ac4b2d": "エディタ",
+        "e57db40c11": "Could not build launch command for {{value0}}.",
+        "5b2c1a9e44": "No agent CLI detected — install one or pick a default agent in Settings."
       },
       "TerminalSearch": {
         "db234b7519": "閉じる",
