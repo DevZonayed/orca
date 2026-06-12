@@ -12,38 +12,50 @@ export type CloseIssueReasonOption = {
 export const CLOSE_ISSUE_REASONS: CloseIssueReasonOption[] = [
   {
     reason: 'completed',
-    label: translate(
-      'auto.components.github.githubIssueCloseReasons.completed.label',
-      'Close as completed'
-    ),
-    description: translate(
-      'auto.components.github.githubIssueCloseReasons.completed.description',
-      'Done, closed, fixed, resolved'
-    ),
+    get label() {
+      return translate(
+        'auto.components.github.githubIssueCloseReasons.completed.label',
+        'Close as completed'
+      )
+    },
+    get description() {
+      return translate(
+        'auto.components.github.githubIssueCloseReasons.completed.description',
+        'Done, closed, fixed, resolved'
+      )
+    },
     icon: <CheckCircle2 className="size-4 text-violet-500" />
   },
   {
     reason: 'not_planned',
-    label: translate(
-      'auto.components.github.githubIssueCloseReasons.notPlanned.label',
-      'Close as not planned'
-    ),
-    description: translate(
-      'auto.components.github.githubIssueCloseReasons.notPlanned.description',
-      "Won't fix, can't repro, stale"
-    ),
+    get label() {
+      return translate(
+        'auto.components.github.githubIssueCloseReasons.notPlanned.label',
+        'Close as not planned'
+      )
+    },
+    get description() {
+      return translate(
+        'auto.components.github.githubIssueCloseReasons.notPlanned.description',
+        "Won't fix, can't repro, stale"
+      )
+    },
     icon: <Ban className="size-4 text-muted-foreground" />
   },
   {
     reason: 'duplicate',
-    label: translate(
-      'auto.components.github.githubIssueCloseReasons.duplicate.label',
-      'Close as duplicate'
-    ),
-    description: translate(
-      'auto.components.github.githubIssueCloseReasons.duplicate.description',
-      'Duplicate of another issue'
-    ),
+    get label() {
+      return translate(
+        'auto.components.github.githubIssueCloseReasons.duplicate.label',
+        'Close as duplicate'
+      )
+    },
+    get description() {
+      return translate(
+        'auto.components.github.githubIssueCloseReasons.duplicate.description',
+        'Duplicate of another issue'
+      )
+    },
     icon: <Copy className="size-4 text-muted-foreground" />
   }
 ]
