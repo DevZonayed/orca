@@ -2770,6 +2770,8 @@ export class OrcaRuntimeService {
       throw new Error('tab_not_found')
     }
 
+    let activatedTab: RuntimeMobileSessionSnapshotTab = tab
+
     if (tab.type === 'terminal') {
       const publicTab = this.toMobileSessionTabsResult(snapshot!).tabs.find(
         (candidate) => candidate.type === 'terminal' && candidate.id === tab.id
@@ -2810,6 +2812,7 @@ export class OrcaRuntimeService {
             )
       const targetTab = activeSibling ?? tab
       this.notifier?.focusTerminal(targetTab.parentTabId, worktreeId, targetTab.leafId)
+      activatedTab = targetTab
     } else if (tab.type === 'browser') {
       // Why: browser mobile tabs are renderer-owned unified tabs; focusing the
       // session tab keeps desktop tab order/group state authoritative.
@@ -2817,7 +2820,54 @@ export class OrcaRuntimeService {
     } else {
       this.notifier?.focusEditorTab?.(tab.id, worktreeId)
     }
+
+    // Why: serve/headless snapshots have no renderer to re-publish focus, but
+    // merged epochs can still contain renderer-owned group state.
+    if (
+      !this.getAvailableAuthoritativeWindow() &&
+      this.isPureHeadlessMobileSessionPublication(snapshot!.publicationEpoch)
+    ) {
+      this.persistHeadlessMobileSessionActiveTab(worktreeId, snapshot!, activatedTab)
+    }
     return this.getMobileSessionTabsForWorktree(worktreeId)
+  }
+
+  private persistHeadlessMobileSessionActiveTab(
+    worktreeId: string,
+    snapshot: RuntimeMobileSessionTabsSnapshot,
+    activeTab: RuntimeMobileSessionSnapshotTab
+  ): void {
+    const alreadyActive =
+      snapshot.activeTabId === activeTab.id &&
+      snapshot.activeTabType === activeTab.type &&
+      snapshot.tabs.every((candidate) => candidate.isActive === (candidate.id === activeTab.id))
+    if (alreadyActive) {
+      // Why: re-activating the already-active tab must not bump snapshotVersion,
+      // or every redundant activation would force a remote re-render.
+      return
+    }
+    const tabs = snapshot.tabs.map((candidate) => ({
+      ...candidate,
+      isActive: candidate.id === activeTab.id
+    }))
+    const terminalTabs = tabs.filter(
+      (candidate): candidate is RuntimeMobileSessionTerminalTab => candidate.type === 'terminal'
+    )
+    const next: RuntimeMobileSessionTabsSnapshot = {
+      ...snapshot,
+      snapshotVersion: snapshot.snapshotVersion + 1,
+      activeTabId: activeTab.id,
+      activeTabType: activeTab.type,
+      tabGroups: this.buildHeadlessMobileSessionTabGroups(
+        worktreeId,
+        terminalTabs,
+        activeTab.type === 'terminal' ? activeTab : null,
+        snapshot.tabGroups
+      ),
+      tabs
+    }
+    this.mobileSessionTabsByWorktree.set(worktreeId, next)
+    this.notifyMobileSessionTabsChanged(worktreeId)
   }
 
   private shouldMaterializeHeadlessMobileSessionTab(
@@ -13313,10 +13363,15 @@ export class OrcaRuntimeService {
     )
   }
 
+  private isPureHeadlessMobileSessionPublication(publicationEpoch: string): boolean {
+    return (
+      publicationEpoch.startsWith('headless:') || publicationEpoch.startsWith('headless-hydrated:')
+    )
+  }
+
   private isHeadlessMobileSessionPublication(publicationEpoch: string): boolean {
     return (
-      publicationEpoch.startsWith('headless:') ||
-      publicationEpoch.startsWith('headless-hydrated:') ||
+      this.isPureHeadlessMobileSessionPublication(publicationEpoch) ||
       publicationEpoch.includes(':headless-merge:')
     )
   }
