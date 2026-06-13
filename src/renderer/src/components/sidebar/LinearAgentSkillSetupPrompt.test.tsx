@@ -121,6 +121,17 @@ async function updatePrompt(
   await act(async () => {})
 }
 
+async function unmountPrompt(): Promise<void> {
+  if (root) {
+    await act(async () => {
+      root?.unmount()
+    })
+  }
+  root = null
+  container?.remove()
+  container = null
+}
+
 function findBodyButton(label: string): HTMLButtonElement | undefined {
   return Array.from(document.body.querySelectorAll('button')).find(
     (button) => button.textContent === label
@@ -167,7 +178,7 @@ describe('LinearAgentSkillSetupPrompt', () => {
     mocks.ensureWslCli.mockClear()
     mocks.panelProps.length = 0
     window.localStorage.clear()
-    _linearAgentSkillSetupPromptInternalsForTests.resetSessionSnoozes()
+    _linearAgentSkillSetupPromptInternalsForTests.resetSessionReminders()
     Object.defineProperty(window, 'api', {
       configurable: true,
       value: {
@@ -180,16 +191,9 @@ describe('LinearAgentSkillSetupPrompt', () => {
   })
 
   afterEach(async () => {
-    if (root) {
-      await act(async () => {
-        root?.unmount()
-      })
-    }
-    root = null
-    container?.remove()
-    container = null
+    await unmountPrompt()
     window.localStorage.clear()
-    _linearAgentSkillSetupPromptInternalsForTests.resetSessionSnoozes()
+    _linearAgentSkillSetupPromptInternalsForTests.resetSessionReminders()
     Reflect.deleteProperty(window, 'api')
   })
 
@@ -396,7 +400,7 @@ describe('LinearAgentSkillSetupPrompt', () => {
     )
   })
 
-  it('auto-opens as a modal-only prompt and session-snoozes when closed', async () => {
+  it('auto-opens as a modal-only prompt and treats Not now as a casual close', async () => {
     await renderPrompt({ linked: true, remote: false, surface: 'modal' })
 
     expect(container?.textContent).not.toContain('Set up Linear agent skill')
