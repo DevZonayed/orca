@@ -1273,6 +1273,7 @@ export type LinearIssue = {
   }
   estimate?: number | null
   priority: number
+  dueDate?: string | null
   updatedAt: string
 }
 
@@ -1435,6 +1436,7 @@ export type LinearIssueUpdate = {
   assigneeId?: string | null
   estimate?: number | null
   priority?: number
+  dueDate?: string | null
   labelIds?: string[]
   projectId?: string | null
 }
