@@ -45,6 +45,7 @@ import {
 } from 'lucide-react-native'
 import type { RpcClient } from '../../../../src/transport/rpc-client'
 import { loadHosts } from '../../../../src/transport/host-store'
+import { loadTerminalAutocompleteEnabled } from '../../../../src/storage/preferences'
 import {
   useHostClient,
   useForceReconnect,
@@ -738,6 +739,9 @@ export default function SessionScreen() {
   const sessionTabsRef = useRef<MobileSessionTab[]>([])
   const [terminalsLoaded, setTerminalsLoaded] = useState(false)
   const [input, setInput] = useState('')
+  // Why: local opt-in for keyboard autocomplete/autocorrect on the terminal
+  // command bar; reloaded on focus so a Settings → Terminal toggle takes effect on return.
+  const [autocompleteEnabled, setAutocompleteEnabled] = useState(false)
   const [liveInputCapture, setLiveInputCapture] = useState('')
   const [liveInputTerminalHandles, setLiveInputTerminalHandles] = useState<Set<string>>(
     () => new Set()
@@ -2300,6 +2304,21 @@ export default function SessionScreen() {
       }, 2000)
       return () => clearInterval(interval)
     }, [connState, fetchSessionTabs, fetchTerminals])
+  )
+
+  // Why: pick up the Settings → Terminal autocomplete toggle when returning here.
+  useFocusEffect(
+    useCallback(() => {
+      let active = true
+      void loadTerminalAutocompleteEnabled().then((enabled) => {
+        if (active) {
+          setAutocompleteEnabled(enabled)
+        }
+      })
+      return () => {
+        active = false
+      }
+    }, [])
   )
 
   // Why: unsubscribe the old terminal so the server restores its desktop dims
@@ -4196,6 +4215,15 @@ export default function SessionScreen() {
             ) : (
               <View style={styles.inputBar}>
                 <TextInput
+                  // Why: Android caches the IME inputType at mount, so toggling
+                  // autocomplete must remount there; iOS can update without a focus-costly remount.
+                  key={
+                    Platform.OS === 'android'
+                      ? autocompleteEnabled
+                        ? 'cmd-input-ac-on'
+                        : 'cmd-input-ac-off'
+                      : 'cmd-input'
+                  }
                   style={styles.textInput}
                   value={input}
                   onChangeText={(text) =>
@@ -4204,10 +4232,18 @@ export default function SessionScreen() {
                   placeholder="Type a command…"
                   placeholderTextColor={colors.textMuted}
                   autoCapitalize="none"
-                  autoCorrect={false}
-                  spellCheck={false}
+                  autoCorrect={autocompleteEnabled}
+                  spellCheck={autocompleteEnabled}
                   smartInsertDelete={false}
-                  keyboardType={Platform.OS === 'ios' ? 'ascii-capable' : 'visible-password'}
+                  // Why: the default keyboard exposes autocomplete/autocorrect;
+                  // ascii-capable (iOS) / visible-password (Android) suppress it.
+                  keyboardType={
+                    autocompleteEnabled
+                      ? 'default'
+                      : Platform.OS === 'ios'
+                        ? 'ascii-capable'
+                        : 'visible-password'
+                  }
                   returnKeyType="send"
                   editable={canSend}
                   onSubmitEditing={() => void handleSend()}
