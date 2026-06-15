@@ -4314,7 +4314,8 @@
             "tintColorDescription": "混入左侧边栏表面的颜色。",
             "tintOpacity": "色调强度",
             "tintOpacityDescription": "控制色调混入边栏的强度。"
-          }
+          },
+          "workspaceCardLayoutGuidance": "使用工作区侧边栏选项菜单 > 卡片布局 > 紧凑。"
         },
         "AutoRenameBranchFromWorkSetting": {
           "1626524572": "Nautilus",
@@ -6405,6 +6406,17 @@
             "leftSidebarAppearance": {
               "title": "左侧边栏外观",
               "description": "让左侧边栏匹配终端、保持默认，或使用色调。"
+            },
+            "workspaceCardLayout": {
+              "title": "工作区卡片布局",
+              "description": "从工作区侧边栏选项菜单在紧凑和详细工作区卡片之间切换。",
+              "compact": "紧凑",
+              "compactDisplay": "紧凑显示",
+              "workspaceCards": "工作区卡片",
+              "worktreeCards": "工作树卡片",
+              "cardLayout": "卡片布局",
+              "workspaceOptions": "工作区选项",
+              "detailed": "详细"
             }
           }
         },

@@ -4329,7 +4329,8 @@
             "tintColorDescription": "El color que se mezcla en la superficie de la barra lateral izquierda.",
             "tintOpacity": "Intensidad del tinte",
             "tintOpacityDescription": "Controla con qué fuerza se mezcla el tinte en la barra lateral."
-          }
+          },
+          "workspaceCardLayoutGuidance": "Usa el menú de opciones de la barra lateral de espacios de trabajo > Diseño de tarjeta > Compacto."
         },
         "AutoRenameBranchFromWorkSetting": {
           "1626524572": "Nautilus",
@@ -6420,6 +6421,17 @@
             "leftSidebarAppearance": {
               "title": "Apariencia de la barra lateral izquierda",
               "description": "Haz que la barra lateral izquierda coincida con tu terminal, conserve el valor predeterminado o use un tinte."
+            },
+            "workspaceCardLayout": {
+              "title": "Diseño de tarjetas de espacios de trabajo",
+              "description": "Cambia entre tarjetas de espacios de trabajo compactas y detalladas desde el menú de opciones de la barra lateral de espacios de trabajo.",
+              "compact": "compacto",
+              "compactDisplay": "vista compacta",
+              "workspaceCards": "tarjetas de espacios de trabajo",
+              "worktreeCards": "tarjetas de worktree",
+              "cardLayout": "diseño de tarjeta",
+              "workspaceOptions": "opciones de espacios de trabajo",
+              "detailed": "detallado"
             }
           }
         },

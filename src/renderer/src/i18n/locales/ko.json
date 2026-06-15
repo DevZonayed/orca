@@ -4314,7 +4314,8 @@
             "tintColorDescription": "왼쪽 사이드바 표면에 섞을 색상입니다.",
             "tintOpacity": "색조 강도",
             "tintOpacityDescription": "사이드바에 색조를 얼마나 강하게 섞을지 조절합니다."
-          }
+          },
+          "workspaceCardLayoutGuidance": "작업 공간 사이드바 옵션 메뉴 > 카드 레이아웃 > 컴팩트를 사용하세요."
         },
         "AutoRenameBranchFromWorkSetting": {
           "1626524572": "Nautilus",
@@ -6405,6 +6406,17 @@
             "leftSidebarAppearance": {
               "title": "왼쪽 사이드바 모양",
               "description": "왼쪽 사이드바를 터미널에 맞추거나 기본값을 유지하거나 은은한 색조를 적용합니다."
+            },
+            "workspaceCardLayout": {
+              "title": "작업 공간 카드 레이아웃",
+              "description": "작업 공간 사이드바 옵션 메뉴에서 작업 공간 카드를 컴팩트 또는 상세 보기로 전환합니다.",
+              "compact": "컴팩트",
+              "compactDisplay": "컴팩트 보기",
+              "workspaceCards": "작업 공간 카드",
+              "worktreeCards": "워크트리 카드",
+              "cardLayout": "카드 레이아웃",
+              "workspaceOptions": "작업 공간 옵션",
+              "detailed": "상세"
             }
           }
         },
