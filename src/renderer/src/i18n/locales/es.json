@@ -8979,7 +8979,9 @@
           "a5e5da02f7": "integraciones",
           "35bbaf5ae0": "notificaciones",
           "984338477a": "tema",
-          "c47e1bd149": "agent"
+          "c47e1bd149": "agente",
+          "windowsTerminalTitle": "Configura los valores predeterminados de la terminal de Windows",
+          "windowsTerminalSubtitle": "Elige la Shell predeterminada para los paneles nuevos y cómo se comporta el clic derecho en la terminal."
         },
         "OnboardingFooter": {
           "ba58547306": "Atrás",
@@ -9058,6 +9060,32 @@
         },
         "AgentFeatureSetupStep": {
           "97dcdc010f": "Instalar CLI y habilidades"
+        },
+        "WindowsTerminalStep": {
+          "powerShell": "PowerShell",
+          "powerShellPwsh": "Usa PowerShell 7+ cuando está disponible, con Windows PowerShell como alternativa.",
+          "powerShellInbox": "Usa el Windows PowerShell disponible en todas las instalaciones compatibles de Windows.",
+          "commandPrompt": "Símbolo del sistema",
+          "commandPromptDescription": "Abre nuevos paneles de terminal con el comportamiento clásico de cmd.exe.",
+          "gitBash": "Git Bash",
+          "gitBashDescription": "Usa bash.exe de Git for Windows para flujos de trabajo de shell al estilo Unix.",
+          "gitBashUnavailable": "Seleccionado, pero Git Bash no se detectó en esta máquina.",
+          "wsl": "WSL",
+          "wslDescription": "Inicia nuevos paneles de terminal dentro de tu distribución predeterminada de Windows Subsystem for Linux.",
+          "wslUnavailable": "Seleccionado, pero WSL no se detectó en esta máquina.",
+          "rightClickPaste": "Pegar con clic derecho",
+          "rightClickPasteDescription": "El clic derecho pega el contenido del portapapeles. Ctrl+clic derecho abre el menú contextual.",
+          "rightClickMenu": "Abrir menú contextual",
+          "rightClickMenuDescription": "El clic derecho abre el menú de la terminal. Pega desde el menú o con el teclado.",
+          "loading": "Cargando ajustes de la terminal...",
+          "defaultShell": "Shell predeterminada",
+          "defaultShellDescription": "Elige la shell que Orca abre para nuevos paneles de la terminal de Windows.",
+          "wslDistribution": "Distribución de WSL",
+          "wslDistributionDescription": "Usa la distribución predeterminada de Windows o elige una distro instalada específica.",
+          "loadingDistros": "Cargando distribuciones",
+          "windowsDefault": "Predeterminada de Windows",
+          "rightClickBehavior": "Comportamiento del clic derecho",
+          "rightClickBehaviorDescription": "Elige el comportamiento del ratón en la terminal que coincida con tu memoria muscular de Windows."
         }
       },
       "new": {

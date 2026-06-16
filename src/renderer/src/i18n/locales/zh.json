@@ -8979,7 +8979,9 @@
           "a5e5da02f7": "集成",
           "35bbaf5ae0": "notifications",
           "984338477a": "theme",
-          "c47e1bd149": "agent"
+          "c47e1bd149": "智能体",
+          "windowsTerminalTitle": "设置 Windows 终端默认值",
+          "windowsTerminalSubtitle": "为新面板选择默认 Shell，以及终端中右键单击的行为。"
         },
         "OnboardingFooter": {
           "ba58547306": "返回",
@@ -9058,6 +9060,32 @@
         },
         "AgentFeatureSetupStep": {
           "97dcdc010f": "安装 CLI 和技能"
+        },
+        "WindowsTerminalStep": {
+          "powerShell": "PowerShell",
+          "powerShellPwsh": "在可用时使用 PowerShell 7+，否则回退到 Windows PowerShell。",
+          "powerShellInbox": "使用每个受支持的 Windows 安装中都提供的 Windows PowerShell。",
+          "commandPrompt": "命令提示符",
+          "commandPromptDescription": "以经典 cmd.exe 行为打开新的终端面板。",
+          "gitBash": "Git Bash",
+          "gitBashDescription": "使用 Git for Windows 的 bash.exe 进行 Unix 风格的 shell 工作流。",
+          "gitBashUnavailable": "已选择，但此电脑未检测到 Git Bash。",
+          "wsl": "WSL",
+          "wslDescription": "在 Windows Subsystem for Linux 的默认环境中启动新的终端面板。",
+          "wslUnavailable": "已选择，但此电脑未检测到 WSL。",
+          "rightClickPaste": "右键单击时粘贴",
+          "rightClickPasteDescription": "右键单击会粘贴剪贴板内容。Ctrl+右键单击会打开上下文菜单。",
+          "rightClickMenu": "打开上下文菜单",
+          "rightClickMenuDescription": "右键单击会打开终端菜单。可从菜单或键盘粘贴。",
+          "loading": "正在加载终端设置...",
+          "defaultShell": "默认 Shell",
+          "defaultShellDescription": "选择 Orca 在新的 Windows 终端面板中打开的 shell。",
+          "wslDistribution": "WSL 发行版",
+          "wslDistributionDescription": "使用 Windows 默认发行版，或选择一个已安装的特定发行版。",
+          "loadingDistros": "正在加载发行版",
+          "windowsDefault": "Windows 默认值",
+          "rightClickBehavior": "右键单击行为",
+          "rightClickBehaviorDescription": "选择符合你在 Windows 上使用习惯的终端鼠标行为。"
         }
       },
       "new": {

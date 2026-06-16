@@ -8979,7 +8979,9 @@
           "a5e5da02f7": "連携",
           "35bbaf5ae0": "通知",
           "984338477a": "テーマ",
-          "c47e1bd149": "agent"
+          "c47e1bd149": "エージェント",
+          "windowsTerminalTitle": "Windows ターミナルの既定値を設定",
+          "windowsTerminalSubtitle": "新しいペインで使う既定のシェルと、ターミナルでの右クリックの動作を選びます。"
         },
         "OnboardingFooter": {
           "ba58547306": "戻る",
@@ -9058,6 +9060,32 @@
         },
         "AgentFeatureSetupStep": {
           "97dcdc010f": "CLI とスキルをインストール"
+        },
+        "WindowsTerminalStep": {
+          "powerShell": "PowerShell",
+          "powerShellPwsh": "利用可能な場合は PowerShell 7+ を使い、代わりに Windows PowerShell を使用します。",
+          "powerShellInbox": "対応するすべての Windows に搭載されている Windows PowerShell を使います。",
+          "commandPrompt": "コマンドプロンプト",
+          "commandPromptDescription": "従来の cmd.exe の動作で新しいターミナルペインを開きます。",
+          "gitBash": "Git Bash",
+          "gitBashDescription": "Unix スタイルのシェル操作には Git for Windows の bash.exe を使います。",
+          "gitBashUnavailable": "選択されていますが、このマシンでは Git Bash が検出されませんでした。",
+          "wsl": "WSL",
+          "wslDescription": "Windows Subsystem for Linux の既定の環境で新しいターミナルペインを起動します。",
+          "wslUnavailable": "選択されていますが、このマシンでは WSL が検出されませんでした。",
+          "rightClickPaste": "右クリックで貼り付け",
+          "rightClickPasteDescription": "右クリックでクリップボードを貼り付けます。Ctrl+右クリックでコンテキスト メニューを開きます。",
+          "rightClickMenu": "コンテキスト メニューを開く",
+          "rightClickMenuDescription": "右クリックでターミナル メニューを開きます。メニューまたはキーボードから貼り付けます。",
+          "loading": "ターミナル設定を読み込み中...",
+          "defaultShell": "既定のシェル",
+          "defaultShellDescription": "Orca が Windows ターミナルの新しいペインで開くシェルを選びます。",
+          "wslDistribution": "WSL ディストリビューション",
+          "wslDistributionDescription": "Windows の既定のディストリビューションを使うか、インストール済みの特定のディストリを選びます。",
+          "loadingDistros": "ディストリビューションを読み込み中",
+          "windowsDefault": "Windows の既定",
+          "rightClickBehavior": "右クリックの動作",
+          "rightClickBehaviorDescription": "Windows で慣れたターミナルのマウス操作に合うものを選びます。"
         }
       },
       "new": {
