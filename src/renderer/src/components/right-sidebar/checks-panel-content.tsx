@@ -1537,7 +1537,7 @@ function CommentRow({
           <div className="flex-1" />
           {!editing && resolveSelectionAction}
           {!editing && (
-            <div className="flex items-center gap-0.5 opacity-0 group-hover/comment:opacity-100 transition-opacity">
+            <div className="flex items-center gap-0.5 can-hover:opacity-0 group-hover/comment:opacity-100 transition-opacity">
               {showResolve && comment.threadId != null && onResolve && (
                 <ResolveButton
                   threadId={comment.threadId}
