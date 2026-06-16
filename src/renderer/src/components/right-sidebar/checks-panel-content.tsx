@@ -522,12 +522,12 @@ function CheckRunDetails({
             )}
           </div>
           {activeWorktree && (
-            <div className="flex justify-end">
+            <div className="flex justify-start">
               <Button
                 type="button"
-                variant="outline"
+                variant="ghost"
                 size="xs"
-                className="h-7 gap-1 px-2 text-[11px]"
+                className="h-6 gap-1 px-1.5 text-[11px] text-muted-foreground hover:text-foreground"
                 onClick={(event) => {
                   event.stopPropagation()
                   openFullDetailsTab()
@@ -745,13 +745,13 @@ function CheckRunDetails({
             </div>
           )}
 
-          <div className="flex justify-end pt-1">
+          <div className="flex justify-start pt-1">
             {activeWorktree && (
               <Button
                 type="button"
-                variant="outline"
+                variant="ghost"
                 size="xs"
-                className="h-7 gap-1 px-2 text-[11px]"
+                className="h-6 gap-1 px-1.5 text-[11px] text-muted-foreground hover:text-foreground"
                 onClick={(event) => {
                   event.stopPropagation()
                   openFullDetailsTab()

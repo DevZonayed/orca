@@ -8568,7 +8568,8 @@
             "ef182dcb12": "buscar",
             "fc3095d2ed": "explorador",
             "aiVaultSessionHistory": "Agents",
-            "folderWorkspaces": "Attached worktrees"
+            "folderWorkspaces": "Árboles de trabajo adjuntos",
+            "parentPrChecks": "Comprobaciones de PR"
           },
           "right": {
             "panel": {
@@ -11023,6 +11024,47 @@
           "countMany": "{{value0}} attached worktrees",
           "emptyTitle": "No attached worktrees yet",
           "emptyCopy": "Worktrees created from this workspace will show up here."
+        },
+        "FolderWorkspacePrChecksPanel": {
+          "unavailable": "Las comprobaciones de PR solo se muestran en espacios de trabajo de carpeta.",
+          "refresh": "Actualizar comprobaciones de PR",
+          "emptyTitle": "Aún no hay árboles de trabajo adjuntos",
+          "emptyCopy": "Las comprobaciones de PR aparecerán aquí cuando se adjunten árboles de trabajo a este espacio de trabajo de carpeta.",
+          "openChecksTab": "Abrir la pestaña Comprobaciones de {{value0}}",
+          "openReviewExternally": "Abrir {{value0}} externamente",
+          "summary": "{{value0}} adjuntos · {{value1}} con PR/MR · {{value2}} requieren atención · {{value3}} pendientes · {{value4}} correctos · {{value5}} sin PR · {{value6}} desconocidos",
+          "showDetails": "Mostrar detalles de comprobaciones de PR de {{value0}}",
+          "hideDetails": "Ocultar detalles de comprobaciones de PR de {{value0}}"
+        },
+        "parentPrChecks": {
+          "rowSummary": {
+            "failingCount": "{{value0}} fallando",
+            "pendingCount": "{{value0}} pendientes",
+            "checksFailing": "Comprobaciones fallando",
+            "mergeConflicts": "Conflictos de fusión",
+            "checksPending": "Comprobaciones pendientes",
+            "checksPassing": "Comprobaciones correctas",
+            "merged": "Fusionado",
+            "closedWithoutMerge": "Cerrado sin fusionar",
+            "draftReview": "Revisión en borrador",
+            "noCheckSignal": "Sin señal de comprobaciones",
+            "reviewUnavailable": "Estado de revisión no disponible",
+            "noPrLinked": "Sin PR vinculado",
+            "detailsUnavailable": "Detalles de revisión no disponibles",
+            "refreshFailed": "Error al actualizar",
+            "checking": "Comprobando estado de revisión…",
+            "notFetched": "Estado aún no obtenido",
+            "unavailableWorktree": "No disponible para este árbol de trabajo"
+          },
+          "groups": {
+            "needsAttention": "Requiere atención",
+            "pending": "Pendiente",
+            "merged": "Fusionado",
+            "passing": "Correcto",
+            "draftOrNoChecks": "Borrador / sin comprobaciones",
+            "noPr": "Sin PR",
+            "unavailable": "No disponible"
+          }
         }
       },
       "link": {

@@ -2916,6 +2916,7 @@ export type RightSidebarTab =
   | 'search'
   | 'vault'
   | 'workspaces'
+  | 'pr-checks'
   | 'source-control'
   | 'checks'
   | 'ports'
