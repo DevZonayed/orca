@@ -24,6 +24,8 @@ import { SYNC_FIT_PANES_EVENT, TOGGLE_TERMINAL_PANE_EXPAND_EVENT } from '@/const
 import { syncZoomCSSVar } from '@/lib/ui-zoom'
 import { resolveLeftSidebarStyleVariables } from '@/lib/left-sidebar-appearance'
 import { canShowRightSidebarForView } from '@/lib/right-sidebar-visibility'
+import { resolveLeftTitlebarChromeLayout } from '@/lib/titlebar-left-chrome'
+import { shouldShowWorktreeCreationSurface } from '@/lib/worktree-creation-surface'
 import { buildAppFontFamily } from '@/lib/app-font-family'
 import { toast } from 'sonner'
 import { Toaster } from '@/components/ui/sonner'
@@ -390,14 +392,12 @@ function App(): React.JSX.Element {
   const contextualToursAutoEligible = useAppStore((s) => s.contextualToursAutoEligible)
   const activeWorktreeId = useAppStore((s) => s.activeWorktreeId)
   const activePendingCreationId = useAppStore((s) => s.activePendingCreationId)
-  // Why: the creation loader is debounced — a fast create resolves before its
-  // entry's loaderVisible flips, so the content area keeps showing the prior
-  // workspace (or Landing) and never flashes a loader. Only a create still
-  // pending past the debounce gates the loader and hides the terminal.
-  const activeCreationLoaderVisible = useAppStore(
+  // Why: the creation surface owns the tab strip from the first pending frame.
+  // Gating it on the delayed loader flag made the tab bar swap in mid-create.
+  const activePendingCreationExists = useAppStore(
     (s) =>
-      s.activePendingCreationId != null &&
-      s.pendingWorktreeCreations[s.activePendingCreationId]?.loaderVisible === true
+      s.activePendingCreationId !== null &&
+      s.pendingWorktreeCreations[s.activePendingCreationId] !== undefined
   )
   // Why: App swaps the sidebar between workspace and landing layouts when the
   // active workspace is slept/deleted. Keep virtualized scroll memory above
@@ -434,9 +434,14 @@ function App(): React.JSX.Element {
   // and shutdown transitions where activeWorktreeId can briefly become null.
   const shouldMountTerminalWorkbench =
     activeWorktreeId !== null || hasMountedTerminalWorkbenchRef.current
-  // Why: visible worktree creation owns its faux tab strip; the previous
-  // workspace must stay mounted for retention without rendering real chrome.
-  const creationLayoutActive = activeView === 'terminal' && activeCreationLoaderVisible
+  // Why: visible worktree creation owns its faux tab strip from start to finish;
+  // the previous workspace must stay mounted for retention without rendering
+  // real chrome.
+  const creationLayoutActive = shouldShowWorktreeCreationSurface({
+    activeView,
+    activePendingCreationId,
+    hasActivePendingCreation: activePendingCreationExists
+  })
   const workspaceChromeActive =
     activeView === 'terminal' && activeWorktreeId !== null && !creationLayoutActive
   const terminalWorkbenchVisible =
@@ -1314,9 +1319,17 @@ function App(): React.JSX.Element {
     activeView !== 'skills'
   // Why: Tasks/Landing keep the full titlebar only when the sidebar is
   // collapsed; with it open, mirror workspace view so titlebar-left sits flush
-  // above nav. Creation layout suppresses both titlebar forms.
+  // above nav. Creation layout suppresses the full-width titlebar.
   const stackedSidebarOpen =
     !workspaceChromeActive && !creationLayoutActive && showSidebar && sidebarOpen
+  // Why: visible creation keeps only the top-left window chrome; workspace tabs
+  // and right-sidebar chrome remain gated by workspaceChromeActive.
+  const leftTitlebarChromeLayout = resolveLeftTitlebarChromeLayout({
+    workspaceChromeActive,
+    stackedSidebarOpen,
+    creationLayoutActive,
+    sidebarOpen
+  })
   // Why: suppress right sidebar controls on full-page navigation surfaces
   // since those surfaces intentionally own the full content area.
   const showRightSidebarControls = !creationLayoutActive && canShowRightSidebarForView(activeView)
@@ -1630,7 +1643,13 @@ function App(): React.JSX.Element {
     })
     observer.observe(controls)
     return () => observer.disconnect()
-  }, [isFullScreen, settings?.showTitlebarAppName, showSidebar, workspaceChromeActive, sidebarOpen])
+  }, [
+    isFullScreen,
+    settings?.showTitlebarAppName,
+    showSidebar,
+    leftTitlebarChromeLayout.isFloating,
+    sidebarOpen
+  ])
 
   const resolvedMountedLazyModalIds = resolveMountedLazyModalIds(activeModal, mountedLazyModalIds)
   if (resolvedMountedLazyModalIds !== mountedLazyModalIds) {
@@ -1654,7 +1673,7 @@ function App(): React.JSX.Element {
     <div
       ref={titlebarLeftControlsRef}
       className={`flex h-full shrink-0 items-center${
-        workspaceChromeActive && !sidebarOpen ? ' w-max' : ' w-full'
+        leftTitlebarChromeLayout.isFloating ? ' w-max' : ' w-full'
       }`}
     >
       <div className="flex h-full items-center">
@@ -1881,7 +1900,7 @@ function App(): React.JSX.Element {
                 to the top of the window. Left titlebar controls move to a
                 header above the sidebar. Settings, landing, and the tasks
                 page keep the titlebar. */}
-                  {!workspaceChromeActive && !stackedSidebarOpen && !creationLayoutActive ? (
+                  {!leftTitlebarChromeLayout.shouldMount ? (
                     <div className="titlebar">
                       <div className="flex items-center shrink-0 mr-2">{titlebarLeftControls}</div>
                       {titlebarMainStrip}
@@ -1889,7 +1908,7 @@ function App(): React.JSX.Element {
                   ) : null}
                   <div className="flex flex-row flex-1 min-h-0 overflow-hidden">
                     {showSidebar ? (
-                      workspaceChromeActive || stackedSidebarOpen ? (
+                      leftTitlebarChromeLayout.shouldMount ? (
                         /* Why: left column wraps the sidebar with a titlebar-height
                      header above it. The header holds the same controls
                      (traffic lights, sidebar toggle, "Orca" title, agent badge)
@@ -1911,9 +1930,9 @@ function App(): React.JSX.Element {
                             // header sized to its own controls instead of the w-0
                             // sidebar wrapper.
                             className={`titlebar-left${
-                              sidebarOpen
-                                ? ''
-                                : ' titlebar-left-floating absolute top-0 left-0 z-10 w-max border-r border-border'
+                              leftTitlebarChromeLayout.isFloating
+                                ? ' titlebar-left-floating absolute top-0 left-0 z-10 w-max border-r border-border'
+                                : ''
                             }`}
                             style={{
                               // Why: custom sidebar appearances are scoped to the sidebar
@@ -2055,13 +2074,18 @@ function App(): React.JSX.Element {
                               {activeView === 'space' ? <WorkspaceSpacePage /> : null}
                               {activeView === 'mobile' ? <MobilePage /> : null}
                               {activeView === 'terminal' &&
-                              activeCreationLoaderVisible &&
+                              creationLayoutActive &&
                               activePendingCreationId ? (
-                                <WorktreeCreationPanel creationId={activePendingCreationId} />
+                                <WorktreeCreationPanel
+                                  creationId={activePendingCreationId}
+                                  reserveCollapsedSidebarHeaderSpace={
+                                    leftTitlebarChromeLayout.isFloating
+                                  }
+                                />
                               ) : null}
                               {activeView === 'terminal' &&
                               !activeWorktreeId &&
-                              !activeCreationLoaderVisible ? (
+                              !creationLayoutActive ? (
                                 <Landing />
                               ) : null}
                             </RecoverableRenderErrorBoundary>
