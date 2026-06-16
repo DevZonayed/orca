@@ -1266,6 +1266,7 @@ export type PreloadApi = {
       args: GitHubRepoSelectorArgs & {
         prNumber: number
         enabled: boolean
+        method?: 'merge' | 'squash' | 'rebase'
         prRepo?: GitHubOwnerRepo | null
       }
     ) => Promise<{ ok: true } | { ok: false; error: string }>

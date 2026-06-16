@@ -1105,6 +1105,7 @@ const api = {
       sourceContext?: TaskSourceContext | null
       prNumber: number
       enabled: boolean
+      method?: 'merge' | 'squash' | 'rebase'
       prRepo?: { owner: string; repo: string } | null
     }): Promise<{ ok: true } | { ok: false; error: string }> =>
       ipcRenderer.invoke('gh:setPRAutoMerge', args),
