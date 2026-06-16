@@ -82,6 +82,7 @@ function mapGitLabReview(mr: MRInfo): HostedReviewInfo {
     updatedAt: mr.updatedAt,
     mergeable: mr.mergeable,
     ...(mr.headSha ? { headSha: mr.headSha } : {}),
+    ...(mr.baseRefName ? { baseRefName: mr.baseRefName } : {}),
     ...(mr.conflictSummary ? { conflictSummary: mr.conflictSummary } : {})
   }
 }

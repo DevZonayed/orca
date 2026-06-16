@@ -257,15 +257,100 @@ type CreatePrIntentNotice = {
 
 export function resolveSourceControlBaseRef(input: {
   worktreeBaseRef?: string | null
+  reviewBaseRefName?: string | null
   repoBaseRef?: string | null
   defaultBaseRef?: string | null
 }): string | null {
-  return (
-    input.worktreeBaseRef?.trim() ||
-    input.repoBaseRef?.trim() ||
-    input.defaultBaseRef?.trim() ||
-    null
-  )
+  const worktreeBaseRef = input.worktreeBaseRef?.trim() || null
+  const hasReviewBaseRefName = Boolean(input.reviewBaseRefName?.trim())
+  const reviewBaseRef = resolveHostedReviewCompareBaseRef(input.reviewBaseRefName, [
+    input.repoBaseRef,
+    input.defaultBaseRef
+  ])
+  if (worktreeBaseRef && isFullGitCommitOid(worktreeBaseRef) && hasReviewBaseRefName) {
+    return reviewBaseRef
+  }
+  return worktreeBaseRef || input.repoBaseRef?.trim() || input.defaultBaseRef?.trim() || null
+}
+
+export function resolveSourceControlPickerBaseRef(input: {
+  pinnedBaseRef?: string | null
+  effectiveBaseRef?: string | null
+}): string | undefined {
+  const pinnedBaseRef = input.pinnedBaseRef?.trim()
+  if (!pinnedBaseRef) {
+    return undefined
+  }
+  return input.effectiveBaseRef?.trim() || pinnedBaseRef
+}
+
+function isFullGitCommitOid(value: string): boolean {
+  return /^[0-9a-f]{40}$/i.test(value)
+}
+
+function resolveHostedReviewCompareBaseRef(
+  baseRefName: string | null | undefined,
+  candidates: (string | null | undefined)[]
+): string | null {
+  const branch = baseRefName?.trim()
+  if (!branch) {
+    return null
+  }
+  for (const candidate of candidates) {
+    const trimmed = candidate?.trim()
+    if (!trimmed) {
+      continue
+    }
+    if (getCompareBaseCandidateBranchName(trimmed) === branch) {
+      return trimmed
+    }
+  }
+  for (const candidate of candidates) {
+    const rewritten = rewriteCompareBaseBranchFromCandidate(candidate, branch)
+    if (rewritten) {
+      return rewritten
+    }
+  }
+  return null
+}
+
+function getCompareBaseCandidateBranchName(candidate: string): string {
+  const remoteRefPrefix = 'refs/remotes/'
+  if (candidate.startsWith(remoteRefPrefix)) {
+    const remoteAndBranch = candidate.slice(remoteRefPrefix.length)
+    const slashIndex = remoteAndBranch.indexOf('/')
+    return slashIndex > 0 ? remoteAndBranch.slice(slashIndex + 1) : remoteAndBranch
+  }
+  const headsRefPrefix = 'refs/heads/'
+  if (candidate.startsWith(headsRefPrefix)) {
+    return candidate.slice(headsRefPrefix.length)
+  }
+  const slashIndex = candidate.indexOf('/')
+  return slashIndex > 0 ? candidate.slice(slashIndex + 1) : candidate
+}
+
+function rewriteCompareBaseBranchFromCandidate(
+  candidate: string | null | undefined,
+  branch: string
+): string | null {
+  const trimmed = candidate?.trim()
+  if (!trimmed) {
+    return null
+  }
+  const remoteRefPrefix = 'refs/remotes/'
+  if (trimmed.startsWith(remoteRefPrefix)) {
+    const remoteAndBranch = trimmed.slice(remoteRefPrefix.length)
+    const slashIndex = remoteAndBranch.indexOf('/')
+    return slashIndex > 0
+      ? `${remoteRefPrefix}${remoteAndBranch.slice(0, slashIndex)}/${branch}`
+      : null
+  }
+  const headsRefPrefix = 'refs/heads/'
+  if (trimmed.startsWith(headsRefPrefix)) {
+    return `${headsRefPrefix}${branch}`
+  }
+  const slashIndex = trimmed.indexOf('/')
+  return slashIndex > 0 ? `${trimmed.slice(0, slashIndex)}/${branch}` : null
 }
 
 const EMPTY_GIT_STATUS_ENTRIES: GitStatusEntry[] = []
@@ -1196,11 +1281,6 @@ function SourceControlInner(): React.JSX.Element {
 
   const normalizedWorktreeBaseRef = activeWorktree?.baseRef?.trim() || null
   const normalizedRepoBaseRef = activeRepo?.worktreeBaseRef?.trim() || null
-  const effectiveBaseRef = resolveSourceControlBaseRef({
-    worktreeBaseRef: normalizedWorktreeBaseRef,
-    repoBaseRef: normalizedRepoBaseRef,
-    defaultBaseRef
-  })
   const baseRefOwnedByWorktree = normalizedWorktreeBaseRef !== null
   const pinnedBaseRef = normalizedWorktreeBaseRef ?? normalizedRepoBaseRef
   const hasUncommittedEntries = entries.length > 0
@@ -1247,6 +1327,16 @@ function SourceControlInner(): React.JSX.Element {
       ? { provider: 'github', ...activePrFromQueue, status: activePrFromQueue.checksStatus }
       : (hostedReviewEntry?.data ?? null)
     : null
+  const effectiveBaseRef = resolveSourceControlBaseRef({
+    worktreeBaseRef: normalizedWorktreeBaseRef,
+    reviewBaseRefName: hostedReview?.baseRefName,
+    repoBaseRef: normalizedRepoBaseRef,
+    defaultBaseRef
+  })
+  const pickerBaseRef = resolveSourceControlPickerBaseRef({
+    pinnedBaseRef,
+    effectiveBaseRef
+  })
 
   const linkedGitHubPR = activeWorktree?.linkedPR ?? null
   const fallbackGitHubPRNumber = linkedGitHubPR == null ? (activePrFromQueue?.number ?? null) : null
@@ -5471,7 +5561,7 @@ function SourceControlInner(): React.JSX.Element {
           </DialogHeader>
           <BaseRefPicker
             repoId={activeRepo.id}
-            currentBaseRef={pinnedBaseRef ?? undefined}
+            currentBaseRef={pickerBaseRef}
             onSelect={(ref) => {
               if (baseRefOwnedByWorktree && activeWorktreeId) {
                 void updateWorktreeMeta(activeWorktreeId, { baseRef: ref })
