@@ -509,7 +509,10 @@
         "b2ead86962": "PR 기반을 해결하지 못했습니다.",
         "a9ff236145": "일부 첨부파일을 업로드할 수 없습니다.",
         "3db83fc58a": "첨부 파일에 사용할 수 있는 원격 프로젝트 경로가 없습니다.",
-        "ba6cb77082": "프로젝트에 연결하지 못했습니다."
+        "ba6cb77082": "프로젝트에 연결하지 못했습니다.",
+        "chooseOrAddProjectBeforeWorkspace": "작업 영역을 만들기 전에 프로젝트를 선택하거나 추가하세요.",
+        "folderWorkspaceCreateFailedTitle": "폴더 작업 영역을 만들지 못했습니다",
+        "folderWorkspaceCreateFailedMessage": "폴더 작업 영역을 만들 수 없습니다. 위의 오류 세부 정보를 확인한 뒤 다시 시도하세요."
       },
       "useGlobalFileDrop": {
         "38c9f034ff": "드롭한 파일을 업로드하지 못했습니다.",
@@ -1034,6 +1037,9 @@
         "7711ad5122": "로컬 설정 명령",
         "e5db1b0419": "결합된 설정 명령",
         "addProjectBeforeWorkspace": "워크스페이스를 만들기 전에 프로젝트를 추가하세요.",
+        "connectProjectFirst": "먼저 이 프로젝트에 연결하세요",
+        "connectSourceLookup": "연결",
+        "reconnectSourceLookup": "다시 연결",
         "sshNotConnected": "SSH not connected",
         "connectingSsh": "Connecting SSH...",
         "sshAuthenticationFailed": "SSH authentication failed",
@@ -4045,7 +4051,7 @@
           "create": "워크스페이스 만들기",
           "sourceProject": "작업 소스",
           "chooseSourceProject": "작업 소스 선택",
-          "createStart": "Create & Start Agent"
+          "createFailed": "폴더 작업 영역을 만들지 못했습니다."
         },
         "ProjectOrderManualDefaultNotice": {
           "a1f4c2d8e0": "수동 프로젝트 순서가 이제 기본값입니다",
@@ -9153,7 +9159,22 @@
             "fda67f0b61": "현재 프로젝트",
             "3e8bb1176a": "이슈를 검색하려면 설정에서 Linear를 연결하세요.",
             "69ce292138": "Linear",
-            "9c004911c3": "gitlab"
+            "9c004911c3": "gitlab",
+            "switchTaskSourceTitle": "작업 소스를 전환할까요?",
+            "differentTaskSource": ", 선택한 작업 소스와 다릅니다.",
+            "currentTaskSource": "현재 작업 소스",
+            "placeholderNameOrLinearUrl": "이름 또는 Linear URL 입력",
+            "placeholderWorkspaceName": "작업 영역 이름 입력",
+            "placeholderSmartWithBranchGitLabLinear": "이름, #1234, 브랜치, GitHub/GitLab 또는 Linear URL 입력",
+            "placeholderSmartGitLabLinear": "이름, #1234, GitHub/GitLab 또는 Linear URL 입력",
+            "placeholderSmartWithBranchGitLab": "이름, #1234, 브랜치, GitHub 또는 GitLab URL 입력",
+            "placeholderSmartGitLab": "이름, #1234, GitHub 또는 GitLab URL 입력",
+            "unavailable": "사용할 수 없음",
+            "searchGitHub": "GitHub PR 및 이슈 검색",
+            "searchGitLab": "GitLab MR 및 이슈 검색",
+            "searchBranches": "브랜치 검색",
+            "searchLinear": "Linear 이슈 검색",
+            "workspaceName": "작업 영역 이름"
           },
           "ProjectHostSetupCombobox": {
             "empty": "No hosts are ready for this project.",
@@ -11262,7 +11283,7 @@
               "hostCount": "{{value0}} hosts",
               "searchProjects": "Search projects...",
               "noMatches": "No projects match your search.",
-              "chooseSource": "Choose task source"
+              "chooseSource": "작업 소스 선택"
             }
           }
         }

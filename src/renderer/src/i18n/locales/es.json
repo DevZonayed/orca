@@ -509,7 +509,10 @@
         "b2ead86962": "No se pudo resolver la base de relaciones públicas.",
         "a9ff236145": "Algunos archivos adjuntos no se pudieron cargar.",
         "3db83fc58a": "No hay ninguna ruta de proyecto remoto disponible para los archivos adjuntos.",
-        "ba6cb77082": "No se pudo conectar al proyecto."
+        "ba6cb77082": "No se pudo conectar al proyecto.",
+        "chooseOrAddProjectBeforeWorkspace": "Elige o agrega un proyecto antes de crear un espacio de trabajo.",
+        "folderWorkspaceCreateFailedTitle": "No se pudo crear el espacio de trabajo de carpeta",
+        "folderWorkspaceCreateFailedMessage": "No se pudo crear el espacio de trabajo de carpeta. Revisa los detalles del error de arriba e inténtalo de nuevo."
       },
       "useGlobalFileDrop": {
         "38c9f034ff": "No se pudieron cargar los archivos eliminados.",
@@ -1034,6 +1037,9 @@
         "7711ad5122": "Comando de configuración local",
         "e5db1b0419": "Comando de configuración combinado",
         "addProjectBeforeWorkspace": "Agregue un proyecto antes de crear un espacio de trabajo.",
+        "connectProjectFirst": "Conecta este proyecto primero",
+        "connectSourceLookup": "Conectar",
+        "reconnectSourceLookup": "Volver a conectar",
         "sshNotConnected": "SSH not connected",
         "connectingSsh": "Connecting SSH...",
         "sshAuthenticationFailed": "SSH authentication failed",
@@ -4045,7 +4051,7 @@
           "create": "Crear espacio de trabajo",
           "sourceProject": "Origen de tareas",
           "chooseSourceProject": "Elige el origen de tareas",
-          "createStart": "Create & Start Agent"
+          "createFailed": "No se pudo crear el espacio de trabajo de carpeta."
         },
         "ProjectOrderManualDefaultNotice": {
           "a1f4c2d8e0": "El orden manual de proyectos ahora es el predeterminado",
@@ -9153,7 +9159,22 @@
             "fda67f0b61": "proyecto actual",
             "3e8bb1176a": "Conecte Linear en Configuración para buscar problemas.",
             "69ce292138": "lineal",
-            "9c004911c3": "gitlab"
+            "9c004911c3": "gitlab",
+            "switchTaskSourceTitle": "¿Cambiar el origen de tareas?",
+            "differentTaskSource": ", que es diferente del origen de tareas seleccionado.",
+            "currentTaskSource": "origen de tareas actual",
+            "placeholderNameOrLinearUrl": "Escribe un nombre o una URL de Linear",
+            "placeholderWorkspaceName": "Escribe un nombre de espacio de trabajo",
+            "placeholderSmartWithBranchGitLabLinear": "Escribe un nombre, #1234, rama, GitHub/GitLab o URL de Linear",
+            "placeholderSmartGitLabLinear": "Escribe un nombre, #1234, GitHub/GitLab o URL de Linear",
+            "placeholderSmartWithBranchGitLab": "Escribe un nombre, #1234, rama, GitHub o URL de GitLab",
+            "placeholderSmartGitLab": "Escribe un nombre, #1234, GitHub o URL de GitLab",
+            "unavailable": "No disponible",
+            "searchGitHub": "Buscar PR e incidencias de GitHub",
+            "searchGitLab": "Buscar MR e incidencias de GitLab",
+            "searchBranches": "Buscar ramas",
+            "searchLinear": "Buscar incidencias de Linear",
+            "workspaceName": "Nombre del espacio de trabajo"
           },
           "ProjectHostSetupCombobox": {
             "empty": "No hosts are ready for this project.",
@@ -11262,7 +11283,7 @@
               "hostCount": "{{value0}} hosts",
               "searchProjects": "Search projects...",
               "noMatches": "No projects match your search.",
-              "chooseSource": "Choose task source"
+              "chooseSource": "Elige el origen de tareas"
             }
           }
         }

@@ -509,7 +509,10 @@
         "b2ead86962": "PR ベースを解決できませんでした。",
         "a9ff236145": "一部の添付ファイルをアップロードできませんでした。",
         "3db83fc58a": "添付ファイルに使用できるリモート プロジェクト パスがありません。",
-        "ba6cb77082": "プロジェクトへの接続に失敗しました。"
+        "ba6cb77082": "プロジェクトへの接続に失敗しました。",
+        "chooseOrAddProjectBeforeWorkspace": "ワークスペースを作成する前に、プロジェクトを選択または追加してください。",
+        "folderWorkspaceCreateFailedTitle": "フォルダーワークスペースを作成できませんでした",
+        "folderWorkspaceCreateFailedMessage": "フォルダーワークスペースを作成できませんでした。上のエラー詳細を確認して、もう一度お試しください。"
       },
       "useGlobalFileDrop": {
         "38c9f034ff": "ドロップされたファイルのアップロードに失敗しました。",
@@ -1034,6 +1037,9 @@
         "7711ad5122": "ローカルセットアップコマンド",
         "e5db1b0419": "組み合わせセットアップコマンド",
         "addProjectBeforeWorkspace": "ワークスペースを作成する前にプロジェクトを追加します。",
+        "connectProjectFirst": "先にこのプロジェクトに接続してください",
+        "connectSourceLookup": "接続",
+        "reconnectSourceLookup": "再接続",
         "sshNotConnected": "SSH not connected",
         "connectingSsh": "Connecting SSH...",
         "sshAuthenticationFailed": "SSH authentication failed",
@@ -4045,7 +4051,7 @@
           "create": "ワークスペースを作成",
           "sourceProject": "タスクソース",
           "chooseSourceProject": "タスクソースを選択",
-          "createStart": "Create & Start Agent"
+          "createFailed": "フォルダーワークスペースを作成できませんでした。"
         },
         "ProjectOrderManualDefaultNotice": {
           "a1f4c2d8e0": "手動のプロジェクト順序がデフォルトになりました",
@@ -9153,7 +9159,22 @@
             "fda67f0b61": "現在のプロジェクト",
             "3e8bb1176a": "設定で Linear を接続してイシューを検索します。",
             "69ce292138": "Linear",
-            "9c004911c3": "gitlab"
+            "9c004911c3": "gitlab",
+            "switchTaskSourceTitle": "タスクソースを切り替えますか？",
+            "differentTaskSource": "、選択中のタスクソースとは異なります。",
+            "currentTaskSource": "現在のタスクソース",
+            "placeholderNameOrLinearUrl": "名前または Linear URL を入力",
+            "placeholderWorkspaceName": "ワークスペース名を入力",
+            "placeholderSmartWithBranchGitLabLinear": "名前、#1234、ブランチ、GitHub/GitLab または Linear URL を入力",
+            "placeholderSmartGitLabLinear": "名前、#1234、GitHub/GitLab または Linear URL を入力",
+            "placeholderSmartWithBranchGitLab": "名前、#1234、ブランチ、GitHub または GitLab URL を入力",
+            "placeholderSmartGitLab": "名前、#1234、GitHub または GitLab URL を入力",
+            "unavailable": "利用できません",
+            "searchGitHub": "GitHub PR と Issue を検索",
+            "searchGitLab": "GitLab MR と Issue を検索",
+            "searchBranches": "ブランチを検索",
+            "searchLinear": "Linear Issue を検索",
+            "workspaceName": "ワークスペース名"
           },
           "ProjectHostSetupCombobox": {
             "empty": "No hosts are ready for this project.",
@@ -11262,7 +11283,7 @@
               "hostCount": "{{value0}} hosts",
               "searchProjects": "Search projects...",
               "noMatches": "No projects match your search.",
-              "chooseSource": "Choose task source"
+              "chooseSource": "タスクソースを選択"
             }
           }
         }

@@ -509,7 +509,10 @@
         "b2ead86962": "Failed to resolve PR base.",
         "a9ff236145": "Some attachments could not be uploaded.",
         "3db83fc58a": "No project path is available on this host for attachments.",
-        "ba6cb77082": "Failed to connect to project."
+        "ba6cb77082": "Failed to connect to project.",
+        "chooseOrAddProjectBeforeWorkspace": "Choose or add a project before creating a workspace.",
+        "folderWorkspaceCreateFailedTitle": "Folder workspace creation failed",
+        "folderWorkspaceCreateFailedMessage": "The folder workspace could not be created. Check the error details above, then try again."
       },
       "useGlobalFileDrop": {
         "38c9f034ff": "Failed to upload dropped files.",
@@ -1035,6 +1038,9 @@
         "e5db1b0419": "Combined setup command",
         "runOn": "Run on",
         "addProjectBeforeWorkspace": "Add a project before creating a workspace.",
+        "connectProjectFirst": "Connect this project first",
+        "connectSourceLookup": "Connect",
+        "reconnectSourceLookup": "Reconnect",
         "setupHostExistingFolderTitle": "Set up {{value0}}",
         "cloneProjectOnHost": "Clone project",
         "cloneUrlPlaceholder": "https://github.com/owner/repo.git",
@@ -4089,10 +4095,10 @@
           "connectFailed": "Failed to connect to project.",
           "noRepos": "Add a Git project under this folder to attach GitHub or GitLab tasks.",
           "title": "Create Folder Workspace",
-          "createStart": "Create & Start Agent",
-          "create": "Create Workspace",
+          "create": "Create workspace",
           "sourceProject": "Task Source",
-          "chooseSourceProject": "Choose task source"
+          "chooseSourceProject": "Choose task source",
+          "createFailed": "Failed to create folder workspace."
         },
         "ProjectOrderManualDefaultNotice": {
           "a1f4c2d8e0": "Manual project order is now the default",
@@ -9153,7 +9159,22 @@
             "fda67f0b61": "current project",
             "3e8bb1176a": "Connect Linear in Settings to search issues.",
             "69ce292138": "linear",
-            "9c004911c3": "gitlab"
+            "9c004911c3": "gitlab",
+            "switchTaskSourceTitle": "Switch task source?",
+            "differentTaskSource": ", which is different from the selected task source.",
+            "currentTaskSource": "current task source",
+            "placeholderNameOrLinearUrl": "Type a name or Linear URL",
+            "placeholderWorkspaceName": "Type a workspace name",
+            "placeholderSmartWithBranchGitLabLinear": "Type a name, #1234, branch, GitHub/GitLab or Linear URL",
+            "placeholderSmartGitLabLinear": "Type a name, #1234, GitHub/GitLab or Linear URL",
+            "placeholderSmartWithBranchGitLab": "Type a name, #1234, branch, GitHub or GitLab URL",
+            "placeholderSmartGitLab": "Type a name, #1234, GitHub or GitLab URL",
+            "unavailable": "Unavailable",
+            "searchGitHub": "Search GitHub PRs and issues",
+            "searchGitLab": "Search GitLab MRs and issues",
+            "searchBranches": "Search branches",
+            "searchLinear": "Search Linear issues",
+            "workspaceName": "Workspace name"
           },
           "ProjectHostSetupCombobox": {
             "empty": "No hosts are ready for this project.",

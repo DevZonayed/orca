@@ -273,6 +273,8 @@ export type ProjectGroup = {
   parentPath: string | null
   /** SSH target ID for folder-backed groups imported from a remote root. */
   connectionId?: string | null
+  /** Renderer-owned host stamp for groups fetched from a runtime environment. */
+  executionHostId?: string | null
   parentGroupId: string | null
   createdFrom: ProjectGroupCreatedFrom
   tabOrder: number

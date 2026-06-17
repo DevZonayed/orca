@@ -33,7 +33,6 @@ import {
 } from '@/store/selectors'
 import WorktreeCard, { type ActiveSurfaceVariant } from './WorktreeCard'
 import { folderWorkspaceToWorktree } from '../../../../shared/folder-workspace-worktree'
-import { FolderWorkspaceComposerDialog } from './FolderWorkspaceComposerDialog'
 import { PendingWorktreeRow } from './PendingWorktreeRow'
 import { SUPPRESS_WORKTREE_LIST_SCROLL_ADJUSTMENT_EVENT } from './WorktreeCardAgents'
 import { Button } from '@/components/ui/button'
@@ -235,6 +234,11 @@ import {
   getKnownSidebarWorktreeById,
   sidebarWorkspaceStillExists
 } from './worktree-list-folder-reveal'
+import {
+  getFolderPathStatusRouteOptionsForRows,
+  getFolderWorkspaceExecutionHostIdForRows,
+  getProjectGroupExecutionHostIdForRows
+} from './worktree-list-host-filtering'
 
 export {
   getScrollTopToRevealBounds,
@@ -1434,20 +1438,45 @@ const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktreeViewp
   const folderPathStatusCacheExpiryTick = useFolderWorkspacePathStatusCacheExpiryTick(
     folderWorkspacePathStatuses
   )
+  const projectGroupByIdForFolderPathStatus = useMemo(
+    () => new Map(projectGroups.map((group) => [group.id, group])),
+    [projectGroups]
+  )
+  const folderWorkspaceByIdForFolderPathStatus = useMemo(
+    () => new Map(folderWorkspaces.map((workspace) => [workspace.id, workspace])),
+    [folderWorkspaces]
+  )
+  const getFolderPathStatusRouteOptions = useCallback(
+    (request: Parameters<typeof fetchFolderWorkspacePathStatus>[0]) =>
+      getFolderPathStatusRouteOptionsForRows({
+        request,
+        projectGroupsById: projectGroupByIdForFolderPathStatus,
+        folderWorkspacesById: folderWorkspaceByIdForFolderPathStatus
+      }),
+    [folderWorkspaceByIdForFolderPathStatus, projectGroupByIdForFolderPathStatus]
+  )
   useEffect(() => {
-    const requests = new Map<string, Parameters<typeof fetchFolderWorkspacePathStatus>[0]>()
+    const requests = new Map<
+      string,
+      {
+        request: Parameters<typeof fetchFolderWorkspacePathStatus>[0]
+        options?: { runtimeEnvironmentId: string | null }
+      }
+    >()
     for (const group of projectGroups) {
       if (group.parentPath) {
         const request = { scope: 'project-group' as const, projectGroupId: group.id }
-        requests.set(getFolderWorkspacePathStatusCacheKey(request), request)
+        const options = getFolderPathStatusRouteOptions(request)
+        requests.set(getFolderWorkspacePathStatusCacheKey(request, options), { request, options })
       }
     }
     for (const workspace of folderWorkspaces) {
       const request = { scope: 'folder-workspace' as const, folderWorkspaceId: workspace.id }
-      requests.set(getFolderWorkspacePathStatusCacheKey(request), request)
+      const options = getFolderPathStatusRouteOptions(request)
+      requests.set(getFolderWorkspacePathStatusCacheKey(request, options), { request, options })
     }
-    for (const request of requests.values()) {
-      void fetchFolderWorkspacePathStatus(request, { force: true })
+    for (const { request, options } of requests.values()) {
+      void fetchFolderWorkspacePathStatus(request, { force: true, ...options })
     }
   }, [
     activeRuntimeEnvironmentId,
@@ -1455,21 +1484,24 @@ const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktreeViewp
     folderPathStatusRepoMembershipKey,
     folderPathStatusSshConnectionKey,
     folderWorkspaces,
+    getFolderPathStatusRouteOptions,
     getFolderWorkspacePathStatusCacheKey,
     projectGroups
   ])
   const getCachedFolderWorkspacePathStatus = useCallback(
     (request: Parameters<typeof fetchFolderWorkspacePathStatus>[0]) => {
-      const cacheKey = getFolderWorkspacePathStatusCacheKey(request)
+      const options = getFolderPathStatusRouteOptions(request)
+      const cacheKey = getFolderWorkspacePathStatusCacheKey(request, options)
       // Why: expired negative statuses should not keep disabling folder
       // workspaces while a fresh status request is in flight.
       void folderWorkspacePathStatuses[cacheKey]
       void folderPathStatusCacheExpiryTick
-      return getFreshFolderWorkspacePathStatus(request)
+      return getFreshFolderWorkspacePathStatus(request, options)
     },
     [
       folderWorkspacePathStatuses,
       folderPathStatusCacheExpiryTick,
+      getFolderPathStatusRouteOptions,
       getFolderWorkspacePathStatusCacheKey,
       getFreshFolderWorkspacePathStatus
     ]
@@ -4732,9 +4764,7 @@ const WorktreeList = React.memo(function WorktreeList({
       return projectGroups
     }
     return projectGroups.filter((group) => {
-      const hostId = group.connectionId
-        ? (`ssh:${encodeURIComponent(group.connectionId)}` as ExecutionHostId)
-        : defaultHostId
+      const hostId = getProjectGroupExecutionHostIdForRows(group, defaultHostId)
       return visibleHostIdSet.has(hostId)
     })
   }, [defaultHostId, projectGroups, visibleHostIdSet])
@@ -4744,13 +4774,11 @@ const WorktreeList = React.memo(function WorktreeList({
     }
     const projectGroupById = new Map(projectGroups.map((group) => [group.id, group]))
     return folderWorkspaces.filter((folderWorkspace) => {
-      const connectionId =
-        folderWorkspace.connectionId ??
-        projectGroupById.get(folderWorkspace.projectGroupId)?.connectionId ??
-        null
-      const hostId = connectionId
-        ? (`ssh:${encodeURIComponent(connectionId)}` as ExecutionHostId)
-        : defaultHostId
+      const hostId = getFolderWorkspaceExecutionHostIdForRows({
+        folderWorkspace,
+        projectGroup: projectGroupById.get(folderWorkspace.projectGroupId),
+        defaultHostId
+      })
       return visibleHostIdSet.has(hostId)
     })
   }, [defaultHostId, folderWorkspaces, projectGroups, visibleHostIdSet])
@@ -5140,9 +5168,6 @@ const WorktreeList = React.memo(function WorktreeList({
     useState<ProjectGroupNameDialogState | null>(null)
   const [projectGroupDeleteDialog, setProjectGroupDeleteDialog] =
     useState<ProjectGroupDeleteDialogState | null>(null)
-  const [folderWorkspaceCreateGroup, setFolderWorkspaceCreateGroup] = useState<ProjectGroup | null>(
-    null
-  )
 
   const handleCreateGroupFromRepo = useCallback((repo: Repo) => {
     setProjectGroupNameDialog({ type: 'create-from-repo', repo })
@@ -5267,12 +5292,18 @@ const WorktreeList = React.memo(function WorktreeList({
     projectGroupDeleteDialog
   ])
 
-  const handleCreateFolderWorkspace = useCallback((projectGroup: ProjectGroup) => {
-    if (!projectGroup.parentPath) {
-      return
-    }
-    setFolderWorkspaceCreateGroup(projectGroup)
-  }, [])
+  const handleCreateFolderWorkspace = useCallback(
+    (projectGroup: ProjectGroup) => {
+      if (!projectGroup.parentPath) {
+        return
+      }
+      openModal('new-workspace-composer', {
+        initialProjectGroupId: projectGroup.id,
+        telemetrySource: 'sidebar'
+      })
+    },
+    [openModal]
+  )
 
   const moveWorktreeToStatus = useCallback(
     (worktreeId: string, status: WorkspaceStatus) => {
@@ -5629,15 +5660,6 @@ const WorktreeList = React.memo(function WorktreeList({
           }
         }}
         onConfirm={handleConfirmDeleteProjectGroup}
-      />
-      <FolderWorkspaceComposerDialog
-        open={folderWorkspaceCreateGroup !== null}
-        projectGroup={folderWorkspaceCreateGroup}
-        onOpenChange={(open) => {
-          if (!open) {
-            setFolderWorkspaceCreateGroup(null)
-          }
-        }}
       />
       <VirtualizedWorktreeViewport
         key={viewportResetKey}
