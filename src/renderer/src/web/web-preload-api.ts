@@ -2251,6 +2251,9 @@ function createRateLimitsApi(): NonNullable<Partial<PreloadApi>['rateLimits']> {
     get: () => Promise.resolve(empty),
     refresh: () => Promise.resolve(empty),
     refreshCodexForTarget: () => Promise.resolve(empty),
+    // Why: web clients do not own local Codex auth, so reset-credit
+    // redemption remains desktop-only and reports the safe no-credit outcome.
+    consumeCodexResetCredit: () => Promise.resolve({ outcome: 'noCredit', state: empty }),
     refreshClaudeForTarget: () => Promise.resolve(empty),
     setPollingInterval: () => Promise.resolve(),
     fetchInactiveClaudeAccounts: () => Promise.resolve(),
