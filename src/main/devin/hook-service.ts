@@ -2,57 +2,38 @@ import type { SFTPWrapper } from 'ssh2'
 import type { AgentHookInstallState, AgentHookInstallStatus } from '../../shared/agent-hook-types'
 import {
   buildWindowsAgentHookPostCommand,
-  readHooksJson,
   writeHooksJson,
   writeManagedScript
 } from '../agent-hooks/installer-utils'
 import {
-  readHooksJsonRemote,
+  readTextFileRemote,
   writeHooksJsonRemote,
   writeManagedScriptRemote
 } from '../agent-hooks/installer-utils-remote'
 import {
-  applyManagedHooks,
-  CLAUDE_EVENTS,
-  CLAUDE_HOOK_SETTINGS,
-  getManagedScriptFileName,
-  getConfigPath,
-  getManagedCommand,
-  getManagedScriptPath,
-  getPosixManagedScriptFileName,
-  getRemoteConfigPath,
-  getRemoteManagedCommand,
-  removeManagedHooks,
-  type ClaudeCompatibleHookSettings
+  applyDevinManagedHooks,
+  DEVIN_EVENTS,
+  getDevinConfigPath,
+  getDevinManagedCommand,
+  getDevinManagedScriptFileName,
+  getDevinManagedScriptPath,
+  getDevinPosixManagedScriptFileName,
+  getDevinRemoteConfigPath,
+  getDevinRemoteManagedCommand,
+  removeDevinManagedHooks
 } from './hook-settings'
+import {
+  mergeHookInstallDetail,
+  parseDevinHooksConfigText,
+  readConfigFromOrcaOverlapDetail,
+  readDevinHooksConfig
+} from './hook-config-json'
 
-type ClaudeHookServiceOptions = {
-  agent: AgentHookInstallStatus['agent']
-  displayName: string
-  settings: ClaudeCompatibleHookSettings
-}
-
-const DEFAULT_CLAUDE_HOOK_SERVICE_OPTIONS: ClaudeHookServiceOptions = {
-  agent: 'claude',
-  displayName: 'Claude',
-  settings: CLAUDE_HOOK_SETTINGS
-}
-
-function getManagedScript(
-  target: 'local' | 'posix' = 'local',
-  options: { skipWhenDevinImportsClaude?: boolean } = {}
-): string {
+function getManagedScript(target: 'local' | 'posix' = 'local'): string {
   if (target === 'local' && process.platform === 'win32') {
     return [
       '@echo off',
       'setlocal',
-      ...(options.skipWhenDevinImportsClaude
-        ? [
-            // Why: Devin imports .claude hooks by default. Skip Orca's managed
-            // Claude hook there so status posts stay attributed to Devin.
-            'if not "%DEVIN_PROJECT_DIR%"=="" exit /b 0'
-          ]
-        : []),
       // Why: the endpoint file holds the *live* port/token for this Orca
       // install. A PTY that survived an Orca restart has stale PORT/TOKEN
       // baked into its env from the old instance — loading `endpoint.cmd`
@@ -63,7 +44,7 @@ function getManagedScript(
       'if "%ORCA_AGENT_HOOK_PORT%"=="" exit /b 0',
       'if "%ORCA_AGENT_HOOK_TOKEN%"=="" exit /b 0',
       'if "%ORCA_PANE_KEY%"=="" exit /b 0',
-      buildWindowsAgentHookPostCommand('claude'),
+      buildWindowsAgentHookPostCommand('devin'),
       'exit /b 0',
       ''
     ].join('\r\n')
@@ -71,15 +52,6 @@ function getManagedScript(
 
   return [
     '#!/bin/sh',
-    ...(options.skipWhenDevinImportsClaude
-      ? [
-          // Why: Devin imports .claude hooks by default. Skip Orca's managed
-          // Claude hook there so status posts stay attributed to Devin.
-          'if [ -n "$DEVIN_PROJECT_DIR" ]; then',
-          '  exit 0',
-          'fi'
-        ]
-      : []),
     // Why: the endpoint file holds the *live* port/token for this Orca
     // install. PTYs that survive an Orca restart have stale PORT/TOKEN
     // baked into their env from the old instance — sourcing the file here
@@ -108,7 +80,7 @@ function getManagedScript(
     // shell is not safe once a path contains quotes or newlines. Post the raw
     // hook payload plus metadata as form fields and let the receiver parse it.
     // Timeout caps best-effort hook posts if the local listener stalls.
-    'curl -sS -X POST "http://127.0.0.1:${ORCA_AGENT_HOOK_PORT}/hook/claude" \\',
+    'curl -sS -X POST "http://127.0.0.1:${ORCA_AGENT_HOOK_PORT}/hook/devin" \\',
     '  --connect-timeout 0.5 --max-time 1.5 \\',
     '  -H "Content-Type: application/x-www-form-urlencoded" \\',
     '  -H "X-Orca-Agent-Hook-Token: ${ORCA_AGENT_HOOK_TOKEN}" \\',
@@ -123,35 +95,29 @@ function getManagedScript(
   ].join('\n')
 }
 
-export class ClaudeHookService {
-  private readonly options: ClaudeHookServiceOptions
-
-  constructor(options: ClaudeHookServiceOptions = DEFAULT_CLAUDE_HOOK_SERVICE_OPTIONS) {
-    this.options = options
-  }
-
+export class DevinHookService {
   getStatus(): AgentHookInstallStatus {
-    const configPath = getConfigPath(this.options.settings)
-    const scriptPath = getManagedScriptPath(this.options.settings)
-    const config = readHooksJson(configPath)
+    const configPath = getDevinConfigPath()
+    const scriptPath = getDevinManagedScriptPath()
+    const config = readDevinHooksConfig(configPath)
     if (!config) {
       return {
-        agent: this.options.agent,
+        agent: 'devin',
         state: 'error',
         configPath,
         managedHooksPresent: false,
-        detail: `Could not parse ${this.options.displayName} settings.json`
+        detail: 'Could not parse Devin config.json'
       }
     }
 
     // Why: Report `partial` when only some managed events are registered so the
     // sidebar surfaces a degraded install rather than a false-positive
-    // `installed`. Each CLAUDE_EVENTS entry must contain the managed command for
+    // `installed`. Each DEVIN_EVENTS entry must contain the managed command for
     // the integration to function end-to-end.
-    const command = getManagedCommand(scriptPath)
+    const command = getDevinManagedCommand(scriptPath)
     const missing: string[] = []
     let presentCount = 0
-    for (const event of CLAUDE_EVENTS) {
+    for (const event of DEVIN_EVENTS) {
       const definitions = Array.isArray(config.hooks?.[event.eventName])
         ? config.hooks![event.eventName]!
         : []
@@ -177,38 +143,37 @@ export class ClaudeHookService {
       state = 'partial'
       detail = `Managed hook missing for events: ${missing.join(', ')}`
     }
-    return { agent: this.options.agent, state, configPath, managedHooksPresent, detail }
+    return {
+      agent: 'devin',
+      state,
+      configPath,
+      managedHooksPresent,
+      detail: mergeHookInstallDetail(detail, readConfigFromOrcaOverlapDetail(config))
+    }
   }
 
   install(): AgentHookInstallStatus {
-    const configPath = getConfigPath(this.options.settings)
-    const scriptPath = getManagedScriptPath(this.options.settings)
-    const config = readHooksJson(configPath)
+    const configPath = getDevinConfigPath()
+    const scriptPath = getDevinManagedScriptPath()
+    const config = readDevinHooksConfig(configPath)
     if (!config) {
       return {
-        agent: this.options.agent,
+        agent: 'devin',
         state: 'error',
         configPath,
         managedHooksPresent: false,
-        detail: `Could not parse ${this.options.displayName} settings.json`
+        detail: 'Could not parse Devin config.json'
       }
     }
 
-    const command = getManagedCommand(scriptPath)
-    const nextConfig = applyManagedHooks(
-      config,
-      command,
-      getManagedScriptFileName(this.options.settings)
-    )
-    writeManagedScript(
-      scriptPath,
-      getManagedScript('local', { skipWhenDevinImportsClaude: this.options.agent === 'claude' })
-    )
+    const command = getDevinManagedCommand(scriptPath)
+    const nextConfig = applyDevinManagedHooks(config, command, getDevinManagedScriptFileName())
+    writeManagedScript(scriptPath, getManagedScript())
     writeHooksJson(configPath, nextConfig)
     return this.getStatus()
   }
 
-  // Why: install Orca's Claude hook settings on the remote box rather than the
+  // Why: install Orca's Devin hook settings on the remote box rather than the
   // local machine. Caller passes the user's SFTP handle plus the resolved
   // remote `$HOME`; POSIX-only by design (Windows-remote deferred).
   async installRemote(sftp: SFTPWrapper, remoteHome: string): Promise<AgentHookInstallStatus> {
@@ -216,8 +181,8 @@ export class ClaudeHookService {
     // and a `.sh` managed script body. The remote platform is gated by the
     // relay's capability RPC at a higher layer; we cannot detect it from
     // `process.platform` here (that's the local box).
-    const remoteConfigPath = getRemoteConfigPath(remoteHome, this.options.settings)
-    const remoteScriptFileName = getPosixManagedScriptFileName(this.options.settings)
+    const remoteConfigPath = getDevinRemoteConfigPath(remoteHome)
+    const remoteScriptFileName = getDevinPosixManagedScriptFileName()
     const remoteScriptPath = `${remoteHome.replace(/\/$/, '')}/.orca/agent-hooks/${remoteScriptFileName}`
     // Why: SFTP reads/writes fail far more often than local fs (network drops,
     // EACCES on remote dirs, disk full, channel closed). Wrap the entire
@@ -227,21 +192,26 @@ export class ClaudeHookService {
     // specifically means "file present but unparseable" — keep that branch
     // distinct so the user sees an actionable message.
     try {
-      const config = await readHooksJsonRemote(sftp, remoteConfigPath)
+      // Why: Devin config.json is JSONC (comments); stock
+      // JSON.parse rejects them. Read the raw text via SFTP and parse with
+      // jsonc-parser, mirroring the local readDevinHooksConfig path.
+      const body = await readTextFileRemote(sftp, remoteConfigPath)
+      const config =
+        body === null ? {} : parseDevinHooksConfigText(body, 'remote Devin config.json')
       if (!config) {
         return {
-          agent: this.options.agent,
+          agent: 'devin',
           state: 'error',
           configPath: remoteConfigPath,
           managedHooksPresent: false,
-          detail: `Could not parse remote ${this.options.displayName} settings.json`
+          detail: 'Could not parse remote Devin config.json'
         }
       }
 
       // Why: the POSIX wrapper is identical regardless of where the script
       // lands; only the path differs. Reuse the same wrapper helper.
-      const command = getRemoteManagedCommand(remoteScriptPath)
-      const nextConfig = applyManagedHooks(config, command, remoteScriptFileName)
+      const command = getDevinRemoteManagedCommand(remoteScriptPath)
+      const nextConfig = applyDevinManagedHooks(config, command, remoteScriptFileName)
 
       // Why: write the script first, then the settings — settings.json
       // referencing a missing script body would fire `command not found` on
@@ -251,15 +221,11 @@ export class ClaudeHookService {
       // of broken settings.json.
       // Why: SSH remotes use POSIX `.sh` hook paths even when Orca itself is
       // running on Windows; never derive remote script syntax from local OS.
-      await writeManagedScriptRemote(
-        sftp,
-        remoteScriptPath,
-        getManagedScript('posix', { skipWhenDevinImportsClaude: this.options.agent === 'claude' })
-      )
+      await writeManagedScriptRemote(sftp, remoteScriptPath, getManagedScript('posix'))
       await writeHooksJsonRemote(sftp, remoteConfigPath, nextConfig)
 
       return {
-        agent: this.options.agent,
+        agent: 'devin',
         state: 'installed',
         configPath: remoteConfigPath,
         managedHooksPresent: true,
@@ -267,7 +233,7 @@ export class ClaudeHookService {
       }
     } catch (err) {
       return {
-        agent: this.options.agent,
+        agent: 'devin',
         state: 'error',
         configPath: remoteConfigPath,
         managedHooksPresent: false,
@@ -277,20 +243,20 @@ export class ClaudeHookService {
   }
 
   remove(): AgentHookInstallStatus {
-    const configPath = getConfigPath(this.options.settings)
-    const config = readHooksJson(configPath)
+    const configPath = getDevinConfigPath()
+    const config = readDevinHooksConfig(configPath)
     if (!config) {
       return {
-        agent: this.options.agent,
+        agent: 'devin',
         state: 'error',
         configPath,
         managedHooksPresent: false,
-        detail: `Could not parse ${this.options.displayName} settings.json`
+        detail: 'Could not parse Devin config.json'
       }
     }
-    const { config: nextConfig, changed } = removeManagedHooks(
+    const { config: nextConfig, changed } = removeDevinManagedHooks(
       config,
-      getManagedScriptFileName(this.options.settings)
+      getDevinManagedScriptFileName()
     )
     if (changed) {
       writeHooksJson(configPath, nextConfig)
@@ -299,4 +265,4 @@ export class ClaudeHookService {
   }
 }
 
-export const claudeHookService = new ClaudeHookService()
+export const devinHookService = new DevinHookService()
