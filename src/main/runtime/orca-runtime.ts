@@ -11558,7 +11558,14 @@ export class OrcaRuntimeService {
       }
       return gitExecFileAsync(
         ['fetch', '--no-tags', base.remote, `+refs/heads/${base.branch}:${base.ref}`],
-        { cwd: repoPath, ...gitOptions }
+        {
+          cwd: repoPath,
+          ...gitOptions,
+          // Why: exact remote-base refresh is the network gate for worktree
+          // creation, so honor repo SSH routing and bound custom wrappers.
+          useConfiguredSshCommandForNetwork: true,
+          timeout: 60_000
+        }
       )
         .then((): RemoteFetchResult => {
           this.rememberFreshFetchCompletedAt(key)
