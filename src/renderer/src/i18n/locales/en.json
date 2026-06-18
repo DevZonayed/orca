@@ -11477,6 +11477,22 @@
       },
       "ShortcutKeyCombo": {
         "07eb4985a1": "Double-tap {{value0}}"
+      },
+      "star": {
+        "nag": {
+          "StarNagToastHost": {
+            "starredThanks": "Starred — thank you!",
+            "githubOpened": "GitHub opened",
+            "opening": "Opening…",
+            "starring": "Starring…",
+            "openGithub": "Open GitHub",
+            "starOnGithub": "Star on GitHub",
+            "onboardingCompleted": "Onboarding completed!",
+            "body": "If you’re enjoying Orca so far, a GitHub star helps other developers discover it.",
+            "dismiss": "Dismiss",
+            "later": "Later"
+          }
+        }
       }
     },
     "i18n": {
