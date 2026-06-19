@@ -831,7 +831,6 @@ const WorktreeCard = React.memo(function WorktreeCard({
     event.stopPropagation()
     setShowRenameErrorDialog(true)
   }, [])
-
   const unreadTooltip = worktree.isUnread ? 'Mark read' : 'Mark unread'
   const lineageChildAriaLabel =
     lineageChildCount === 1
@@ -1338,7 +1337,6 @@ const WorktreeCard = React.memo(function WorktreeCard({
                 </TooltipContent>
               </Tooltip>
             ) : null}
-
             {!compactCards && worktree.isMainWorktree && !isFolder && (
               <Tooltip>
                 <TooltipTrigger asChild>
