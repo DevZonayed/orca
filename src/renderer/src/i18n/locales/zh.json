@@ -2284,6 +2284,7 @@
           "TerminalContextMenu": {
             "b4cdd9314e": "清晰的屏幕",
             "8c17d6786d": "关闭窗格",
+            "copyTerminalId": "复制终端 ID",
             "2cf85a6a55": "复制窗格 ID",
             "39809d152f": "设置标题...",
             "06c2b0f043": "均衡窗格大小",
@@ -2367,7 +2368,15 @@
               "pane": {
                 "context": {
                   "menu": {
-                    "a29b9faa01": "已复制窗格 ID"
+                    "a29b9faa01": "已复制窗格 ID",
+                    "terminal": {
+                      "id": {
+                        "copied": "已复制终端 ID",
+                        "copy": {
+                          "failed": "无法复制终端 ID"
+                        }
+                      }
+                    }
                   }
                 }
               }
@@ -8026,11 +8035,12 @@
           "thisDevice": "This device"
         },
         "WorkspaceDirectorySetting": {
-          "1a2b3c4d5e": "Client default",
-          "2b3c4d5e6f": "Apply to",
-          "3c4d5e6f7a": "Overrides client default",
-          "4d5e6f7a8b": "Inherits the client default",
-          "5e6f7a8b9c": "重置"
+          "1a2b3c4d5e": "客户端默认值",
+          "2b3c4d5e6f": "应用于",
+          "3c4d5e6f7a": "覆盖客户端默认值",
+          "4d5e6f7a8b": "继承客户端默认值",
+          "5e6f7a8b9c": "重置",
+          "6f7a8b9cad": "使用相对路径（例如 .orca/worktrees）可让每个项目使用各自的位置，使用绝对路径则所有项目共用一个文件夹。"
         },
         "ProviderHostScopeControl": {
           "scope_label": "{{value0}}: {{value1}}",
@@ -8383,6 +8393,9 @@
           "SearchResultItems": {
             "cc06595a3b": "复制线路径",
             "3596b9668d": "复制路径"
+          },
+          "SourceControlEntryContextMenu": {
+            "a1f2c8d901": "查看"
           },
           "SourceControl": {
             "1406954883": "清除所有笔记...",
