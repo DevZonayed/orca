@@ -8907,7 +8907,8 @@
                   "9e779995dd": "{{value0}} を作成する",
                   "226b85a3a7": "フェッチ",
                   "323bb614aa": "Commit と同期",
-                  "2b8e6595fd": "Commit"
+                  "2b8e6595fd": "Commit",
+                  "04d709801d": "Fetch from remote without merging"
                 }
               },
               "primary": {

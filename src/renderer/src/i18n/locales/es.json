@@ -8907,7 +8907,8 @@
                   "9e779995dd": "Crear {{value0}}",
                   "226b85a3a7": "Buscar",
                   "323bb614aa": "Commit y sincronizar",
-                  "2b8e6595fd": "Commit"
+                  "2b8e6595fd": "Commit",
+                  "04d709801d": "Fetch from remote without merging"
                 }
               },
               "primary": {

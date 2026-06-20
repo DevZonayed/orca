@@ -8907,7 +8907,8 @@
                   "9e779995dd": "{{value0}} 만들기",
                   "226b85a3a7": "가져오기",
                   "323bb614aa": "Commit 및 동기화",
-                  "2b8e6595fd": "Commit"
+                  "2b8e6595fd": "Commit",
+                  "04d709801d": "Fetch from remote without merging"
                 }
               },
               "primary": {
