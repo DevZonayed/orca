@@ -427,6 +427,15 @@ export type RuntimeTerminalSend = {
   handle: string
   accepted: boolean
   bytesWritten: number
+  refusedReason?: 'no-agent' | 'permission'
+}
+
+export type RuntimeTerminalAgentStatusState = 'working' | 'permission' | 'idle' | null
+
+export type RuntimeTerminalAgentStatus = {
+  handle: string
+  isRunningAgent: boolean
+  status: RuntimeTerminalAgentStatusState
 }
 
 export type RuntimeTerminalCreate = {
