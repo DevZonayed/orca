@@ -201,11 +201,14 @@ type UseTerminalPaneLifecycleDeps = {
   setPaneTitles: React.Dispatch<React.SetStateAction<Record<number, string>>>
   paneTitlesRef: React.RefObject<Record<number, string>>
   setRenamingPaneId: React.Dispatch<React.SetStateAction<number | null>>
-  // Why: TerminalPane exposes a reactive pane count so effects (e.g. the
-  // data-has-title toggler) re-run when panes are split or closed. The
+  // Why: TerminalPane exposes reactive pane metadata so effects that read the
+  // imperative pane list re-run when panes are split or closed. The
   // imperative managerRef.getPanes().length is not reactive, so without this
   // dispatcher structural changes wouldn't trigger dependent effects.
   setPaneCount: React.Dispatch<React.SetStateAction<number>>
+  // Why: same pane count does not imply same geometry; drag-reorder can move
+  // panes without resizing them, so overlay rects need a layout-change tick.
+  setPaneLayoutRevision: React.Dispatch<React.SetStateAction<number>>
 }
 
 export function suppressIntentionalPaneCloseExit(
@@ -378,7 +381,8 @@ export function useTerminalPaneLifecycle({
   setPaneTitles,
   paneTitlesRef,
   setRenamingPaneId,
-  setPaneCount
+  setPaneCount,
+  setPaneLayoutRevision
 }: UseTerminalPaneLifecycleDeps): void {
   const systemPrefersDarkRef = useRef(systemPrefersDark)
   systemPrefersDarkRef.current = systemPrefersDark
@@ -510,11 +514,15 @@ export function useTerminalPaneLifecycle({
     }
 
     // Why: publish the current pane count to React state so effects depending
-    // on structural changes (e.g. the data-has-title toggler) re-run on
-    // split/close. The pane list lives in an imperative PaneManager ref, so
+    // on structural changes re-run on split/close. The pane list lives in an
+    // imperative PaneManager ref, so
     // without this sync those effects would miss structural-only changes.
     const syncPaneCount = (): void => {
       setPaneCount(managerRef.current?.getPanes().length ?? 0)
+    }
+
+    const syncPaneLayoutRevision = (): void => {
+      setPaneLayoutRevision((revision) => revision + 1)
     }
 
     const normalizedInitialLayout = normalizeTerminalLayoutSnapshot(initialLayoutRef.current)
@@ -994,6 +1002,7 @@ export function useTerminalPaneLifecycle({
         syncExpandedLayout()
         syncCanExpandState()
         syncPaneCount()
+        syncPaneLayoutRevision()
         queueResizeAll(false)
         if (shouldPersistLayout) {
           persistLayoutSnapshot()
