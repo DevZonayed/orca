@@ -1703,7 +1703,10 @@
         "settingsBadge": "설정",
         "actionBadge": "작업",
         "paletteHostBadge": "호스트: {{value0}}",
-        "workspaceTabMissing": "탭이 더 이상 존재하지 않습니다"
+        "workspaceTabMissing": "탭이 더 이상 존재하지 않습니다",
+        "projectsGroupsHeader": "Projects & Groups",
+        "projectBadge": "Project",
+        "repoGroupBadge": "Repo group"
       },
       "github": {
         "pr": {
@@ -3932,7 +3935,8 @@
           "7a8b9c0d1e": "업데이트 필요",
           "hostAuthNeeded": "인증 필요",
           "hostDisconnected": "Disconnected",
-          "failedNestWorkspace": "워크스페이스를 중첩하지 못했습니다"
+          "failedNestWorkspace": "워크스페이스를 중첩하지 못했습니다",
+          "sidebarRowMissing": "Target no longer exists"
         },
         "WorktreeMetaDialog": {
           "3db0a2a593": "취소",
@@ -11058,6 +11062,14 @@
                 "trashWorktree": "워크트리 휴지통으로 이동",
                 "addQuickCommand": "빠른 명령 추가",
                 "newQuickCommand": "새로운 빠른 명령"
+              }
+            }
+          },
+          "palette": {
+            "project": {
+              "results": {
+                "repoGroup": "Repo group",
+                "project": "Project"
               }
             }
           }
