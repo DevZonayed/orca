@@ -140,6 +140,13 @@ import {
 import { getCachedTerminalTabForWorktree } from './terminal-tab-lookup'
 import { getCachedTerminalGroupIdForWorktree } from './terminal-unified-tab-lookup'
 import { useRepoById } from '@/store/selectors'
+import {
+  isXtermHelperTextarea,
+  releaseTerminalFocusForOutsidePointerDown,
+  releaseTerminalFocusForWindowBlur,
+  resyncTerminalFocusForWindowFocus,
+  setRegularTerminalInputFocusAttribute
+} from './regular-terminal-focus-ownership'
 
 type TerminalPaneProps = {
   tabId: string
@@ -192,10 +199,6 @@ function TerminalQuickCommandEditorDialog({
 function formatClipboardImagePasteError(error: unknown): string {
   const detail = error instanceof Error ? error.message : String(error)
   return `Image paste failed: ${detail}`
-}
-
-function isXtermHelperTextarea(target: EventTarget | null): target is HTMLElement {
-  return target instanceof HTMLElement && target.classList.contains('xterm-helper-textarea')
 }
 
 function arePaneTitleOverlayRectsEqual(
@@ -1295,7 +1298,7 @@ export default function TerminalPane({
     }
   }, [consumePendingCodexPaneRestart, handleRestartCodexPane, pendingCodexPaneRestartIds])
 
-  useTerminalFontZoom({ isActive, managerRef, paneFontSizesRef, settingsRef })
+  useTerminalFontZoom({ isActive, containerRef, managerRef, paneFontSizesRef, settingsRef })
 
   useTerminalKeyboardShortcuts({
     tabId,
@@ -1413,7 +1416,10 @@ export default function TerminalPane({
     if (!container) {
       return
     }
+    let ownsRegularTerminalFocus = false
     const syncFocused = (focused: boolean): void => {
+      ownsRegularTerminalFocus = focused
+      setRegularTerminalInputFocusAttribute(focused)
       window.api.ui.setTerminalInputFocused?.(focused)
     }
     const onFocusIn = (event: FocusEvent): void => {
@@ -1430,6 +1436,32 @@ export default function TerminalPane({
       }
       syncFocused(false)
     }
+    const onPointerDown = (event: PointerEvent): void => {
+      releaseTerminalFocusForOutsidePointerDown({
+        container,
+        activeElement: document.activeElement,
+        pointerTarget: event.target,
+        syncFocused
+      })
+    }
+    const onWindowBlur = (): void => {
+      // Why: webview/browser handoff leaves the helper textarea as DOM focus,
+      // so clear only the main-process mirror and let guest focus proceed.
+      releaseTerminalFocusForWindowBlur({
+        container,
+        activeElement: document.activeElement,
+        syncFocused
+      })
+    }
+    const onWindowFocus = (): void => {
+      // Why: app reactivation can preserve DOM focus on xterm after blur
+      // cleared the process-wide shortcut mirror.
+      resyncTerminalFocusForWindowFocus({
+        container,
+        activeElement: document.activeElement,
+        syncFocused
+      })
+    }
 
     if (
       isXtermHelperTextarea(document.activeElement) &&
@@ -1439,13 +1471,18 @@ export default function TerminalPane({
     }
     container.addEventListener('focusin', onFocusIn)
     container.addEventListener('focusout', onFocusOut)
+    document.addEventListener('pointerdown', onPointerDown, true)
+    window.addEventListener('blur', onWindowBlur)
+    window.addEventListener('focus', onWindowFocus)
     return () => {
       container.removeEventListener('focusin', onFocusIn)
       container.removeEventListener('focusout', onFocusOut)
-      if (
-        isXtermHelperTextarea(document.activeElement) &&
-        container.contains(document.activeElement)
-      ) {
+      document.removeEventListener('pointerdown', onPointerDown, true)
+      window.removeEventListener('blur', onWindowBlur)
+      window.removeEventListener('focus', onWindowFocus)
+      // Why: the helper textarea may be removed before cleanup observes
+      // document.activeElement, so clear by this pane's mirrored ownership.
+      if (ownsRegularTerminalFocus) {
         syncFocused(false)
       }
     }
