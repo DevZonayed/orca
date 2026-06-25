@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
-import { buildAiVaultResumeCommandForWorktree } from '@/lib/ai-vault-resume-command'
+import {
+  buildAiVaultResumeCommandForWorktree,
+  buildAiVaultResumeStartupForWorktree
+} from '@/lib/ai-vault-resume-command'
 import { launchAiVaultSessionInNewTab } from '@/lib/launch-ai-vault-session'
 import { useAppStore } from '@/store'
 import {
@@ -46,7 +49,8 @@ export default function AiVaultPanel(): React.JSX.Element {
   const repos = useRepos()
   const allWorktrees = useAllWorktrees()
   const projectHostSetupProjection = useProjectHostSetupProjection()
-  const agentCmdOverrides = useAppStore((s) => s.settings?.agentCmdOverrides ?? {})
+  const settings = useAppStore((s) => s.settings)
+  const agentCmdOverrides = settings?.agentCmdOverrides ?? {}
   const [query, setQuery] = useState('')
   const [scope, setScope] = useState<AiVaultScope>(DEFAULT_AI_VAULT_SCOPE)
   const [sort, setSort] = useState<AiVaultSort>('updated')
@@ -207,7 +211,18 @@ export default function AiVaultPanel(): React.JSX.Element {
         session,
         commandOverride: agentCmdOverrides[session.agent]
       }),
-    [activeWorktree?.id, agentCmdOverrides]
+    [activeWorktree?.id, agentCmdOverrides, settings]
+  )
+
+  const buildResumeStartup = useCallback(
+    (session: AiVaultSession) =>
+      buildAiVaultResumeStartupForWorktree({
+        state: useAppStore.getState(),
+        worktreeId: activeWorktree?.id ?? null,
+        session,
+        commandOverride: agentCmdOverrides[session.agent]
+      }),
+    [activeWorktree?.id, agentCmdOverrides, settings]
   )
 
   const copyResumeCommand = useCallback(
@@ -255,7 +270,7 @@ export default function AiVaultPanel(): React.JSX.Element {
       launchAiVaultSessionInNewTab({
         agent: session.agent,
         worktreeId: activeWorktree.id,
-        command: buildResumeCommand(session)
+        ...buildResumeStartup(session)
       })
       toast.success(
         translate(
@@ -265,7 +280,7 @@ export default function AiVaultPanel(): React.JSX.Element {
         )
       )
     },
-    [activeWorktree, buildResumeCommand, isRemoteWorktree]
+    [activeWorktree, buildResumeStartup, isRemoteWorktree]
   )
 
   const setAgentEnabled = useCallback((agent: AiVaultAgent, enabled: boolean) => {
@@ -363,7 +378,7 @@ export default function AiVaultPanel(): React.JSX.Element {
         filteredSessionsCount={filteredSessions.length}
         error={error}
         resumeDisabled={!activeWorktree || isRemoteWorktree}
-        buildResumeCommand={buildResumeCommand}
+        buildResumeStartup={buildResumeStartup}
         onToggleGroup={toggleGroup}
         onResume={handleResume}
         onCopyResume={(session) => void copyResumeCommand(session)}
