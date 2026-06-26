@@ -40,6 +40,9 @@ vi.mock('os', async (importOriginal) => {
 
 import { CodexHookService } from './hook-service'
 
+const WINDOWS_POWERSHELL_LAUNCHER =
+  /^[A-Za-z]:\/[^"]*\/System32\/WindowsPowerShell\/v1\.0\/powershell\.exe -NoProfile -ExecutionPolicy Bypass -EncodedCommand \S+$/
+
 let tmpHome: string
 let userDataDir: string
 
@@ -183,10 +186,10 @@ describe('CodexHookService', () => {
 
   // Why: #6078 — a Windows user profile path like `C:\Users\Jane Doe` used to
   // be written verbatim as the hook command, so Codex split it at the space and
-  // the hook exited with code 1. The managed command uses an encoded launcher
-  // so the path never appears raw on the cmd.exe command line.
+  // the hook exited with code 1. Keep spaced paths on the encoded launcher so
+  // `cmd.exe /C` never sees the raw script path.
   it.skipIf(process.platform !== 'win32')(
-    'wraps the managed hook command in an encoded launcher when the profile path contains a space (#6078)',
+    'wraps the managed hook command when the profile path contains a space (#6078)',
     () => {
       const spaceHome = join(tmpdir(), 'orca home with spaces')
       mkdirSync(spaceHome, { recursive: true })
@@ -205,12 +208,40 @@ describe('CodexHookService', () => {
 
         for (const eventName of localManagedCodexEvents()) {
           const command = hooksConfig.hooks[eventName]?.[0]?.hooks?.[0]?.command
-          expect(command).toMatch(
-            /^powershell -NoProfile -ExecutionPolicy Bypass -EncodedCommand \S+$/
-          )
+          expect(command).toMatch(WINDOWS_POWERSHELL_LAUNCHER)
         }
       } finally {
         rmSync(spaceHome, { recursive: true, force: true })
+      }
+    }
+  )
+
+  // Why: cmd.exe expands `%` and treats `^` as an escape even inside otherwise
+  // plausible paths. Keep those rare cases on the encoded launcher from #6078.
+  it.skipIf(process.platform !== 'win32')(
+    'keeps the encoded launcher when the profile path contains cmd metacharacters',
+    () => {
+      const metacharHome = join(tmpdir(), 'orca %ORCA_TEST% ^ home')
+      mkdirSync(metacharHome, { recursive: true })
+      homedirMock.mockReturnValue(metacharHome)
+      try {
+        const systemCodexHome = join(metacharHome, '.codex')
+        mkdirSync(systemCodexHome, { recursive: true })
+
+        const status = new CodexHookService().install()
+        expect(status.state).toBe('installed')
+
+        const managedCodexHome = join(userDataDir, 'codex-runtime-home', 'home')
+        const hooksConfig = JSON.parse(
+          readFileSync(join(managedCodexHome, 'hooks.json'), 'utf-8')
+        ) as { hooks: Record<string, { hooks?: { command?: string }[] }[]> }
+
+        for (const eventName of localManagedCodexEvents()) {
+          const command = hooksConfig.hooks[eventName]?.[0]?.hooks?.[0]?.command
+          expect(command).toMatch(WINDOWS_POWERSHELL_LAUNCHER)
+        }
+      } finally {
+        rmSync(metacharHome, { recursive: true, force: true })
       }
     }
   )
@@ -237,7 +268,7 @@ describe('CodexHookService', () => {
         expect(command).not.toMatch(/powershell/i)
         expect(command).toMatch(/\\agent-hooks\\codex-hook\.cmd$/)
       } else {
-        expect(command).toMatch(/^powershell -NoProfile/)
+        expect(command).toMatch(WINDOWS_POWERSHELL_LAUNCHER)
       }
     }
   )

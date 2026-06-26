@@ -122,11 +122,8 @@ function getManagedScriptPath(): string {
 
 // Why: a Windows script path is cmd-safe when it holds only characters cmd.exe
 // passes through untouched (drive letter, backslash, dot, dash, underscore).
-// Codex runs hooks as `cmd.exe /C <command>` and forwards our string verbatim
-// when it has no spaces/quotes, so a bare path then launches with zero shell
-// startup. Spaces or cmd metacharacters (`% ^ & ! ( )` etc.) force the encoded
-// PowerShell launcher (#6078), which hides the path in base64. `~` is allowed
-// because 8.3 short paths (e.g. `RUNNER~1`) are cmd-safe and common.
+// Spaces or cmd metacharacters force the encoded launcher; `cmd.exe /C` splits
+// bare `.cmd` paths at spaces before the script can run.
 const WINDOWS_CMD_SAFE_PATH = /^[A-Za-z0-9_.:\\~-]+$/
 
 function getManagedCommand(scriptPath: string): string {
