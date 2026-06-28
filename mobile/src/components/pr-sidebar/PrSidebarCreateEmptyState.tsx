@@ -3,10 +3,11 @@ import { ActivityIndicator, Pressable, Text, View } from 'react-native'
 import { GitPullRequestArrow, Link2, RefreshCw } from 'lucide-react-native'
 import { colors } from '../../theme/mobile-theme'
 import type { RpcClient } from '../../transport/rpc-client'
-import { resolveMobilePrPrefill, type MobilePrPrefill } from '../../source-control/mobile-pr-create'
+import type { MobileGitStatusResult } from '../../source-control/mobile-git-status'
+import { mobileHostedReviewCreateIntentProgressMessage } from '../../source-control/mobile-hosted-review-create-intent'
+import { runMobileHostedReviewCreateIntent } from '../../source-control/mobile-hosted-review-create-intent-runner'
 import { fetchWorktreeLinkedPR } from '../../source-control/mobile-pr-link'
 import { openMobilePrUrl } from '../MobilePrComposeSheet'
-import { MobilePrComposeForm } from './MobilePrComposeForm'
 import { MobileLinkPrForm } from './MobileLinkPrForm'
 import { prCreateEmptyStateStyles as styles } from './pr-create-empty-state-styles'
 
@@ -14,17 +15,23 @@ type Props = {
   client: RpcClient | null
   worktreeId: string
   gitBranch: string | null
+  gitStatus: MobileGitStatusResult | null
   // Refetches the sidebar after create or an explicit empty-state refresh.
   onCreated: () => void
 }
 
-type Mode = 'choose' | 'create' | 'link'
+type Mode = 'choose' | 'link'
 
 // Empty state for a branch with no PR: create a new PR, or link an existing one
 // (the no-PR surface is the natural home for linking — desktop's link entry lives
 // on its PR card, but on mobile this is where a user lands with nothing linked).
-export function PrSidebarCreateEmptyState({ client, worktreeId, gitBranch, onCreated }: Props) {
-  const [prefill, setPrefill] = useState<MobilePrPrefill | null>(null)
+export function PrSidebarCreateEmptyState({
+  client,
+  worktreeId,
+  gitBranch,
+  gitStatus,
+  onCreated
+}: Props) {
   const [mode, setMode] = useState<Mode>('choose')
   const [loading, setLoading] = useState(false)
   const [createWarning, setCreateWarning] = useState<string | null>(null)
@@ -61,48 +68,34 @@ export function PrSidebarCreateEmptyState({ client, worktreeId, gitBranch, onCre
     setCreateWarning(null)
     setLoading(true)
     try {
-      // Git-status fields are best-effort here (the sidebar has no working-tree
-      // state); base/title/body come from host eligibility regardless, and create
-      // does the authoritative branch-state validation.
-      const resolved = await resolveMobilePrPrefill(client, worktreeId, {
-        branch: gitBranch ?? undefined,
-        title: gitBranch ?? '',
-        hasUncommittedChanges: false,
-        hasUpstream: true,
-        ahead: 1,
-        behind: 0
+      if (!gitBranch) {
+        setCreateWarning('Check out a branch before creating a pull request.')
+        return
+      }
+      // Why: mobile skips the local compose step here and runs the hosted create
+      // flow directly so PR creation matches the automated hosted-review path.
+      const outcome = await runMobileHostedReviewCreateIntent(client, worktreeId, {
+        branch: gitBranch,
+        title: gitBranch,
+        status: gitStatus,
+        onProgress: (progress) =>
+          setCreateWarning(mobileHostedReviewCreateIntentProgressMessage(progress))
       })
-      setPrefill(resolved)
-      setMode('create')
-    } catch {
-      // Best-effort: if prefill resolution rejects, leave the empty state so the
-      // user can retry rather than surfacing an unhandled rejection.
+      if (!outcome.ok) {
+        setCreateWarning(outcome.error)
+        return
+      }
+      setCreateWarning(outcome.warning ?? null)
+      openMobilePrUrl(outcome.url)
+      onCreated()
+    } catch (err) {
+      setCreateWarning(err instanceof Error ? err.message : 'Failed to create pull request.')
     } finally {
       setLoading(false)
     }
   }
 
   const canCreate = !!client && !!gitBranch
-
-  if (mode === 'create' && prefill) {
-    return (
-      <View style={styles.composerArea}>
-        <MobilePrComposeForm
-          client={client}
-          worktreeId={worktreeId}
-          prefill={prefill}
-          head={gitBranch}
-          onCancel={() => setMode('choose')}
-          onCreated={(url, warning) => {
-            setMode('choose')
-            setCreateWarning(warning ?? null)
-            openMobilePrUrl(url)
-            onCreated()
-          }}
-        />
-      </View>
-    )
-  }
 
   if (mode === 'link') {
     return (
