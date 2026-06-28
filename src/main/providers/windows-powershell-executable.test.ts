@@ -14,12 +14,10 @@ const WIN_ENV: NodeJS.ProcessEnv = {
 }
 
 const PWSH7 = 'C:\\Program Files\\PowerShell\\7\\pwsh.exe'
-const WINDOWS_POWERSHELL =
-  'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe'
+const WINDOWS_POWERSHELL = 'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe'
 // The Microsoft Store App Execution Alias stub for pwsh — a zero-byte reparse
 // point under WindowsApps that ConPTY's CreateProcessW rejects with error 5.
-const PWSH_STORE_ALIAS =
-  'C:\\Users\\dev\\AppData\\Local\\Microsoft\\WindowsApps\\pwsh.exe'
+const PWSH_STORE_ALIAS = 'C:\\Users\\dev\\AppData\\Local\\Microsoft\\WindowsApps\\pwsh.exe'
 
 describe('resolveWindowsPowerShellExecutablePath', () => {
   it('returns null on non-Windows platforms', () => {

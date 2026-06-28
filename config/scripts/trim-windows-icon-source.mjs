@@ -214,6 +214,9 @@ function main() {
   console.log(`  -> ${outputIco} (filled multi-size ICO, safe-area inset trimmed)`)
 }
 
-if (import.meta.url === `file://${process.argv[1]}` || process.argv[1]?.endsWith('trim-windows-icon-source.mjs')) {
+if (
+  import.meta.url === `file://${process.argv[1]}` ||
+  process.argv[1]?.endsWith('trim-windows-icon-source.mjs')
+) {
   main()
 }

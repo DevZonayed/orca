@@ -39,8 +39,7 @@ function makeAttempt(
 
 // error code 5 == ERROR_ACCESS_DENIED from CreateProcessW inside ConPTY when a
 // bare/alias pwsh.exe is handed to node-pty.
-const ACCESS_DENIED_5 =
-  'Cannot create process, error code: 5'
+const ACCESS_DENIED_5 = 'Cannot create process, error code: 5'
 
 describe('spawnShellWithFallback on Windows', () => {
   it('repro: recovers when the primary PowerShell spawn fails with error code 5', () => {

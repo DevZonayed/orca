@@ -204,8 +204,7 @@ const POWERSHELL_OSC133_ARGS = [
 // real absolute executable before handing it to ConPTY (PR #6537 / issue
 // #5161) — a bare/alias `pwsh.exe` makes CreateProcessW fail with error code 5.
 // These match the deterministic install roots pinned in the win32 beforeEach.
-const RESOLVED_WINDOWS_POWERSHELL =
-  'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe'
+const RESOLVED_WINDOWS_POWERSHELL = 'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe'
 const RESOLVED_PWSH7 = 'C:\\Program Files\\PowerShell\\7\\pwsh.exe'
 const TEST_CODEX_HOME =
   process.platform === 'win32'
