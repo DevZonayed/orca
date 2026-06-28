@@ -2593,6 +2593,7 @@ export default function TerminalPane({
         onClosePane={contextMenu.onClosePane}
         onClearScreen={contextMenu.onClearScreen}
         onForkAgentSession={() => void contextMenu.onForkAgentSession()}
+        onCopyAgentSessionContext={() => void contextMenu.onCopyAgentSessionContext()}
         repoQuickCommands={repoQuickCommands}
         globalQuickCommands={globalQuickCommands}
         quickCommandRepoLabel={quickCommandRepoLabel}

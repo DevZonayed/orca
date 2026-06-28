@@ -2378,7 +2378,8 @@
             "f3eeb1de13": "Copiar",
             "c2f0b72b8d": "Insertar",
             "925f49f210": "Expandir panel",
-            "df766809e0": "Contraer panel"
+            "df766809e0": "Contraer panel",
+            "cff67afad1": "Copy Context"
           },
           "TerminalErrorToast": {
             "e4aa243f8c": "Reiniciar demonio",
@@ -2428,7 +2429,10 @@
                   "38e41edc6e": "Este espacio de trabajo no se puede bifurcar en un árbol de trabajo de git.",
                   "f867385bb5": "No se pudo encontrar el espacio de trabajo de origen para esta bifurcación.",
                   "046e8d853c": "No hay contexto de terminal para bifurcar",
-                  "c00421d320": "Se copió el contexto de la bifurcación. Inicie un agente y péguelo para iniciar la bifurcación."
+                  "c00421d320": "Se copió el contexto de la bifurcación. Inicie un agente y péguelo para iniciar la bifurcación.",
+                  "f62b40e2c7": "No hay contexto de terminal para copiar",
+                  "373a3103e7": "Contexto copiado",
+                  "3fc568a49d": "No se pudo copiar el contexto."
                 }
               }
             },
