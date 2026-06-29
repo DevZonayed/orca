@@ -2304,6 +2304,52 @@ const api = {
       ipcRenderer.on('emulator:frameStreamError', listener)
       return () => ipcRenderer.removeListener('emulator:frameStreamError', listener)
     },
+    startVideoStream: (args: {
+      deviceId: string
+      streamId: string
+    }): Promise<{ streamId: string }> => ipcRenderer.invoke('emulator:videoStreamStart', args),
+    stopVideoStream: (args: { streamId: string }): Promise<void> =>
+      ipcRenderer.invoke('emulator:videoStreamStop', args),
+    onVideoStreamMeta: (
+      callback: (data: {
+        streamId: string
+        deviceId: string
+        meta: { codecId: string; width: number; height: number }
+      }) => void
+    ): (() => void) => {
+      const listener = (
+        _event: Electron.IpcRendererEvent,
+        data: {
+          streamId: string
+          deviceId: string
+          meta: { codecId: string; width: number; height: number }
+        }
+      ) => callback(data)
+      ipcRenderer.on('emulator:videoStreamMeta', listener)
+      return () => ipcRenderer.removeListener('emulator:videoStreamMeta', listener)
+    },
+    onVideoStreamFrame: (
+      callback: (data: {
+        streamId: string
+        deviceId: string
+        config: boolean
+        keyFrame: boolean
+        bytes: ArrayBuffer
+      }) => void
+    ): (() => void) => {
+      const listener = (
+        _event: Electron.IpcRendererEvent,
+        data: {
+          streamId: string
+          deviceId: string
+          config: boolean
+          keyFrame: boolean
+          bytes: ArrayBuffer
+        }
+      ) => callback(data)
+      ipcRenderer.on('emulator:videoStreamFrame', listener)
+      return () => ipcRenderer.removeListener('emulator:videoStreamFrame', listener)
+    },
     onPaneFocus: (callback: (data: { worktreeId: string }) => void): (() => void) => {
       const listener = (_event: Electron.IpcRendererEvent, data: { worktreeId: string }) =>
         callback(data)
