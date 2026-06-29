@@ -710,6 +710,7 @@
         "d23bbb6416": "{{value0}} skipped",
         "18f80e1329": "{{value0}} pending",
         "b1ac991806": "{{value0}} failing",
+        "checksNeedActionChip": "{{value0}} action required",
         "311d0cee55": "{{value0}} passing",
         "e52bed9264": "No checks reported yet",
         "90020cc1f3": "This pull request has no reported checks yet.",
@@ -858,7 +859,8 @@
           "to": "to",
           "activity": "Activity",
           "noActivity": "No activity yet."
-        }
+        },
+        "checkActionRequiredHint": "This check needs a manual action on GitHub (for example, approving the workflow run) before merging is unblocked."
       },
       "GitLabItemDialog": {
         "65e784c1f1": "Reopen",
@@ -1183,6 +1185,7 @@
         "e6ad0a8d06": "{{value0}} skipped",
         "88267924d5": "{{value0}} pending",
         "ae2a34c7b8": "{{value0}} failing",
+        "checksNeedActionChip": "{{value0}} action required",
         "7c5035931a": "{{value0}} passing",
         "a18d01cda3": "No checks reported yet",
         "3912daf310": "This pull request has no reported checks yet.",
@@ -1317,7 +1320,8 @@
         "commentTooLarge": "Comment is too large to submit safely.",
         "8ff5ae8866": "Assignees",
         "82c87eceb9": "Edit assignees",
-        "1ff5d979df": "No one assigned"
+        "1ff5d979df": "No one assigned",
+        "checkActionRequiredHint": "This check needs a manual action on GitHub (for example, approving the workflow run) before merging is unblocked."
       },
       "QuickOpen": {
         "1dbd3f59ff": "Move",
@@ -9115,7 +9119,8 @@
                 "8a621a2c4f": "Grouped",
                 "b13f85d75c": "Timeline",
                 "f5cf324efa": "Comment display options",
-                "5e6e5a13fa": "View"
+                "5e6e5a13fa": "View",
+                "actionRequiredHint": "This check needs a manual action on GitHub (for example, approving the workflow run) before merging is unblocked."
               },
               "empty": {
                 "state": {
@@ -11209,7 +11214,8 @@
           "b3e7f9a1c2": "Check fix context unavailable",
           "d5a8c2f1b9": "Start the default AI agent to fix this check",
           "e2b4d7c8a1": "Choose an agent for this check",
-          "f1c9e3a6d4": "Choose agent to fix check"
+          "f1c9e3a6d4": "Choose agent to fix check",
+          "actionRequired": "Action required"
         },
         "CheckRunJobs": {
           "1c0a4d7e02": "succeeded",

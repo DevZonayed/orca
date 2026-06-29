@@ -710,6 +710,7 @@
         "d23bbb6416": "{{value0}} 已跳过",
         "18f80e1329": "{{value0}} 待处理",
         "b1ac991806": "{{value0}} 失败",
+        "checksNeedActionChip": "{{value0}} 个需要操作",
         "311d0cee55": "{{value0}} 通过",
         "e52bed9264": "尚未报告任何检查",
         "90020cc1f3": "此PR尚未报告检查。",
@@ -858,7 +859,8 @@
           "to": "to",
           "activity": "Activity",
           "noActivity": "No activity yet."
-        }
+        },
+        "checkActionRequiredHint": "This check needs a manual action on GitHub (for example, approving the workflow run) before merging is unblocked."
       },
       "GitLabItemDialog": {
         "65e784c1f1": "重新打开",
@@ -1183,6 +1185,7 @@
         "e6ad0a8d06": "{{value0}} 已跳过",
         "88267924d5": "{{value0}} 待处理",
         "ae2a34c7b8": "{{value0}} 失败",
+        "checksNeedActionChip": "{{value0}} 个需要操作",
         "7c5035931a": "{{value0}} 通过",
         "a18d01cda3": "尚未报告任何检查",
         "3912daf310": "此PR尚未报告检查。",
@@ -1317,7 +1320,8 @@
         "commentTooLarge": "评论过长，无法安全提交。",
         "8ff5ae8866": "负责人",
         "82c87eceb9": "编辑负责人",
-        "1ff5d979df": "未分配任何人"
+        "1ff5d979df": "未分配任何人",
+        "checkActionRequiredHint": "This check needs a manual action on GitHub (for example, approving the workflow run) before merging is unblocked."
       },
       "QuickOpen": {
         "1dbd3f59ff": "手机",
@@ -9115,7 +9119,8 @@
                 "8a621a2c4f": "已分组",
                 "b13f85d75c": "时间线",
                 "f5cf324efa": "评论显示选项",
-                "5e6e5a13fa": "查看"
+                "5e6e5a13fa": "查看",
+                "actionRequiredHint": "This check needs a manual action on GitHub (for example, approving the workflow run) before merging is unblocked."
               },
               "empty": {
                 "state": {
@@ -11209,7 +11214,8 @@
           "d5a8c2f1b9": "启动默认 AI 智能体来修复此检查",
           "e2b4d7c8a1": "为此检查选择智能体",
           "f1c9e3a6d4": "选择智能体修复检查",
-          "5e2a9c3f88": "Open file at this line"
+          "5e2a9c3f88": "Open file at this line",
+          "actionRequired": "Action required"
         },
         "check": {
           "run": {
