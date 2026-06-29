@@ -1901,6 +1901,7 @@ export type PreloadApi = {
       runtime?: 'host' | 'wsl'
       wslDistro?: string | null
     }) => Promise<ClaudeRateLimitAccountsState>
+    cancelPendingLogin: () => Promise<boolean>
     reauthenticate: (args: { accountId: string }) => Promise<ClaudeRateLimitAccountsState>
     remove: (args: { accountId: string }) => Promise<ClaudeRateLimitAccountsState>
     select: (args: {
