@@ -9994,6 +9994,20 @@
             "cefd048225": "Back",
             "c5ad56786d": "spinner"
           }
+        },
+        "CustomNetworkAddressDialog": {
+          "title": "Custom network address",
+          "description": "Advertise an address your phone can reach when it is not on the same Wi-Fi — for example a Tailscale hostname or a static IP.",
+          "label": "Address",
+          "placeholder": "my-mac.ts.net or 192.168.1.50",
+          "hint": "Enter an IP address or a Tailscale hostname (ends in .ts.net).",
+          "cancel": "Cancel",
+          "use": "Use address"
+        },
+        "NetworkInterfacePicker": {
+          "trigger-label": "Network address to advertise",
+          "custom-option": "{{address}} (custom)",
+          "add-custom": "Add custom address…"
         }
       },
       "gitlab": {
