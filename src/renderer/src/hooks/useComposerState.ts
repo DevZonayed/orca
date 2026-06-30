@@ -710,9 +710,9 @@ export function useComposerState(options: UseComposerStateOptions): UseComposerS
   )
   const selectedRepo = eligibleRepos.find((repo) => repo.id === repoId)
   const selectedRepoIsGit = selectedRepo ? isGitRepoKind(selectedRepo) : false
-  const [ephemeralVmRecipes, setEphemeralVmRecipes] = useState<NonNullable<OrcaHooks['environmentRecipes']>>(
-    []
-  )
+  const [ephemeralVmRecipes, setEphemeralVmRecipes] = useState<
+    NonNullable<OrcaHooks['environmentRecipes']>
+  >([])
   const [selectedEphemeralVmRecipeId, setSelectedEphemeralVmRecipeId] = useState<string | null>(
     null
   )
