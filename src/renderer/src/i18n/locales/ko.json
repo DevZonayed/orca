@@ -2549,6 +2549,17 @@
             "dont_ask_again": "고정된 탭에 대해 다시 묻지 않기",
             "0b38ee2f86": "취소",
             "c337c9d75c": "닫기"
+          },
+          "TerminalSshReconnectOverlay": {
+            "authFailed": "{{value0}} 인증에 실패했습니다. 이 터미널 세션을 계속하려면 다시 연결하세요.",
+            "reconnectFailed": "{{value0}}에 대한 SSH 연결에 실패했습니다. 이 터미널 세션을 계속하려면 다시 연결하세요.",
+            "connecting": "{{value0}}에 연결 중입니다. 호스트를 사용할 수 있게 되면 이 터미널이 재개됩니다.",
+            "connected": "SSH가 연결되었습니다.",
+            "disconnected": "이 터미널은 {{value0}} 연결을 기다리고 있습니다. 이 SSH 세션을 계속하려면 연결하세요.",
+            "connectFailed": "SSH 연결 실패",
+            "title": "SSH 연결 필요",
+            "connectingButton": "연결 중...",
+            "connectButton": "연결"
           }
         }
       },

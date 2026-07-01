@@ -2549,6 +2549,17 @@
             "dont_ask_again": "固定标签页不再询问",
             "0b38ee2f86": "取消",
             "c337c9d75c": "关闭"
+          },
+          "TerminalSshReconnectOverlay": {
+            "authFailed": "{{value0}} 身份验证失败。请重新连接以继续此终端会话。",
+            "reconnectFailed": "与 {{value0}} 的 SSH 连接失败。请重新连接以继续此终端会话。",
+            "connecting": "正在连接到 {{value0}}。主机可用后，此终端将恢复。",
+            "connected": "SSH 已连接。",
+            "disconnected": "此终端正在等待 {{value0}}。请连接以继续此 SSH 会话。",
+            "connectFailed": "SSH 连接失败",
+            "title": "需要 SSH 连接",
+            "connectingButton": "连接中...",
+            "connectButton": "连接"
           }
         }
       },

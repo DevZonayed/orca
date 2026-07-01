@@ -2549,6 +2549,17 @@
             "dont_ask_again": "No volver a preguntar por pestañas fijadas",
             "0b38ee2f86": "Cancelar",
             "c337c9d75c": "Cerrar"
+          },
+          "TerminalSshReconnectOverlay": {
+            "authFailed": "Error de autenticación en {{value0}}. Vuelve a conectar para continuar esta sesión de terminal.",
+            "reconnectFailed": "La conexión SSH a {{value0}} falló. Vuelve a conectar para continuar esta sesión de terminal.",
+            "connecting": "Conectando a {{value0}}. Esta terminal se reanudará cuando el host esté disponible.",
+            "connected": "SSH está conectado.",
+            "disconnected": "Esta terminal está esperando {{value0}}. Conéctate para continuar esta sesión SSH.",
+            "connectFailed": "Error de conexión SSH",
+            "title": "Se requiere conexión SSH",
+            "connectingButton": "Conectando...",
+            "connectButton": "Conectar"
           }
         }
       },
