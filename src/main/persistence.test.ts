@@ -4584,6 +4584,92 @@ describe('Store', () => {
     expect(statSync(dataFile()).ino).toBe(inoBefore)
   })
 
+  // ── worktreeMeta startup GC ────────────────────────────────────────
+
+  it('garbage-collects stale local worktreeMeta at load with a 30-day grace', async () => {
+    const OLD = Date.now() - 40 * 24 * 60 * 60 * 1000
+    const RECENT = Date.now() - 1 * 24 * 60 * 60 * 1000
+    const missing = (name: string): string => join(testState.dir, 'gone', name)
+    const meta = (lastActivityAt: number, extra: Record<string, unknown> = {}) => ({
+      displayName: '',
+      comment: '',
+      lastActivityAt,
+      ...extra
+    })
+    const liveKey = `r1::${testState.dir}`
+    const deadKey = `r1::${missing('dead')}`
+    const recentKey = `r1::${missing('recent')}`
+    const sshKey = `ssh-repo::/home/alice/gone`
+    const remoteHostKey = `r1::${missing('remote-host')}`
+    const orphanKey = `removed-repo::${missing('orphan')}`
+    const wslKey = `r1::\\\\wsl$\\Ubuntu\\home\\gone`
+
+    writeDataFile({
+      repos: [
+        makeRepo(),
+        makeRepo({ id: 'ssh-repo', path: '/home/alice/repo', connectionId: 'conn-1' })
+      ],
+      worktreeMeta: {
+        [liveKey]: meta(OLD),
+        [deadKey]: meta(OLD),
+        [recentKey]: meta(RECENT),
+        [sshKey]: meta(OLD),
+        [remoteHostKey]: meta(OLD, { hostId: 'ssh:conn-1' }),
+        [orphanKey]: meta(OLD),
+        [wslKey]: meta(OLD)
+      },
+      worktreeLineageById: { [deadKey]: { parentWorktreeId: liveKey } }
+    })
+
+    const store = await createStore()
+    const kept = Object.keys(store.getAllWorktreeMeta())
+
+    expect(kept).toContain(liveKey) // path exists
+    expect(kept).toContain(recentKey) // inside the grace window
+    expect(kept).toContain(sshKey) // SSH repo: remote paths never checked locally
+    expect(kept).toContain(remoteHostKey) // remote hostId on the meta itself
+    expect(kept).toContain(wslKey) // WSL UNC path
+    expect(kept).not.toContain(deadKey)
+    expect(kept).not.toContain(orphanKey)
+    expect(store.getWorktreeLineage(deadKey)).toBeUndefined()
+  })
+
+  it('never GCs folder-workspace instance metas — the meta IS the workspace', async () => {
+    const OLD = Date.now() - 40 * 24 * 60 * 60 * 1000
+    const folderInstanceKey = `r1::${join(testState.dir, 'gone-folder')}::workspace:11111111-1111-4111-8111-111111111111`
+    writeDataFile({
+      repos: [makeRepo({ kind: 'folder' })],
+      worktreeMeta: {
+        [folderInstanceKey]: { displayName: 'Session A', comment: '', lastActivityAt: OLD }
+      }
+    })
+
+    const store = await createStore()
+    expect(Object.keys(store.getAllWorktreeMeta())).toContain(folderInstanceKey)
+  })
+
+  it('never GCs Linux-style WSL worktree paths on Windows', async () => {
+    const OLD = Date.now() - 40 * 24 * 60 * 60 * 1000
+    const wslLinkedKey = 'r1::/home/user/gone-worktree'
+    writeDataFile({
+      repos: [makeRepo()],
+      worktreeMeta: {
+        [wslLinkedKey]: { displayName: '', comment: '', lastActivityAt: OLD }
+      }
+    })
+
+    await withPlatform('win32', async () => {
+      const store = await createStore()
+      expect(Object.keys(store.getAllWorktreeMeta())).toContain(wslLinkedKey)
+    })
+  })
+
+  it('tolerates a null worktreeMeta map in the durable file', async () => {
+    writeDataFile({ worktreeMeta: null })
+    const store = await createStore()
+    expect(store.getAllWorktreeMeta()).toEqual({})
+  })
+
   // ── GitHub cache sidecar ───────────────────────────────────────────
 
   it('cache refreshes never rewrite the durable state file', async () => {

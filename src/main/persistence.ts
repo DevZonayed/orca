@@ -112,6 +112,7 @@ import {
   type ExecutionHostId
 } from '../shared/execution-host'
 import { toRelaySshPtyId } from './providers/ssh-pty-id'
+import { isWslUncPath } from '../shared/wsl-paths'
 import {
   isTerminalLeafId,
   makePaneKey,
@@ -125,9 +126,14 @@ import {
 import { agentHookServer } from './agent-hooks/server'
 import { pruneLocalTerminalScrollbackBuffers } from '../shared/workspace-session-terminal-buffers'
 import { pruneWorkspaceSessionBrowserHistory } from '../shared/workspace-session-browser-history'
-import { getRepoIdFromWorktreeId, getWorktreePathBasenameFromId } from '../shared/worktree-id'
+import {
+  FOLDER_WORKSPACE_INSTANCE_SEPARATOR,
+  getRepoIdFromWorktreeId,
+  getWorktreePathBasenameFromId
+} from '../shared/worktree-id'
 import {
   isPathInsideOrEqual,
+  isWindowsAbsolutePathLike,
   normalizeRuntimePathForComparison
 } from '../shared/cross-platform-path'
 import { normalizeTerminalQuickCommands } from '../shared/terminal-quick-commands'
@@ -333,6 +339,82 @@ function getDataFile(): string {
 // instantly on the next launch. Loss of this file costs nothing.
 function getGithubCacheFile(): string {
   return join(dirname(getDataFile()), 'orca-github-cache.json')
+}
+
+// Why: worktrees deleted outside Orca (git CLI worktree remove, rm -rf,
+// agent scripts) purge renderer session state but nothing removed their
+// worktreeMeta, so the map grew monotonically (63% dead entries measured on
+// a heavy install). GC is deliberately narrow: local-host entries only
+// (SSH/runtime metas embed remote paths a local existsSync would falsely
+// condemn; WSL UNC paths are skipped the same way), and only after a
+// 30-day idle grace so pushTarget cleanup for recently-vanished worktrees
+// and quick recreations keep their metadata.
+const WORKTREE_META_GC_GRACE_MS = 30 * 24 * 60 * 60 * 1000
+
+function gcStaleWorktreeMeta(state: PersistedState): number {
+  // Why: a hand-corrupted file with `"worktreeMeta": null` overrides the
+  // defaults merge; normalize instead of throwing outside the parse guard.
+  state.worktreeMeta ??= {}
+  const repoById = new Map(state.repos.map((repo) => [repo.id, repo]))
+  const projectIds = new Set((state.projects ?? []).map((project) => project.id))
+  const now = Date.now()
+  let removed = 0
+  for (const key of Object.keys(state.worktreeMeta)) {
+    // Why: folder-project workspace instances are keyed
+    // `repoId::path::workspace:<uuid>` and their meta IS the workspace
+    // record — never a filesystem-checkout row. Skip them entirely.
+    if (key.includes(FOLDER_WORKSPACE_INSTANCE_SEPARATOR)) {
+      continue
+    }
+    const separator = key.indexOf('::')
+    if (separator === -1) {
+      continue
+    }
+    const ownerId = key.slice(0, separator)
+    const worktreePath = key.slice(separator + 2)
+    const meta = state.worktreeMeta[key]
+    const repo = repoById.get(ownerId)
+    if (repo) {
+      if (repo.connectionId || getRepoExecutionHostId(repo) !== LOCAL_EXECUTION_HOST_ID) {
+        continue
+      }
+    } else if (projectIds.has(ownerId)) {
+      // Project-owned metas keep project/host semantics on the entry itself;
+      // stay conservative and leave them to their own lifecycle.
+      continue
+    }
+    // Unowned entries (repo removed before removeProject pruned metas) fall
+    // through to the same missing-path + idle-grace gate.
+    if (meta?.hostId && meta.hostId !== LOCAL_EXECUTION_HOST_ID) {
+      continue
+    }
+    if (!isAbsolute(worktreePath) || isWslUncPath(worktreePath)) {
+      continue
+    }
+    // Why: WSL linked worktrees on Windows carry Linux-style paths from git
+    // porcelain; a Windows existsSync cannot probe those and would falsely
+    // condemn live worktrees.
+    if (process.platform === 'win32' && !isWindowsAbsolutePathLike(worktreePath)) {
+      continue
+    }
+    // Why keep timestamp-less entries: without lastActivityAt/createdAt we
+    // cannot prove the 30-day idle grace elapsed; the measured dead entries
+    // all carry timestamps, so this costs almost nothing in reclaimed bytes.
+    // Grace runs before the stat so healthy profiles skip the existsSync
+    // fan-out (and its slow-NFS tail) for active entries entirely.
+    const newestTouch = Math.max(meta?.lastActivityAt ?? 0, meta?.createdAt ?? 0)
+    if (newestTouch === 0 || now - newestTouch < WORKTREE_META_GC_GRACE_MS) {
+      continue
+    }
+    if (existsSync(worktreePath)) {
+      continue
+    }
+    delete state.worktreeMeta[key]
+    delete state.worktreeLineageById[key]
+    delete state.workspaceLineageByChildKey[worktreeWorkspaceKey(key)]
+    removed++
+  }
+  return removed
 }
 
 function readGithubCacheSnapshot(): PersistedState['githubCache'] | null {
@@ -3321,6 +3403,10 @@ export class Store {
       this.loadNeedsSave = true
     }
     result = folderScopeConnectionMigration.state
+
+    if (gcStaleWorktreeMeta(result) > 0) {
+      this.loadNeedsSave = true
+    }
 
     const migrated = this.migrateTelemetry(result, fileExistedOnLoad)
 
