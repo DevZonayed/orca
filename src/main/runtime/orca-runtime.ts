@@ -202,6 +202,7 @@ import {
   normalizeRuntimePathForComparison
 } from '../../shared/cross-platform-path'
 import { resolveTerminalStartupCwd } from '../../shared/terminal-startup-cwd'
+import { localTerminalCwdCanonicalizer } from '../pty/terminal-cwd-realpath'
 import { isWslUncPath } from '../../shared/wsl-paths'
 import {
   folderWorkspaceKey,
@@ -15493,7 +15494,7 @@ export class OrcaRuntimeService {
         throw new Error('runtime_unavailable')
       }
       const workspace = await this.resolveTerminalWorkspaceLaunchScope(worktreeSelector)
-      const cwd = resolveTerminalStartupCwd(workspace.path, opts.cwd) ?? workspace.path
+      const cwd = this.resolveGuardedWorkspaceTerminalCwd(workspace, opts.cwd) ?? workspace.path
       const preAllocatedHandle = this.createPreAllocatedTerminalHandle()
       // Why: mint tabId in main before spawn so paneKey is known at PTY env
       // build time. Hook-based agent status (Claude/Codex/Cursor/Gemini) keys
@@ -15678,7 +15679,7 @@ export class OrcaRuntimeService {
       ? await this.resolveTerminalWorkspaceLaunchScope(worktreeSelector)
       : null
     const worktreeId = workspace?.id
-    const cwd = workspace ? resolveTerminalStartupCwd(workspace.path, opts.cwd) : opts.cwd
+    const cwd = workspace ? this.resolveGuardedWorkspaceTerminalCwd(workspace, opts.cwd) : opts.cwd
     const requestId = randomUUID()
 
     // Why: terminal creation is a renderer-side Zustand store operation (like
@@ -15821,7 +15822,7 @@ export class OrcaRuntimeService {
     this.assertGraphReady()
     const workspace = await this.resolveTerminalWorkspaceLaunchScope(worktreeSelector)
     const worktreeId = workspace.id
-    const cwd = resolveTerminalStartupCwd(workspace.path, opts.cwd)
+    const cwd = this.resolveGuardedWorkspaceTerminalCwd(workspace, opts.cwd)
     this.hydrateHeadlessMobileSessionTabsFromWorkspaceSession(worktreeId)
     let afterDesktopTabId: string | undefined
     if (opts.afterTabId) {
@@ -16025,7 +16026,7 @@ export class OrcaRuntimeService {
     } = {}
   ): Promise<RuntimeMobileSessionCreateTerminalResult> {
     const workspace = await this.resolveTerminalWorkspaceLaunchScope(`id:${worktreeId}`)
-    const cwd = resolveTerminalStartupCwd(workspace.path, opts.cwd)
+    const cwd = this.resolveGuardedWorkspaceTerminalCwd(workspace, opts.cwd)
     // Why: SshPtyProvider treats sessionId as a relay reattach request. Only
     // synthesize local serve ids; SSH fresh terminals must call pty.spawn.
     const stableSessionId =
@@ -16892,6 +16893,17 @@ export class OrcaRuntimeService {
         isMainWorktree: worktree.isMainWorktree
       }
     }
+  }
+
+  // Why: every terminal-creation path must apply the same symlink-aware cwd
+  // guard; keep the canonicalizer wiring in one place.
+  private resolveGuardedWorkspaceTerminalCwd(
+    workspace: Pick<TerminalWorkspaceLaunchScope, 'path' | 'connectionId'>,
+    requestedCwd?: string | null
+  ): string | undefined {
+    return resolveTerminalStartupCwd(workspace.path, requestedCwd, {
+      canonicalizePath: localTerminalCwdCanonicalizer(workspace.connectionId)
+    })
   }
 
   private async resolveTerminalWorkspaceLaunchScope(
