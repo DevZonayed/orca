@@ -8,6 +8,9 @@ import { parse, printParseErrorCode } from 'jsonc-parser'
 const MANIFEST_PATH = path.join('config', 'reliability-gates.jsonc')
 const RED_GREEN_STATUSES = new Set(['missing', 'partial', 'complete', 'not-required'])
 const FLAKE_STATUSES = new Set(['not-started', 'unknown', 'soaking', 'stable', 'flaky'])
+const PROTECTION_LEVELS = new Set(['none', 'partial', 'active'])
+const EVIDENCE_RUN_RESULTS = new Set(['passed', 'failed', 'skipped'])
+const EVIDENCE_RUNNERS = new Set(['local', 'ci', 'soak', 'manual'])
 
 function isRecord(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
@@ -30,6 +33,12 @@ function requireNonEmptyString(gate, field, failures) {
 function requireStringArray(gate, field, failures) {
   if (!hasNonEmptyStringArray(gate[field])) {
     failures.push(`${gate.id ?? '<unknown>'}: ${field} must be a non-empty string array`)
+  }
+}
+
+function requireStringArrayAllowEmpty(gate, field, failures) {
+  if (!Array.isArray(gate[field]) || !gate[field].every(isNonEmptyString)) {
+    failures.push(`${gate.id ?? '<unknown>'}: ${field} must be an array of strings`)
   }
 }
 
@@ -106,7 +115,188 @@ function validatePerformanceBudget(gate, failures) {
   }
 }
 
-function validateGate(gate, maturities) {
+function commandUsesBrittleTestSelector(command) {
+  return /(?:^|\s)(?:-t|--testNamePattern|--grep)(?:=|\s)/.test(command)
+}
+
+function validateCommandCoverage(gate, failures) {
+  if (!hasNonEmptyStringArray(gate.commands) || !hasNonEmptyStringArray(gate.testFiles)) {
+    return
+  }
+  for (const testFile of gate.testFiles) {
+    if (!gate.commands.some((command) => command.includes(testFile))) {
+      failures.push(`${gate.id}: test file is not referenced by any gate command: ${testFile}`)
+    }
+  }
+}
+
+function validateProtection(gate, failures) {
+  if (!PROTECTION_LEVELS.has(gate.protection)) {
+    failures.push(`${gate.id}: protection must be one of none, partial, or active`)
+    return
+  }
+  const hasCommands = hasNonEmptyStringArray(gate.commands)
+  const hasTestFiles = hasNonEmptyStringArray(gate.testFiles)
+  if (gate.protection === 'none' && (hasCommands || hasTestFiles)) {
+    failures.push(`${gate.id}: protection none gates must not declare commands or testFiles`)
+  }
+  if (gate.protection === 'partial' && (!hasCommands || !hasTestFiles)) {
+    failures.push(`${gate.id}: protection partial gates must declare commands and testFiles`)
+  }
+  if (gate.protection === 'active') {
+    if (gate.maturity !== 'blocking') {
+      failures.push(`${gate.id}: protection active is reserved for blocking gates`)
+    }
+    if (!hasCommands || !hasTestFiles) {
+      failures.push(`${gate.id}: protection active gates must declare commands and testFiles`)
+    }
+    if (gate.flakeHistory?.status !== 'stable') {
+      failures.push(`${gate.id}: protection active gates must have stable flakeHistory`)
+    }
+    if (!['complete', 'not-required'].includes(gate.redGreenEvidence?.status)) {
+      failures.push(`${gate.id}: protection active gates must have complete red/green evidence`)
+    }
+  }
+  if (!hasCommands && gate.protection !== 'none') {
+    failures.push(`${gate.id}: commandless gates must declare protection none`)
+  }
+}
+
+function isIsoDate(value) {
+  return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)
+}
+
+function validateEvidenceRun(gate, run, index, failures) {
+  const owner = `${gate.id}: evidenceRuns[${index}]`
+  if (!isRecord(run)) {
+    failures.push(`${owner} must be an object`)
+    return
+  }
+  if (!isIsoDate(run.date)) {
+    failures.push(`${owner}.date must be YYYY-MM-DD`)
+  }
+  if (!EVIDENCE_RUNNERS.has(run.runner)) {
+    failures.push(`${owner}.runner must be one of local, ci, soak, or manual`)
+  }
+  if (!isNonEmptyString(run.platform)) {
+    failures.push(`${owner}.platform must be a non-empty string`)
+  }
+  if (!EVIDENCE_RUN_RESULTS.has(run.result)) {
+    failures.push(`${owner}.result must be one of passed, failed, or skipped`)
+  }
+  if (!isNonEmptyString(run.command)) {
+    failures.push(`${owner}.command must be a non-empty string`)
+  } else if (!gate.commands.includes(run.command)) {
+    failures.push(`${owner}.command must match one of the gate commands`)
+  }
+  if (!Number.isFinite(run.durationSeconds) || run.durationSeconds < 0) {
+    failures.push(`${owner}.durationSeconds must be a non-negative number`)
+  }
+  if (!isNonEmptyString(run.summary)) {
+    failures.push(`${owner}.summary must be a non-empty string`)
+  }
+}
+
+function validateEvidenceRuns(gate, failures) {
+  if (!Array.isArray(gate.evidenceRuns)) {
+    failures.push(`${gate.id}: evidenceRuns must be an array`)
+    return
+  }
+  gate.evidenceRuns.forEach((run, index) => validateEvidenceRun(gate, run, index, failures))
+  if (
+    ['partial', 'active'].includes(gate.protection) &&
+    !gate.evidenceRuns.some((run) => isRecord(run) && run.result === 'passed')
+  ) {
+    failures.push(`${gate.id}: protection ${gate.protection} gates need a passed evidence run`)
+  }
+  if (gate.protection === 'none' && gate.evidenceRuns.length > 0) {
+    failures.push(`${gate.id}: protection none gates must not declare evidenceRuns`)
+  }
+}
+
+function validateAssertionRef(gate, ref, index, failures) {
+  const owner = `${gate.id}: assertionRefs[${index}]`
+  if (!isRecord(ref)) {
+    failures.push(`${owner} must be an object`)
+    return
+  }
+  if (!isNonEmptyString(ref.file)) {
+    failures.push(`${owner}.file must be a non-empty string`)
+  } else if (!gate.testFiles.includes(ref.file)) {
+    failures.push(`${owner}.file must be one of the gate testFiles`)
+  }
+  if (!hasNonEmptyStringArray(ref.assertions)) {
+    failures.push(`${owner}.assertions must be a non-empty string array`)
+  }
+}
+
+function validateAssertionRefs(gate, failures) {
+  if (!Array.isArray(gate.assertionRefs)) {
+    failures.push(`${gate.id}: assertionRefs must be an array`)
+    return
+  }
+  gate.assertionRefs.forEach((ref, index) => validateAssertionRef(gate, ref, index, failures))
+  if (['partial', 'active'].includes(gate.protection) && gate.assertionRefs.length === 0) {
+    failures.push(`${gate.id}: protection ${gate.protection} gates need assertionRefs`)
+  }
+  if (gate.protection === 'none' && gate.assertionRefs.length > 0) {
+    failures.push(`${gate.id}: protection none gates must not declare assertionRefs`)
+  }
+}
+
+function validateCoveredScope(gate, failures) {
+  requireStringArrayAllowEmpty(gate, 'coveredPlatforms', failures)
+  requireStringArrayAllowEmpty(gate, 'coveredProviders', failures)
+  requireNonEmptyString(gate, 'coverageNotes', failures)
+
+  if (!Array.isArray(gate.coveredPlatforms) || !Array.isArray(gate.coveredProviders)) {
+    return
+  }
+  for (const platform of gate.coveredPlatforms) {
+    if (!gate.platforms.includes(platform)) {
+      failures.push(`${gate.id}: covered platform is outside risk scope: ${platform}`)
+    }
+  }
+  for (const provider of gate.coveredProviders) {
+    if (!gate.providers.includes(provider)) {
+      failures.push(`${gate.id}: covered provider is outside risk scope: ${provider}`)
+    }
+  }
+  if (
+    ['partial', 'active'].includes(gate.protection) &&
+    gate.evidenceRuns.some((run) => isRecord(run) && run.result === 'passed')
+  ) {
+    const evidencePlatforms = new Set(
+      gate.evidenceRuns
+        .filter((run) => isRecord(run) && run.result === 'passed')
+        .map((run) => run.platform)
+    )
+    for (const platform of evidencePlatforms) {
+      if (!gate.coveredPlatforms.includes(platform)) {
+        failures.push(
+          `${gate.id}: coveredPlatforms must include passed evidence platform ${platform}`
+        )
+      }
+    }
+  }
+  if (
+    gate.protection === 'none' &&
+    (gate.coveredPlatforms.length > 0 || gate.coveredProviders.length > 0)
+  ) {
+    failures.push(`${gate.id}: protection none gates must not declare covered scope`)
+  }
+}
+
+async function fileExists(root, filePath) {
+  try {
+    const stat = await fs.stat(path.join(root, filePath))
+    return stat.isFile()
+  } catch {
+    return false
+  }
+}
+
+async function validateGate(gate, maturities, root) {
   const failures = []
   if (!isRecord(gate)) {
     return ['gate entry must be an object']
@@ -128,10 +318,21 @@ function validateGate(gate, maturities) {
   }
   if (!Array.isArray(gate.commands) || !gate.commands.every(isNonEmptyString)) {
     failures.push(`${gate.id}: commands must be an array of strings`)
+  } else if (gate.commands.some(commandUsesBrittleTestSelector)) {
+    failures.push(
+      `${gate.id}: commands must not rely on title selectors (-t, --grep, or --testNamePattern)`
+    )
   }
   if (!Array.isArray(gate.testFiles) || !gate.testFiles.every(isNonEmptyString)) {
     failures.push(`${gate.id}: testFiles must be an array of strings`)
+  } else {
+    for (const testFile of gate.testFiles) {
+      if (!(await fileExists(root, testFile))) {
+        failures.push(`${gate.id}: test file does not exist: ${testFile}`)
+      }
+    }
   }
+  validateCommandCoverage(gate, failures)
   if (['soak', 'blocking'].includes(gate.maturity)) {
     if (!hasNonEmptyStringArray(gate.commands)) {
       failures.push(`${gate.id}: ${gate.maturity} gates must declare at least one command`)
@@ -139,10 +340,20 @@ function validateGate(gate, maturities) {
     if (!hasNonEmptyStringArray(gate.testFiles)) {
       failures.push(`${gate.id}: ${gate.maturity} gates must declare at least one test file`)
     }
+    if (!['soaking', 'stable'].includes(gate.flakeHistory?.status)) {
+      failures.push(`${gate.id}: ${gate.maturity} gates must have soaking or stable flakeHistory`)
+    }
+    if (!['complete', 'not-required'].includes(gate.redGreenEvidence?.status)) {
+      failures.push(`${gate.id}: ${gate.maturity} gates must have complete red/green evidence`)
+    }
   }
   validateRuntimeBudget(gate, failures)
   validateEvidence(gate, 'flakeHistory', FLAKE_STATUSES, failures)
   validateEvidence(gate, 'redGreenEvidence', RED_GREEN_STATUSES, failures)
+  validateProtection(gate, failures)
+  validateEvidenceRuns(gate, failures)
+  validateAssertionRefs(gate, failures)
+  validateCoveredScope(gate, failures)
   validatePerformanceBudget(gate, failures)
   if (!Array.isArray(gate.knownGaps) || !gate.knownGaps.every(isNonEmptyString)) {
     failures.push(`${gate.id}: knownGaps must be an array of strings`)
@@ -189,7 +400,7 @@ export async function main(root = process.cwd()) {
           }
           seenIds.add(gate.id)
         }
-        failures.push(...validateGate(gate, maturities))
+        failures.push(...(await validateGate(gate, maturities, root)))
       }
     }
   }
