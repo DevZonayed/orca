@@ -545,6 +545,13 @@
       },
       "ephemeralVmWorkspaceTarget": {
         "projectRootRegistrationFailed": "Failed to register the recipe-created project root on the runtime."
+      },
+      "blocked": {
+        "notification": {
+          "fallback": {
+            "de50bef680": "macOS が Orca の通知をブロックしています"
+          }
+        }
       }
     },
     "hooks": {
@@ -10015,7 +10022,15 @@
           "3cd5374e22": "通知設定をまだ読み込み中です",
           "b6a994e36e": "通知音が再生できませんでした",
           "c0692baa52": "カスタムファイルの選択",
-          "ac80d97e02": "カスタムファイルの変更"
+          "ac80d97e02": "カスタムファイルの変更",
+          "56b836215c": "通知の権限を確認しています…",
+          "fd84d3e9b8": "通知は有効です",
+          "4f7bce5644": "エージェントの完了やターミナルの要対応時に macOS が通知します。",
+          "95d99b52fa": "Orca の通知を許可",
+          "94562ba367": "macOS が権限を求めています。ダイアログで許可をクリックすると、このステップは自動的に更新されます。",
+          "4f6a1da718": "システム設定を開く",
+          "90b5d2e363": "macOS が Orca の通知を配信していません",
+          "2c47f5465f": "システム設定で Orca の通知を許可するをオンにします。有効になると、このステップは自動的に更新されます。"
         },
         "OnboardingFlow": {
           "1b5e182e9f": "Orca へようこそ",
@@ -10141,6 +10156,17 @@
           "windowsDefault": "Windows の既定",
           "rightClickBehavior": "右クリックの動作",
           "rightClickBehaviorDescription": "Windows で慣れた terminal のマウス操作に合うものを選びます。"
+        },
+        "mac": {
+          "notification": {
+            "permission": {
+              "card": {
+                "f696515944": "macOS のダイアログで許可をクリックします。",
+                "3d18cf71f9": "自動的に更新されます。",
+                "721d2bedb6": "システム設定で Orca の通知を許可するをオンにします。"
+              }
+            }
+          }
         }
       },
       "new": {
