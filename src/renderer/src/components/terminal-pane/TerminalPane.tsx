@@ -43,6 +43,7 @@ import {
   serializeTerminalLayout
 } from './layout-serialization'
 import { makePaneKey } from '../../../../shared/stable-pane-id'
+import type { TerminalKittyKeyboardModeTracker } from '../../../../shared/terminal-kitty-keyboard-mode-tracker'
 import {
   applyExpandedLayoutTo,
   cancelPendingPaneSizeRefreshFrames,
@@ -296,6 +297,10 @@ export default function TerminalPane({
   // read this map at dispatch time to pass cwd into splitPane.
   const paneCwdRef = useRef<Map<number, { cwd: string; confirmed: boolean }>>(new Map())
   const paneMode2031Ref = useRef<Map<number, boolean>>(new Map())
+  // Why: per-pane mirror of the kitty keyboard flags negotiated by the pane's
+  // application (fed from PTY output in pty-connection). The keyboard policy
+  // reads it to encode Option chords as kitty CSI-u for opted-in TUIs.
+  const paneKittyKeyboardModesRef = useRef<Map<number, TerminalKittyKeyboardModeTracker>>(new Map())
   const paneLastThemeModeRef = useRef<Map<number, 'dark' | 'light'>>(new Map())
   const panePtyBindingsRef = useRef<Map<number, IDisposable>>(new Map())
   // Why: tracks panes currently replaying recorded PTY bytes into xterm
@@ -1472,6 +1477,7 @@ export default function TerminalPane({
     paneTransportsRef,
     paneCwdRef,
     paneMode2031Ref,
+    paneKittyKeyboardModesRef,
     paneLastThemeModeRef,
     panePtyBindingsRef,
     replayingPanesRef,
@@ -1696,6 +1702,7 @@ export default function TerminalPane({
         startup: { command: 'codex' },
         paneTransportsRef,
         paneMode2031Ref,
+        paneKittyKeyboardModesRef,
         paneLastThemeModeRef,
         replayingPanesRef,
         isActiveRef,
@@ -1795,6 +1802,7 @@ export default function TerminalPane({
     searchOpenRef,
     searchStateRef,
     macOptionAsAltRef,
+    paneKittyKeyboardModesRef,
     keybindings,
     terminalShortcutPolicy: settings?.terminalShortcutPolicy ?? 'orca-first'
   })

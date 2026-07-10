@@ -2,6 +2,7 @@
 import { useEffect, useRef } from 'react'
 import type { IDisposable, Terminal } from '@xterm/xterm'
 import type { ParsedAgentStatusPayload } from '../../../../shared/agent-status-types'
+import type { TerminalKittyKeyboardModeTracker } from '../../../../shared/terminal-kitty-keyboard-mode-tracker'
 import {
   PaneManager,
   type PaneExternalDropHandler,
@@ -242,6 +243,7 @@ type UseTerminalPaneLifecycleDeps = {
    *  context-menu split handlers can read it synchronously for cache hits. */
   paneCwdRef: React.RefObject<PaneCwdMap>
   paneMode2031Ref: React.RefObject<Map<number, boolean>>
+  paneKittyKeyboardModesRef: React.RefObject<Map<number, TerminalKittyKeyboardModeTracker>>
   paneLastThemeModeRef: React.RefObject<Map<number, 'dark' | 'light'>>
   panePtyBindingsRef: React.RefObject<Map<number, IDisposable>>
   replayingPanesRef: ReplayingPanesRef
@@ -516,6 +518,7 @@ export function useTerminalPaneLifecycle({
   paneTransportsRef,
   paneCwdRef,
   paneMode2031Ref,
+  paneKittyKeyboardModesRef,
   paneLastThemeModeRef,
   panePtyBindingsRef,
   replayingPanesRef,
@@ -736,6 +739,7 @@ export function useTerminalPaneLifecycle({
       startup: startupWithSetupSplitWait,
       paneTransportsRef,
       paneMode2031Ref,
+      paneKittyKeyboardModesRef,
       paneLastThemeModeRef,
       replayingPanesRef,
       restoredViewportBlankingPanesRef,
@@ -1201,6 +1205,7 @@ export function useTerminalPaneLifecycle({
           mode2031DisposablesRef.current.delete(paneId)
         }
         paneMode2031Ref.current.delete(paneId)
+        paneKittyKeyboardModesRef.current.delete(paneId)
         paneLastThemeModeRef.current.delete(paneId)
         const osc52Disposable = osc52DisposablesRef.current.get(paneId)
         if (osc52Disposable) {
