@@ -850,14 +850,16 @@ describe('SshGitProvider', () => {
       '/home/user/repo',
       'origin',
       'main',
-      'refs/remotes/origin/main'
+      'refs/remotes/origin/main',
+      { skipAutoMaintenance: true }
     )
 
     expect(mux.request).toHaveBeenCalledWith('git.fetchRemoteTrackingRef', {
       worktreePath: '/home/user/repo',
       remote: 'origin',
       branch: 'main',
-      ref: 'refs/remotes/origin/main'
+      ref: 'refs/remotes/origin/main',
+      skipAutoMaintenance: true
     })
   })
 

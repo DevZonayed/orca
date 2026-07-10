@@ -553,14 +553,16 @@ export class SshGitProvider implements IGitProvider {
     worktreePath: string,
     remote: string,
     branch: string,
-    ref: string
+    ref: string,
+    options?: { skipAutoMaintenance?: boolean }
   ): Promise<void> {
     await this.runWithDiffDedupeClear(async () => {
       await this.mux.request('git.fetchRemoteTrackingRef', {
         worktreePath,
         remote,
         branch,
-        ref
+        ref,
+        ...(options?.skipAutoMaintenance ? { skipAutoMaintenance: true } : {})
       })
     })
   }

@@ -60,6 +60,7 @@ import {
 import { getGitCloneFailureMessage } from '../shared/git-clone-failure-message'
 import { syncForkDefaultBranch, validateGitForkSyncExpectedUpstream } from '../shared/git-fork-sync'
 import { InFlightPromiseDedupe, stableInFlightKey } from '../shared/in-flight-promise-dedupe'
+import { GIT_FETCH_SKIP_AUTO_MAINTENANCE_CONFIG_ARGS } from '../shared/git-fetch-auto-maintenance'
 
 const execFileAsync = promisify(execFile)
 const MAX_GIT_BUFFER = 10 * 1024 * 1024
@@ -844,9 +845,13 @@ export class GitHandler {
     const remote = params.remote
     const branch = params.branch
     const ref = params.ref
+    const skipAutoMaintenance = params.skipAutoMaintenance
     try {
       if (typeof remote !== 'string' || typeof branch !== 'string' || typeof ref !== 'string') {
         throw new Error('Invalid remote-tracking fetch request.')
+      }
+      if (skipAutoMaintenance !== undefined && typeof skipAutoMaintenance !== 'boolean') {
+        throw new Error('Invalid remote-tracking fetch maintenance option.')
       }
       if (remote.startsWith('-') || branch.startsWith('-')) {
         throw new Error('Remote-tracking fetch inputs must not start with "-".')
@@ -866,7 +871,16 @@ export class GitHandler {
         }
         await this.git(['check-ref-format', `refs/heads/${branch}`], worktreePath)
         await this.git(['check-ref-format', ref], worktreePath)
-        await this.git(['fetch', '--no-tags', remote, `+refs/heads/${branch}:${ref}`], worktreePath)
+        await this.git(
+          [
+            ...(skipAutoMaintenance ? GIT_FETCH_SKIP_AUTO_MAINTENANCE_CONFIG_ARGS : []),
+            'fetch',
+            '--no-tags',
+            remote,
+            `+refs/heads/${branch}:${ref}`
+          ],
+          worktreePath
+        )
       } catch (error) {
         // Why: create-worktree needs a write-capable fetch, but generic git.exec
         // intentionally rejects fetch. This narrow RPC keeps the relay allowlist
