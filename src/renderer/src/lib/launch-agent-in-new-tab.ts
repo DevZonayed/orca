@@ -266,14 +266,17 @@ export function launchAgentInNewTab(args: LaunchAgentInNewTabArgs): LaunchAgentI
   // stays false), so gate the initial chat view like a `draft` launch —
   // otherwise a default `auto-submit` followup would open native chat with no
   // submitted turn to render.
-  const viewModePromptDelivery = hasPrompt && isFollowupPath && promptDelivery === 'auto-submit' ? 'draft' : promptDelivery
+  const viewModePromptDelivery =
+    hasPrompt && isFollowupPath && promptDelivery === 'auto-submit' ? 'draft' : promptDelivery
   const tab = store.createTab(worktreeId, groupId, undefined, {
     launchAgent: agent,
     quickCommandLabel,
     ...initialAgentTabViewModeProps(store.settings, {
       agent,
       promptDelivery: viewModePromptDelivery,
-      nativeChatTranscriptIsLocalReadable: isNativeChatTranscriptLocalReadable(getConnectionIdFromState(store, worktreeId))
+      nativeChatTranscriptIsLocalReadable: isNativeChatTranscriptLocalReadable(
+        getConnectionIdFromState(store, worktreeId)
+      )
     })
   })
   store.queueTabStartupCommand(tab.id, {
