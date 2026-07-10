@@ -2587,6 +2587,7 @@ function createRateLimitsApi(): NonNullable<Partial<PreloadApi>['rateLimits']> {
     gemini: null,
     opencodeGo: null,
     kimi: null,
+    antigravity: null,
     minimax: null,
     grok: null,
     minimaxCookieConfigured: false,
