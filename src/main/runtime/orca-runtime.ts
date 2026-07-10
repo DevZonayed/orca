@@ -247,6 +247,11 @@ import {
   RUNTIME_PROTOCOL_VERSION,
   type RuntimeCapability
 } from '../../shared/protocol-version'
+import {
+  configureAiVaultSessionSources,
+  listAiVaultSessions
+} from '../ai-vault/cached-session-list'
+import type { AiVaultListArgs, AiVaultListResult } from '../../shared/ai-vault-types'
 import type {
   WorkspacePortKillRequest,
   WorkspacePortKillResult,
@@ -1183,6 +1188,9 @@ function getAgentLaunchPlatformForRepo(
   return isWindowsAbsolutePathLike(repo.path) ? 'win32' : 'linux'
 }
 
+// Why: long enough for a phone to reconnect and retry a create whose response
+// was lost, short enough that an intentional later re-resume forks fresh.
+const MOBILE_TERMINAL_CREATE_RESULT_TTL_MS = 60_000
 const FOREGROUND_AGENT_WRAPPER_RETRY_INTERVAL_MS = 150
 const FOREGROUND_AGENT_WRAPPER_RETRY_TIMEOUT_MS = 6_500
 const BRACKETED_PASTE_BEGIN = '\x1b[200~'
@@ -2391,6 +2399,11 @@ export class OrcaRuntimeService {
       // terminal output. worktree.ps reads this at query time so mobile shows the
       // same inline agent rows the desktop sidebar does — same source, 1:1.
       getAgentStatusSnapshot?: () => AgentStatusIpcPayload[]
+      // Why: codex-home paths for the Agent Session History scan must be sourced
+      // here, not via the window-only registerCoreHandlers path — that path never
+      // runs under `orca serve`, so remote/SSH hosts would silently drop
+      // managed-Codex sessions. The runtime ctor runs in BOTH window and serve.
+      getAdditionalAiVaultCodexHomePaths?: () => readonly string[]
       buildAgentHookPtyEnv?: () => Record<string, string>
     }
   ) {
@@ -2400,6 +2413,14 @@ export class OrcaRuntimeService {
       this.agentDetector = new AgentDetector(stats)
     }
     this.getAgentStatusSnapshotFn = deps?.getAgentStatusSnapshot ?? null
+    // Why: configure the shared AiVault scan cache from a serve-mode-reachable
+    // seam so the aiVault.listSessions RPC includes managed-Codex + WSL sessions
+    // even on headless `orca serve` hosts where registerCoreHandlers never runs.
+    if (deps?.getAdditionalAiVaultCodexHomePaths) {
+      configureAiVaultSessionSources({
+        getAdditionalCodexHomePaths: deps.getAdditionalAiVaultCodexHomePaths
+      })
+    }
     // Why: the daemon adapter is installed via `setLocalPtyProvider()` during
     // attachMainWindowServices, AFTER this service is constructed. Capturing
     // `getLocalPtyProvider()` at construction time would freeze a reference to
@@ -2790,9 +2811,17 @@ export class OrcaRuntimeService {
       // must not treat browser panes as supported just because runtime RPC is up.
       capabilities,
       hostPlatform: process.platform,
+      terminalWindowsShell: this.store?.getSettings?.().terminalWindowsShell ?? null,
       protocolVersion: RUNTIME_PROTOCOL_VERSION,
       minCompatibleMobileVersion: MIN_COMPATIBLE_RUNTIME_CLIENT_VERSION
     }
+  }
+
+  // Why: scans the transcript-owning host's disk (correct by construction over
+  // RPC — a remote/SSH host scans its own disk). Delegates to the one shared
+  // cache so the desktop panel and the mobile screen never double-scan.
+  listAiVaultSessions(args?: AiVaultListArgs): Promise<AiVaultListResult> {
+    return listAiVaultSessions(args)
   }
 
   setPtyController(controller: RuntimePtyController | null): void {
@@ -9684,24 +9713,40 @@ export class OrcaRuntimeService {
       if (!linkedPR && meta?.linkedPR != null) {
         linkedPR = { number: meta.linkedPR, state: 'unknown' }
       }
+      const terminalPlatform = repo ? this.getAgentLaunchPlatformForRepo(repo) : process.platform
+      // Why: use the instance-validated lineage from attachLineageToResolvedWorktrees,
+      // not the raw store entry — shipped mobile clients trust parentWorktreeId as-is,
+      // so a stale same-path entry would nest replacement checkouts under old parents.
+      const lineage = worktree.lineage
       summaries.set(worktree.id, {
         // Why: mobile mirrors desktop workspace grouping/order from persisted
         // metadata, while older runtimes may not have hydrated every field yet.
         workspaceKind: 'git',
         worktreeId: worktree.id,
         repoId: worktree.repoId,
+        ...((worktree.hostId ?? meta?.hostId) ? { hostId: worktree.hostId ?? meta?.hostId } : {}),
+        terminalPlatform,
         repo: repo?.displayName ?? worktree.repoId,
         path: worktree.path,
         branch: worktree.branch,
         isArchived: worktree.isArchived,
         isMainWorktree: worktree.isMainWorktree,
         hasHostSidebarActivity: false,
+        ...(worktree.instanceId !== undefined ? { worktreeInstanceId: worktree.instanceId } : {}),
+        ...(lineage?.worktreeInstanceId !== undefined
+          ? { lineageWorktreeInstanceId: lineage.worktreeInstanceId }
+          : {}),
+        ...(lineage?.parentWorktreeInstanceId !== undefined
+          ? { parentWorktreeInstanceId: lineage.parentWorktreeInstanceId }
+          : {}),
         parentWorktreeId: worktree.parentWorktreeId,
         childWorktreeIds: worktree.childWorktreeIds,
         displayName: worktree.displayName,
         workspaceStatus: meta?.workspaceStatus ?? DEFAULT_WORKSPACE_STATUS_ID,
         sortOrder: meta?.sortOrder ?? 0,
         ...(meta?.manualOrder !== undefined ? { manualOrder: meta.manualOrder } : {}),
+        lastActivityAt: worktree.lastActivityAt,
+        ...(worktree.createdAt !== undefined ? { createdAt: worktree.createdAt } : {}),
         linkedIssue: worktree.linkedIssue,
         linkedPR,
         linkedLinearIssue: meta?.linkedLinearIssue ?? null,
@@ -9741,12 +9786,15 @@ export class OrcaRuntimeService {
         isArchived: worktree.isArchived,
         isMainWorktree: worktree.isMainWorktree,
         hasHostSidebarActivity: false,
+        ...(worktree.instanceId !== undefined ? { worktreeInstanceId: worktree.instanceId } : {}),
         parentWorktreeId: null,
         childWorktreeIds: [],
         displayName: worktree.displayName,
         workspaceStatus: worktree.workspaceStatus ?? DEFAULT_WORKSPACE_STATUS_ID,
         sortOrder: worktree.sortOrder ?? 0,
         ...(worktree.manualOrder !== undefined ? { manualOrder: worktree.manualOrder } : {}),
+        lastActivityAt: worktree.lastActivityAt,
+        ...(worktree.createdAt !== undefined ? { createdAt: worktree.createdAt } : {}),
         linkedIssue: worktree.linkedIssue ?? null,
         linkedPR: null,
         linkedLinearIssue: worktree.linkedLinearIssue ?? null,
@@ -16437,21 +16485,23 @@ export class OrcaRuntimeService {
     const mutationKey = `${worktreeSelector}\0${mutationId}`
     // Why: a retried create (double-tap, reconnect replay) with the same
     // idempotency key must return the in-flight operation instead of spawning a
-    // duplicate terminal. Settled entries are dropped so a later retry — after a
-    // failure or after the result is consumed — can start a fresh create.
+    // duplicate terminal. Successes are kept briefly so a retry whose response
+    // was lost in transit reuses the created terminal; failures are dropped
+    // immediately so a retry can start a fresh create.
     const inflight = this.mobileTerminalCreateByMutationId.get(mutationKey)
     if (inflight) {
       return inflight
     }
     const run = this.runCreateMobileSessionTerminal(worktreeSelector, opts)
     this.mobileTerminalCreateByMutationId.set(mutationKey, run)
-    void run
-      .catch(() => {})
-      .finally(() => {
-        if (this.mobileTerminalCreateByMutationId.get(mutationKey) === run) {
-          this.mobileTerminalCreateByMutationId.delete(mutationKey)
-        }
-      })
+    const drop = (): void => {
+      if (this.mobileTerminalCreateByMutationId.get(mutationKey) === run) {
+        this.mobileTerminalCreateByMutationId.delete(mutationKey)
+      }
+    }
+    void run.then(() => {
+      setTimeout(drop, MOBILE_TERMINAL_CREATE_RESULT_TTL_MS).unref?.()
+    }, drop)
     return run
   }
 
