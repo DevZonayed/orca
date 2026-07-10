@@ -4645,7 +4645,17 @@
           "87412c2a68": "Se terminó {{value0}} sesión.",
           "a2f040ac1c": "Se terminaron {{value0}} sesiones.",
           "63520148e2": "La sesión {{value0}} se negó a salir.",
-          "cc0a26cb14": "{{value0}} sesiones se negaron a salir."
+          "cc0a26cb14": "{{value0}} sesiones se negaron a salir.",
+          "71a8d342b0": "Terminal tabs absent: {{value0}}/{{value1}}. Failed close attempts: {{value2}}. Exact PTY shutdown requests accepted: {{value3}}; failed: {{value4}}.",
+          "2e57c1a940": "The daemon shutdown result is unverified because its management request failed.",
+          "993af6052c": "Daemon management reported exited: {{value0}}/{{value1}}; still present before exact cleanup: {{value2}}.",
+          "1f0d8ac762": "Terminal cleanup finished with errors.",
+          "80b6ea14cf": "Terminal cleanup finished with warnings.",
+          "47cd2a50e9": "No sessions or terminal tabs were reported.",
+          "c34fb1098d": "Terminal tabs closed and shutdown requested.",
+          "d9657ac204": "Terminal session shutdown requested.",
+          "e8f25bd903": "Couldn’t finish terminal cleanup.",
+          "a702d4196e": "This closes every terminal tab across all workspaces and requests shutdown for its current terminal sessions. Any unsaved terminal work is lost. The daemon itself keeps running, and new terminals can be opened immediately. This can't be undone."
         }
       },
       "setup": {
