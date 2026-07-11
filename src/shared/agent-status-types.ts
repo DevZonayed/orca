@@ -223,6 +223,15 @@ export const AGENT_STATUS_INTERACTIVE_PROMPT_MAX_LENGTH = 16000
  * dashboard + hover only display hook-reported data as-is.
  */
 export const AGENT_STATUS_STALE_AFTER_MS = 30 * 60 * 1000
+
+export function isFreshNonDoneAgentStatus(
+  entry: Pick<AgentStatusEntry, 'state' | 'updatedAt'> | undefined,
+  now = Date.now(),
+  staleAfterMs = AGENT_STATUS_STALE_AFTER_MS
+): boolean {
+  return Boolean(entry && entry.state !== 'done' && now - entry.updatedAt <= staleAfterMs)
+}
+
 const SINGLE_LINE_FIELD_SCAN_OVERHEAD = 64
 const SINGLE_LINE_FIELD_SCAN_MULTIPLIER = 8
 

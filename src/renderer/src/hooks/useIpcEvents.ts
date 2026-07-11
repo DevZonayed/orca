@@ -3027,6 +3027,11 @@ export function useIpcEvents(): void {
         ? { ...resolvedPayload, orchestration: data.orchestration }
         : resolvedPayload
       const existingStatus = store.agentStatusByPaneKey[data.paneKey]
+      if (existingStatus && data.receivedAt < existingStatus.updatedAt) {
+        // Why: the store rejects out-of-order status rows; keep notification and
+        // terminal lifecycle effects on the same accepted event boundary.
+        return 'dropped'
+      }
       const identity = resolveAgentStatusIdentity({
         existing: existingStatus
           ? {

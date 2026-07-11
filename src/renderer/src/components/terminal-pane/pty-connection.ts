@@ -120,7 +120,7 @@ import { resolveSshPaneConnectGate } from './ssh-pane-connect-gate'
 import { dispatchTerminalCommandFinishedEvent } from '@/hooks/terminal-command-finished-event'
 import { e2eConfig } from '@/lib/e2e-config'
 import {
-  AGENT_STATUS_STALE_AFTER_MS,
+  isFreshNonDoneAgentStatus,
   type AgentStatusEntry,
   type AgentType
 } from '../../../../shared/agent-status-types'
@@ -136,11 +136,18 @@ import {
 } from '../../../../shared/agent-interrupt-intent'
 import { createAgentCompletionCoordinator } from './agent-completion-coordinator'
 import {
+  dispatchAgentHookTerminalLifecycle,
+  registerAgentHookTerminalLifecycleHandler
+} from './agent-hook-terminal-lifecycle'
+import {
   createCodexAutoApprovalHookCompletionSuppressor,
   shouldSuppressCodexAutoApprovalSyntheticTitle,
   shouldSuppressCodexAutoApprovalStatus
 } from './codex-auto-approval-notification-suppression'
-import type { AgentCompletionStatusSnapshot } from './agent-completion-coordinator-types'
+import type {
+  AgentCompletionDispatchMeta,
+  AgentCompletionStatusSnapshot
+} from './agent-completion-coordinator-types'
 import {
   markTerminalBracketedPasteInterrupted,
   observeTerminalBracketedPasteModeOutput
@@ -951,6 +958,7 @@ export function connectPanePty(
   let agentTaskCompleteSettingsUnsubscribe: (() => void) | null = null
   let agentTaskCompleteNotificationGeneration = 0
   let wasAgentTaskCompleteTrackingEnabled = isAgentTaskCompleteTrackingEnabled()
+  let requiresFreshWorkingForAgentTaskCompleteNotification = !wasAgentTaskCompleteTrackingEnabled
   let wasAgentTaskCompleteOsNotificationEnabled = isAgentTaskCompleteNotificationEnabled()
   let terminalBellNotificationTimer: ReturnType<typeof setTimeout> | null = null
   let pendingTerminalBellNotification = false
@@ -1297,13 +1305,94 @@ export function connectPanePty(
   const isFreshActivePaneAgentEntry = (
     entry: AgentStatusEntry | undefined
   ): entry is AgentStatusEntry => {
-    return (
-      !!entry &&
-      typeof entry.updatedAt === 'number' &&
-      Date.now() - entry.updatedAt <= AGENT_STATUS_STALE_AFTER_MS &&
-      entry.state !== 'done'
-    )
+    return isFreshNonDoneAgentStatus(entry)
   }
+  const shouldSuppressTitleCompletionForFreshHook = (
+    title: string,
+    activeHookStatus: AgentStatusEntry | undefined
+  ): boolean => {
+    if (
+      detectAgentStatusFromTitle(title) === 'working' ||
+      !isFreshNonDoneAgentStatus(activeHookStatus)
+    ) {
+      return false
+    }
+    const explicitTitleAgentType = resolveCommittedTitleAgentType(title)
+    const activeHookAgentForTitle = resolveCompatibleAgentTypeForOwner(
+      activeHookStatus?.agentType,
+      explicitTitleAgentType
+    )
+    const titleNamesDifferentKnownAgent =
+      explicitTitleAgentType &&
+      activeHookStatus?.agentType &&
+      activeHookStatus.agentType !== 'unknown' &&
+      activeHookAgentForTitle !== explicitTitleAgentType
+    return !titleNamesDifferentKnownAgent
+  }
+  let pendingSuppressedTitleSideEffects: {
+    title: string
+    agentType: AgentType | undefined
+  } | null = null
+  const clearSuppressedTitleSideEffects = (): void => {
+    pendingSuppressedTitleSideEffects = null
+  }
+  const applyAgentCompletionSideEffects = (
+    title: string,
+    agentType: AgentType | undefined
+  ): void => {
+    const settings = useAppStore.getState().settings
+    if (
+      (agentType === 'claude' || isClaudeAgent(title)) &&
+      (settings === null || settings.promptCacheTimerEnabled)
+    ) {
+      deps.setCacheTimerStartedAt(cacheKey, Date.now())
+    }
+    queueAgentIdleTerminalModeReset()
+  }
+  const preserveSuppressedTitleSideEffects = (
+    title: string,
+    activeHookStatus: AgentStatusEntry
+  ): void => {
+    pendingSuppressedTitleSideEffects = {
+      title,
+      agentType: activeHookStatus.agentType
+    }
+    if (activeHookStatus.state === 'waiting' || activeHookStatus.state === 'blocked') {
+      queueAgentIdleTerminalModeReset()
+    }
+  }
+  const handleAgentHookTerminalLifecycle = (payload: AgentCompletionStatusSnapshot): void => {
+    const pending = pendingSuppressedTitleSideEffects
+    if (!pending) {
+      return
+    }
+    const payloadAgentForPending = resolveCompatibleAgentTypeForOwner(
+      payload.agentType,
+      pending.agentType
+    )
+    const belongsToPendingAgent =
+      !pending.agentType ||
+      pending.agentType === 'unknown' ||
+      !payload.agentType ||
+      payload.agentType === 'unknown' ||
+      payloadAgentForPending === pending.agentType
+    if (!belongsToPendingAgent || payload.state === 'working') {
+      clearSuppressedTitleSideEffects()
+      return
+    }
+    if (payload.state === 'done') {
+      applyAgentCompletionSideEffects(pending.title, payload.agentType ?? pending.agentType)
+      clearSuppressedTitleSideEffects()
+      return
+    }
+    if (payload.state === 'waiting' || payload.state === 'blocked') {
+      queueAgentIdleTerminalModeReset()
+    }
+  }
+  const unregisterAgentHookTerminalLifecycle = registerAgentHookTerminalLifecycleHandler(
+    cacheKey,
+    handleAgentHookTerminalLifecycle
+  )
   const hasFreshPaneAgentSurface = (): boolean => {
     const entry = useAppStore.getState().agentStatusByPaneKey[cacheKey]
     if (isFreshActivePaneAgentEntry(entry)) {
@@ -1934,11 +2023,47 @@ export function connectPanePty(
     getPtyId: () => transport.getPtyId(),
     getSettings: () => useAppStore.getState().settings,
     inspectProcess: inspectRuntimeTerminalProcess,
-    dispatchCompletion: (title, meta) =>
+    dispatchHookLifecycle: (payload) => dispatchAgentHookTerminalLifecycle(cacheKey, payload),
+    shouldSuppressProcessReplacementCompletion: (_exited, replacement) => {
+      const currentStatus = useAppStore.getState().agentStatusByPaneKey[cacheKey]
+      const currentAgentForReplacement = resolveCompatibleAgentTypeForOwner(
+        currentStatus?.agentType,
+        replacement.agent
+      )
+      return (
+        isFreshNonDoneAgentStatus(currentStatus) && currentAgentForReplacement === replacement.agent
+      )
+    },
+    shouldSuppressConfirmedProcessExitCompletion: (exited) => {
+      const currentStatus = useAppStore.getState().agentStatusByPaneKey[cacheKey]
+      const currentAgentForExited = resolveCompatibleAgentTypeForOwner(
+        currentStatus?.agentType,
+        exited.agent
+      )
+      // Why: a replacement hook can lead process visibility by one cadence;
+      // only a different known active owner can veto confirmed old-process exit.
+      return Boolean(
+        isFreshNonDoneAgentStatus(currentStatus) &&
+        currentStatus.agentType &&
+        currentStatus.agentType !== 'unknown' &&
+        currentAgentForExited !== exited.agent
+      )
+    },
+    dispatchCompletion: (title, meta) => {
+      if (meta?.source === 'process-exit') {
+        clearSuppressedTitleSideEffects()
+      }
+      if (meta?.terminalIdleConfirmed === true) {
+        // Why: an agent can crash before its done hook; confirmed process death
+        // must still restore cursor and native Windows Kitty keyboard modes.
+        queueAgentIdleTerminalModeReset()
+      }
       scheduleAgentTaskCompleteNotification(title, {
         allowDoneDetailAfterGrace: meta?.quietedHookDone,
+        ...(meta?.source === 'process-exit' ? { agentCompletionSource: meta.source } : {}),
         ...(meta?.agentStatus ? { agentStatusSnapshot: meta.agentStatus } : {})
-      }),
+      })
+    },
     dispatchAttention: (title, meta) =>
       scheduleAgentTaskCompleteNotification(title, {
         agentStatusSnapshot: meta.agentStatus
@@ -2254,7 +2379,12 @@ export function connectPanePty(
     // feed completion tracking — observeTitle would classify the cleared
     // title as idle and mint a task-complete for a merely-paused agent.
     if (!meta?.staleWorkingTitleClear && syncAgentTaskCompleteTrackingEnabled()) {
-      agentCompletionCoordinator.observeTitle(decision.rawTitle)
+      const activeHookStatus = useAppStore.getState().agentStatusByPaneKey[cacheKey]
+      if (!shouldSuppressTitleCompletionForFreshHook(decision.rawTitle, activeHookStatus)) {
+        // Why: display titles still update while hooks are active, but a stale
+        // idle frame must not complete the coordinator turn before hook `done`.
+        agentCompletionCoordinator.observeTitle(decision.rawTitle)
+      }
     }
     // Why: only the focused pane should drive the tab title — otherwise two
     // agents in split panes cause rapid title flickering as each emits OSC
@@ -2521,17 +2651,17 @@ export function connectPanePty(
     }
     if (!enabled && wasAgentTaskCompleteTrackingEnabled) {
       // Why: disabling every completion consumer is an event-time boundary.
-      // Drop pending timers and coordinator state so old work cannot replay.
+      // Drop pending alerts while preserving accepted-hook lifecycle state.
       agentTaskCompleteNotificationGeneration += 1
+      requiresFreshWorkingForAgentTaskCompleteNotification = true
       clearPendingAgentTaskCompleteNotification()
-      agentCompletionCoordinator.resetCompletionState({ requireFreshWorking: true })
       if (pendingTerminalBellNotification) {
         scheduleTerminalBellNotification()
       }
     } else if (enabled && !wasAgentTaskCompleteTrackingEnabled) {
       // Why: a pane may have observed work while all completion consumers were
       // disabled. Re-enabling should not let the next idle event report old work.
-      agentCompletionCoordinator.resetCompletionState({ requireFreshWorking: true })
+      requiresFreshWorkingForAgentTaskCompleteNotification = true
     }
     wasAgentTaskCompleteTrackingEnabled = enabled
     wasAgentTaskCompleteOsNotificationEnabled = osNotificationsEnabled
@@ -2543,20 +2673,49 @@ export function connectPanePty(
     options: {
       allowDoneDetailAfterGrace?: boolean
       agentStatusSnapshot?: AgentCompletionStatusSnapshot
+      agentCompletionSource?: AgentCompletionDispatchMeta['source']
     } = {}
   ): void => {
-    if (!syncAgentTaskCompleteTrackingEnabled()) {
+    if (
+      !syncAgentTaskCompleteTrackingEnabled() ||
+      requiresFreshWorkingForAgentTaskCompleteNotification
+    ) {
       return
     }
     clearPendingAgentTaskCompleteNotification()
     let graceElapsed = false
     const generationAtSchedule = agentTaskCompleteNotificationGeneration
+    const agentStatusAtSchedule = useAppStore.getState().agentStatusByPaneKey[cacheKey]
+    const hasNewerActiveHookStatus = (): boolean => {
+      const currentStatus = useAppStore.getState().agentStatusByPaneKey[cacheKey]
+      const scheduledAgentType = agentStatusAtSchedule?.agentType
+      const currentAgentForScheduledTurn = resolveCompatibleAgentTypeForOwner(
+        currentStatus?.agentType,
+        scheduledAgentType
+      )
+      const hasDifferentKnownAgent = Boolean(
+        currentStatus?.agentType &&
+        scheduledAgentType &&
+        currentStatus.agentType !== 'unknown' &&
+        scheduledAgentType !== 'unknown' &&
+        currentAgentForScheduledTurn !== scheduledAgentType
+      )
+      return (
+        options.agentCompletionSource === 'process-exit' &&
+        isFreshNonDoneAgentStatus(currentStatus) &&
+        (!agentStatusAtSchedule ||
+          currentStatus.state !== agentStatusAtSchedule.state ||
+          currentStatus.stateStartedAt !== agentStatusAtSchedule.stateStartedAt ||
+          hasDifferentKnownAgent)
+      )
+    }
 
     const dispatch = (): void => {
       clearPendingAgentTaskCompleteNotification()
       if (
         generationAtSchedule !== agentTaskCompleteNotificationGeneration ||
-        !syncAgentTaskCompleteTrackingEnabled()
+        !syncAgentTaskCompleteTrackingEnabled() ||
+        hasNewerActiveHookStatus()
       ) {
         return
       }
@@ -2573,12 +2732,21 @@ export function connectPanePty(
         source: 'agent-task-complete',
         terminalTitle: title,
         paneKey: cacheKey,
+        ...(options.agentCompletionSource
+          ? { agentCompletionSource: options.agentCompletionSource }
+          : {}),
         ...(shouldDispatchOsNotification ? {} : { suppressOsNotification: true }),
         ...(options.agentStatusSnapshot ? { agentStatusSnapshot: options.agentStatusSnapshot } : {})
       })
     }
 
     const dispatchIfDetailed = (): void => {
+      if (hasNewerActiveHookStatus()) {
+        // Why: the confirmed exit belongs to the row captured above; a replaced
+        // active row means a newer turn started during the notification delay.
+        clearPendingAgentTaskCompleteNotification()
+        return
+      }
       if (!graceElapsed) {
         return
       }
@@ -2629,6 +2797,16 @@ export function connectPanePty(
       deps.setCacheTimerStartedAt(cacheKey, null)
       return
     }
+    const currentState = useAppStore.getState()
+    const activeHookStatus = currentState.agentStatusByPaneKey[cacheKey]
+    if (shouldSuppressTitleCompletionForFreshHook(title, activeHookStatus)) {
+      // Why: agent CLIs can briefly publish an idle title while hook status
+      // still says the same agent turn is active (e.g. during tool output).
+      if (activeHookStatus) {
+        preserveSuppressedTitleSideEffects(title, activeHookStatus)
+      }
+      return
+    }
     // Why: only start the prompt-cache countdown for Claude agents — other
     // agents have different (or no) prompt-caching semantics and showing a
     // timer for them would be misleading.
@@ -2639,7 +2817,7 @@ export function connectPanePty(
     // tab silently drops the timer. Writing a timestamp is cheap and the
     // CacheTimer component gates rendering on the enabled flag, so a
     // spurious write when the feature turns out to be disabled is harmless.
-    const settings = useAppStore.getState().settings
+    const settings = currentState.settings
     if (isClaudeAgent(title) && (settings === null || settings.promptCacheTimerEnabled)) {
       deps.setCacheTimerStartedAt(cacheKey, Date.now())
     }
@@ -2651,7 +2829,9 @@ export function connectPanePty(
     queueAgentIdleTerminalModeReset()
   }
   const onAgentBecameWorking = (): void => {
+    clearSuppressedTitleSideEffects()
     if (syncAgentTaskCompleteTrackingEnabled()) {
+      requiresFreshWorkingForAgentTaskCompleteNotification = false
       agentCompletionCoordinator.observeTitleWorking()
     }
     // Why: a new API call refreshes the prompt-cache TTL, so clear any running
@@ -2663,6 +2843,7 @@ export function connectPanePty(
     }
   }
   const onAgentExited = (): void => {
+    clearSuppressedTitleSideEffects()
     clearCommandInferredPaneAgent()
     // Why: when the terminal title reverts to a plain shell (e.g., "bash", "zsh"),
     // the agent has exited. Clear any running cache timer so the sidebar doesn't
@@ -2917,14 +3098,18 @@ export function connectPanePty(
             } else {
               currentState.setAgentStatus(cacheKey, statusPayload, statusTitle)
             }
-            if (syncAgentTaskCompleteTrackingEnabled()) {
-              const storedStatus = useAppStore.getState().agentStatusByPaneKey[cacheKey]
-              const notificationPayload =
-                typeof storedStatus?.stateStartedAt === 'number'
-                  ? { ...statusPayload, stateStartedAt: storedStatus.stateStartedAt }
-                  : statusPayload
-              agentCompletionCoordinator.observeHookStatus(notificationPayload)
+            const trackingEnabled = syncAgentTaskCompleteTrackingEnabled()
+            if (payload.state === 'working' && trackingEnabled) {
+              requiresFreshWorkingForAgentTaskCompleteNotification = false
             }
+            const storedStatus = useAppStore.getState().agentStatusByPaneKey[cacheKey]
+            const notificationPayload =
+              typeof storedStatus?.stateStartedAt === 'number'
+                ? { ...statusPayload, stateStartedAt: storedStatus.stateStartedAt }
+                : statusPayload
+            // Why: hook lifecycle owns deferred terminal side effects even when
+            // every outward completion alert consumer is disabled.
+            agentCompletionCoordinator.observeHookStatus(notificationPayload)
             if (payload.state === 'working' && pendingTerminalBellNotification) {
               scheduleTerminalBellNotification()
             }
@@ -6985,6 +7170,8 @@ export function connectPanePty(
       }
       cleanupStartupDraftPasteTimers()
       releaseUnattemptedStartupDraftPasteDelivery()
+      unregisterAgentHookTerminalLifecycle()
+      clearSuppressedTitleSideEffects()
       clearPendingAgentTaskCompleteNotification()
       pendingTerminalBellNotification = false
       clearTerminalBellNotificationTimer()
