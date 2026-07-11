@@ -1,7 +1,15 @@
 import { describe, expect, it, vi } from 'vitest'
 import * as path from 'node:path'
+import { GitCapabilityCache } from '../shared/git-capability-cache'
 import type { GitExec } from './git-handler-ops'
 import { addWorktreeOp, removeWorktreeOp } from './git-handler-worktree-ops'
+
+function removeWorktreeWithCapabilityCache(
+  git: GitExec,
+  params: Parameters<typeof removeWorktreeOp>[1]
+) {
+  return removeWorktreeOp(git, params, new GitCapabilityCache())
+}
 
 function worktreeList(...entries: { path: string; branch?: string }[]): string {
   return entries
@@ -145,9 +153,9 @@ describe('removeWorktreeOp', () => {
       return { stdout: '', stderr: '' }
     })
 
-    await expect(removeWorktreeOp(git, { worktreePath: '/repo-feature' })).rejects.toThrow(
-      'Worktree is locked by Git. Lock reason: remote agent.'
-    )
+    await expect(
+      removeWorktreeWithCapabilityCache(git, { worktreePath: '/repo-feature' })
+    ).rejects.toThrow('Worktree is locked by Git. Lock reason: remote agent.')
     expect(git).not.toHaveBeenCalledWith(
       ['worktree', 'remove', '/repo-feature'],
       expect.any(String)
@@ -178,7 +186,7 @@ describe('removeWorktreeOp', () => {
       return { stdout: '', stderr: '' }
     })
 
-    await removeWorktreeOp(git, { worktreePath: '/repo-feature' })
+    await removeWorktreeWithCapabilityCache(git, { worktreePath: '/repo-feature' })
 
     expect(calls).toEqual([
       '/repo-feature$ rev-parse --git-common-dir',
@@ -214,7 +222,9 @@ describe('removeWorktreeOp', () => {
     })
 
     // The unmerged-branch refusal must be surfaced without failing workspace removal.
-    await expect(removeWorktreeOp(git, { worktreePath: '/repo-feature' })).resolves.toEqual({
+    await expect(
+      removeWorktreeWithCapabilityCache(git, { worktreePath: '/repo-feature' })
+    ).resolves.toEqual({
       preservedBranch: { branchName: 'feature/test', head: '1' }
     })
 
@@ -244,7 +254,7 @@ describe('removeWorktreeOp', () => {
       return { stdout: '', stderr: '' }
     })
 
-    await removeWorktreeOp(git, {
+    await removeWorktreeWithCapabilityCache(git, {
       worktreePath: '/repo-feature',
       force: true,
       forceBranchDelete: true
@@ -276,7 +286,7 @@ describe('removeWorktreeOp', () => {
     })
 
     await expect(
-      removeWorktreeOp(git, { worktreePath: '/repo-feature', force: true })
+      removeWorktreeWithCapabilityCache(git, { worktreePath: '/repo-feature', force: true })
     ).rejects.toThrow('Worktree is locked by Git. Lock reason: remote agent')
 
     expect(git).not.toHaveBeenCalledWith(
@@ -304,7 +314,10 @@ describe('removeWorktreeOp', () => {
       return { stdout: '', stderr: '' }
     })
 
-    await removeWorktreeOp(git, { worktreePath: '/repo-feature', deleteBranch: false })
+    await removeWorktreeWithCapabilityCache(git, {
+      worktreePath: '/repo-feature',
+      deleteBranch: false
+    })
 
     expect(calls).toEqual([
       '/repo-feature$ rev-parse --git-common-dir',
@@ -343,7 +356,7 @@ describe('removeWorktreeOp', () => {
       return { stdout: '', stderr: '' }
     })
 
-    await removeWorktreeOp(git, { worktreePath: '/repo-feature' })
+    await removeWorktreeWithCapabilityCache(git, { worktreePath: '/repo-feature' })
 
     expect(git).toHaveBeenCalledWith(['branch', '-d', '--', 'feature/test'], expect.any(String))
     expect(git).toHaveBeenCalledWith(['worktree', 'prune'], expect.any(String))

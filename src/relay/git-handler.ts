@@ -61,6 +61,11 @@ import { getGitCloneFailureMessage } from '../shared/git-clone-failure-message'
 import { syncForkDefaultBranch, validateGitForkSyncExpectedUpstream } from '../shared/git-fork-sync'
 import { InFlightPromiseDedupe, stableInFlightKey } from '../shared/in-flight-promise-dedupe'
 import { GIT_FETCH_SKIP_AUTO_MAINTENANCE_CONFIG_ARGS } from '../shared/git-fetch-auto-maintenance'
+import { GitCapabilityCache } from '../shared/git-capability-cache'
+import {
+  hasUnsupportedRevParsePathFormatEcho,
+  isUnsupportedRevParsePathFormatError
+} from '../shared/git-worktree-command-capabilities'
 import { GitResponseStreamRegistry } from './git-response-stream'
 import { GIT_RESPONSE_STREAM_THRESHOLD } from './protocol'
 
@@ -75,26 +80,6 @@ function resolveSubmoduleStatusArea(
     return params.area
   }
   return 'unstaged'
-}
-
-function getErrorText(error: unknown): string {
-  if (typeof error === 'object' && error !== null) {
-    const parts: string[] = []
-    if ('message' in error && typeof error.message === 'string') {
-      parts.push(error.message)
-    }
-    if ('stderr' in error && typeof error.stderr === 'string') {
-      parts.push(error.stderr)
-    }
-    return parts.join('\n')
-  }
-  return String(error)
-}
-
-function isUnsupportedRevParsePathFormatError(error: unknown): boolean {
-  return /(?:unknown|invalid|unrecognized).*(?:--path-format|path-format)/i.test(
-    getErrorText(error)
-  )
 }
 
 function isWindowsAbsolutePath(value: string): boolean {
@@ -173,6 +158,7 @@ function execFileWithStdin(
 export class GitHandler {
   private dispatcher: RelayDispatcher
   private readonly gitDiffReadDedupe = new InFlightPromiseDedupe<unknown>()
+  private readonly gitCapabilities = new GitCapabilityCache()
   // Why: large diff/exec responses are chunked onto the bulk lane so they do
   // not head-of-line-block interactive pty.data echo on the shared SSH channel.
   private readonly responseStreams = new GitResponseStreamRegistry()
@@ -1277,23 +1263,29 @@ export class GitHandler {
 
   private async readRepoLocation(repoPath: string): Promise<RelayRepoLocation | undefined> {
     try {
-      const { stdout } = await this.git(
-        ['rev-parse', '--path-format=absolute', '--show-toplevel', '--git-common-dir'],
-        repoPath
+      return await this.gitCapabilities.runWithFallback(
+        'rev-parse-path-format',
+        async () => {
+          const { stdout } = await this.git(
+            ['rev-parse', '--path-format=absolute', '--show-toplevel', '--git-common-dir'],
+            repoPath
+          )
+          if (hasUnsupportedRevParsePathFormatEcho(stdout)) {
+            // Why: some old Git versions echo the unknown option and exit zero;
+            // remember that signal even though the trailing paths remain usable.
+            this.gitCapabilities.rememberUnsupported('rev-parse-path-format')
+          }
+          return parseRelayRepoLocation(repoPath, stdout)
+        },
+        async () => {
+          const { stdout } = await this.git(
+            ['rev-parse', '--show-toplevel', '--git-common-dir'],
+            repoPath
+          )
+          return parseRelayRepoLocation(repoPath, stdout)
+        },
+        isUnsupportedRevParsePathFormatError
       )
-      return parseRelayRepoLocation(repoPath, stdout)
-    } catch (error) {
-      if (!isUnsupportedRevParsePathFormatError(error)) {
-        return undefined
-      }
-    }
-
-    try {
-      const { stdout } = await this.git(
-        ['rev-parse', '--show-toplevel', '--git-common-dir'],
-        repoPath
-      )
-      return parseRelayRepoLocation(repoPath, stdout)
     } catch {
       return undefined
     }
@@ -1333,30 +1325,33 @@ export class GitHandler {
 
   private async listWorktrees(params: Record<string, unknown>, context?: RequestContext) {
     const repoPath = params.repoPath as string
-    try {
-      const { stdout } = await this.git(['worktree', 'list', '--porcelain', '-z'], repoPath, {
-        signal: context?.signal
-      })
-      return this.normalizeMainWorktreePath(
-        repoPath,
-        parseWorktreeList(stdout, { nulDelimited: true })
+    return this.gitCapabilities
+      .runWithFallback(
+        'worktree-list-z',
+        async () => {
+          const { stdout } = await this.git(['worktree', 'list', '--porcelain', '-z'], repoPath, {
+            signal: context?.signal
+          })
+          return this.normalizeMainWorktreePath(
+            repoPath,
+            parseWorktreeList(stdout, { nulDelimited: true })
+          )
+        },
+        async () => {
+          // Why: `-z` keeps newline-containing SSH worktree paths intact, but
+          // Git <2.36 requires the line-block parser.
+          try {
+            const { stdout } = await this.git(['worktree', 'list', '--porcelain'], repoPath, {
+              signal: context?.signal
+            })
+            return this.normalizeMainWorktreePath(repoPath, parseWorktreeList(stdout))
+          } catch {
+            return []
+          }
+        },
+        isUnsupportedWorktreeListZError
       )
-    } catch (error) {
-      if (!isUnsupportedWorktreeListZError(error)) {
-        return []
-      }
-    }
-
-    // Why: `-z` keeps newline-containing SSH worktree paths intact, but older
-    // Git rejects it. Fall back to the original line-block parser there.
-    try {
-      const { stdout } = await this.git(['worktree', 'list', '--porcelain'], repoPath, {
-        signal: context?.signal
-      })
-      return this.normalizeMainWorktreePath(repoPath, parseWorktreeList(stdout))
-    } catch {
-      return []
-    }
+      .catch(() => [])
   }
 
   private async addWorktree(params: Record<string, unknown>) {
@@ -1364,7 +1359,9 @@ export class GitHandler {
   }
 
   private async removeWorktree(params: Record<string, unknown>) {
-    return this.runWithDiffDedupeClear(() => removeWorktreeOp(this.git.bind(this), params))
+    return this.runWithDiffDedupeClear(() =>
+      removeWorktreeOp(this.git.bind(this), params, this.gitCapabilities)
+    )
   }
 
   private async worktreeIsClean(params: Record<string, unknown>) {
@@ -1373,7 +1370,7 @@ export class GitHandler {
 
   private async refreshLocalBaseRefForWorktreeCreate(params: Record<string, unknown>) {
     return this.runWithDiffDedupeClear(() =>
-      refreshLocalBaseRefForWorktreeCreateOp(this.git.bind(this), params)
+      refreshLocalBaseRefForWorktreeCreateOp(this.git.bind(this), params, this.gitCapabilities)
     )
   }
 }
