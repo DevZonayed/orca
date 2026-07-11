@@ -9871,7 +9871,9 @@
             "92276aceb7": "Delete",
             "7fb9435c86": "This permanently deletes the directory and its contents on the remote host. This cannot be undone.",
             "23e98f192f": "This permanently deletes the file on the remote host. This cannot be undone.",
-            "8b8ee9d22f": "Couldn't determine which host owns this file. Check the workspace connection and try again."
+            "8b8ee9d22f": "Couldn't determine which host owns this file. Check the workspace connection and try again.",
+            "af1270b90d": "Permanently delete {{count}} items?",
+            "dd029aa5cd": "This permanently deletes the selected items and any directory contents on the remote host. This cannot be undone."
           },
           "useFileExplorerHandlers": {
             "32cd9fd991": "Cannot open symlink target"

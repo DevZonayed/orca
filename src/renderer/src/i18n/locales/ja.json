@@ -9871,7 +9871,9 @@
             "92276aceb7": "削除",
             "7fb9435c86": "This permanently deletes the directory and its contents on the remote host. This cannot be undone.",
             "23e98f192f": "This permanently deletes the file on the remote host. This cannot be undone.",
-            "8b8ee9d22f": "このファイルを所有しているホストを特定できませんでした。ワークスペースの接続を確認して、もう一度お試しください。"
+            "8b8ee9d22f": "このファイルを所有しているホストを特定できませんでした。ワークスペースの接続を確認して、もう一度お試しください。",
+            "af1270b90d": "{{count}}個の項目を完全に削除しますか?",
+            "dd029aa5cd": "選択した項目とディレクトリの内容がリモートホスト上で完全に削除されます。この操作は元に戻せません。"
           },
           "useFileExplorerHandlers": {
             "32cd9fd991": "シンボリックリンクターゲットを開けません"
