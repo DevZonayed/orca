@@ -80,7 +80,7 @@ async function addAndActivateRepo(orcaPage: Page, repoPath: string): Promise<str
     )
     .toBeGreaterThan(0)
 
-  return await orcaPage.evaluate(
+  const worktreeId = await orcaPage.evaluate(
     ({ targetRepoId, pathToRepo }) => {
       const store = window.__store
       if (!store) {
@@ -100,6 +100,17 @@ async function addAndActivateRepo(orcaPage: Page, repoPath: string): Promise<str
     },
     { targetRepoId: repoId, pathToRepo: repoPath }
   )
+
+  // Why: repo activation can finish sidebar routing after the store mutation;
+  // enter Source Control through the visible control before timing its render.
+  const sourceControlButton = orcaPage.getByRole('button', { name: /^Source Control/ })
+  await expect(sourceControlButton).toBeVisible()
+  await sourceControlButton.click()
+  await expect
+    .poll(() => orcaPage.evaluate(() => window.__store?.getState().rightSidebarTab))
+    .toBe('source-control')
+
+  return worktreeId
 }
 
 /**
