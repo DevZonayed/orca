@@ -10086,6 +10086,11 @@
             "subagentsCount": "서브에이전트 ({{value0}})",
             "messageCount": "{{value0}}개 메시지",
             "viewLog": "로그 보기"
+          },
+          "aiVaultSessionLogOpen": {
+            "workspaceGone": "Couldn't open log — workspace is no longer available.",
+            "notAuthorized": "Couldn't open log — path not authorized.",
+            "alreadyEditable": "Log is already open for editing."
           }
         }
       },

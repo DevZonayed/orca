@@ -10086,6 +10086,11 @@
             "subagentsCount": "子智能体（{{value0}}）",
             "messageCount": "{{value0}} 条消息",
             "viewLog": "查看日志"
+          },
+          "aiVaultSessionLogOpen": {
+            "workspaceGone": "Couldn't open log — workspace is no longer available.",
+            "notAuthorized": "Couldn't open log — path not authorized.",
+            "alreadyEditable": "Log is already open for editing."
           }
         }
       },

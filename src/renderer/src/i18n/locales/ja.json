@@ -10086,6 +10086,11 @@
             "subagentsCount": "サブエージェント ({{value0}})",
             "messageCount": "{{value0}}件のメッセージ",
             "viewLog": "ログを表示"
+          },
+          "aiVaultSessionLogOpen": {
+            "workspaceGone": "Couldn't open log — workspace is no longer available.",
+            "notAuthorized": "Couldn't open log — path not authorized.",
+            "alreadyEditable": "Log is already open for editing."
           }
         }
       },
