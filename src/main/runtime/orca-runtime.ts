@@ -6476,6 +6476,31 @@ export class OrcaRuntimeService {
     return (this.mobileSubscribers.get(ptyId)?.size ?? 0) > 0
   }
 
+  isMobileTerminalQueryReplyAuthority(ptyId: string, clientId: string): boolean {
+    // Why: a passive phone watching desktop-sized output must not race the
+    // desktop xterm. Mobile becomes reply authority only with the mobile floor.
+    if (this.getDriver(ptyId).kind !== 'mobile') {
+      return false
+    }
+    const subscribers = this.mobileSubscribers.get(ptyId)
+    if (!subscribers) {
+      return false
+    }
+    // Why: soft-leave resubscribe preserves the original subscription time but
+    // reinserts the record. Elect fitted responders from that stable age, not
+    // mutable Map order or passive desktop-mode watchers.
+    let earliest: { clientId: string; subscribedAt: number } | null = null
+    for (const subscriber of subscribers.values()) {
+      if (!subscriber.wasResizedToPhone) {
+        continue
+      }
+      if (earliest === null || subscriber.subscribedAt < earliest.subscribedAt) {
+        earliest = subscriber
+      }
+    }
+    return earliest?.clientId === clientId
+  }
+
   subscribeToFitOverrideChanges(
     ptyId: string,
     listener: (event: { mode: 'mobile-fit' | 'desktop-fit'; cols: number; rows: number }) => void
