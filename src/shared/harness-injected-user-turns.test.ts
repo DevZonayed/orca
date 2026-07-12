@@ -38,7 +38,9 @@ describe('isKnownHarnessInjectedUserTurnText', () => {
       isKnownHarnessInjectedUserTurnText('A message arrived from teammate-b:\n<agent-message>hi')
     ).toBe(true)
     expect(
-      isKnownHarnessInjectedUserTurnText('Another Claude session sent a message:\n<agent-message>hi')
+      isKnownHarnessInjectedUserTurnText(
+        'Another Claude session sent a message:\n<agent-message>hi'
+      )
     ).toBe(true)
     expect(isKnownHarnessInjectedUserTurnText('No response requested.')).toBe(true)
     expect(isKnownHarnessInjectedUserTurnText('[Request interrupted by user]')).toBe(true)
@@ -78,7 +80,9 @@ describe('isKnownHarnessInjectedUserTurnText', () => {
     expect(
       isKnownHarnessInjectedUserTurnText('<script>alert(1)</script> — why is this flagged?')
     ).toBe(false)
-    expect(isKnownHarnessInjectedUserTurnText('<https://example.com/a-b> what is this?')).toBe(false)
+    expect(isKnownHarnessInjectedUserTurnText('<https://example.com/a-b> what is this?')).toBe(
+      false
+    )
     expect(isKnownHarnessInjectedUserTurnText('<foo-bar@example.com> sent me this')).toBe(false)
   })
 

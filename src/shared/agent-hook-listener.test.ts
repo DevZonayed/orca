@@ -956,7 +956,10 @@ describe('shared agent-hook-listener', () => {
       'grok',
       {
         paneKey: PANE_KEY,
-        payload: { hookEventName: 'user_prompt_submit', prompt: '<user_query>fix the bug</user_query>' }
+        payload: {
+          hookEventName: 'user_prompt_submit',
+          prompt: '<user_query>fix the bug</user_query>'
+        }
       },
       'production'
     )
