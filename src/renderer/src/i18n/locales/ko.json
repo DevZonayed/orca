@@ -722,6 +722,8 @@
       "GitHubItemDialog": {
         "3ab6ac0fc8": "선택한 GitHub 이슈 또는 PR을 미리보기하고 편집합니다.",
         "3cd5ae5b7b": "변경된 파일이 없습니다.",
+        "filesUnavailable": "변경된 파일을 불러올 수 없습니다.",
+        "filesRetry": "재시도",
         "999b5ad7d9": "파일",
         "4bd1f5b055": "체크",
         "e30a5470c9": "대화",

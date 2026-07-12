@@ -722,6 +722,8 @@
       "GitHubItemDialog": {
         "3ab6ac0fc8": "预览并编辑选定的 GitHub 议题或拉取请求。",
         "3cd5ae5b7b": "没有更改任何文件。",
+        "filesUnavailable": "无法加载更改的文件。",
+        "filesRetry": "重试",
         "999b5ad7d9": "文件",
         "4bd1f5b055": "检查项",
         "e30a5470c9": "对话",

@@ -1529,6 +1529,9 @@ export type GitHubWorkItemDetails = {
   pullRequestId?: string
   checks?: PRCheckDetail[]
   files?: GitHubPRFile[]
+  /** Only set for PRs. True when the file fetch failed (rate limit, auth,
+   *  unresolved remote) rather than the PR genuinely having no changed files. */
+  filesUnavailable?: boolean
   participants?: GitHubAssignableUser[]
   /** Logins of current assignees. Only set for issues. */
   assignees?: string[]
