@@ -184,6 +184,8 @@ export function EditorPanelHeader({
         />
       )}
       {isDiffSurface && (
+        // Why: the adjacent diff controls use the same tooltip timing, so they
+        // share one provider instead of creating redundant Radix contexts.
         <TooltipProvider delayDuration={300}>
           <Tooltip>
             <TooltipTrigger asChild>
@@ -207,10 +209,6 @@ export function EditorPanelHeader({
                   )}
             </TooltipContent>
           </Tooltip>
-        </TooltipProvider>
-      )}
-      {isDiffSurface && (
-        <TooltipProvider delayDuration={300}>
           <Tooltip>
             <TooltipTrigger asChild>
               <button
@@ -237,10 +235,6 @@ export function EditorPanelHeader({
               )}
             </TooltipContent>
           </Tooltip>
-        </TooltipProvider>
-      )}
-      {isDiffSurface && (
-        <TooltipProvider delayDuration={300}>
           <Tooltip>
             <TooltipTrigger asChild>
               <button
