@@ -3336,7 +3336,15 @@ export function connectPanePty(
   // the last frame stays painted — the pane looks healthy and eats input
   // (issue #8104 class). None of the dead-session reconciles cover it because
   // the PTY is live; recover by remounting the tab over the live PTY.
-  let transportConnectInFlight = false
+  let transportConnectInFlightSince: number | null = null
+  // Why a grace window instead of a plain flag: a connect that never settles
+  // (SSH RPC timeout class, wedged daemon call) would otherwise suppress
+  // input-triggered recovery FOREVER — and such a pane has no output flowing,
+  // so no other detector can fire. Past the grace, undeliverable input may
+  // recover again; the transport's destroyed-check no longer kills a
+  // pre-existing session when a late reattach resolves, so a remount racing
+  // a slow-but-alive connect costs a wasted view rebuild, not a shell.
+  const TRANSPORT_CONNECT_SETTLE_GRACE_MS = 60_000
   const requestRecoveryForUndeliverableInput = (): void => {
     if (transport.isConnected?.() && transport.getPtyId() !== null) {
       return
@@ -3348,7 +3356,10 @@ export function connectPanePty(
     // to preserve. The fossil case this detector targets has no pending
     // connect, so it still recovers. Same for a late async reject landing
     // after dispose: the successor pane owns the tab now.
-    if (transportConnectInFlight || disposed) {
+    const connectStillSettling =
+      transportConnectInFlightSince !== null &&
+      Date.now() - transportConnectInFlightSince < TRANSPORT_CONNECT_SETTLE_GRACE_MS
+    if (connectStillSettling || disposed) {
       return
     }
     const storePtyId = useAppStore.getState().ptyIdsByTabId?.[deps.tabId]?.[0] ?? null
@@ -4370,7 +4381,7 @@ export function connectPanePty(
         ? Promise.resolve(null)
         : window.api.pty.declarePendingPaneSerializer(cacheKey).catch(() => null)
 
-      transportConnectInFlight = true
+      transportConnectInFlightSince = Date.now()
       const spawnedRaw = transport.connect({
         url: '',
         cols,
@@ -4393,7 +4404,7 @@ export function connectPanePty(
       void Promise.resolve(spawnedRaw)
         .catch(() => null)
         .finally(() => {
-          transportConnectInFlight = false
+          transportConnectInFlightSince = null
         })
       const trackedPromise: Promise<string | null> = Promise.resolve(spawnedRaw)
         .then(async (spawnedPtyId) => {
@@ -6953,7 +6964,7 @@ export function connectPanePty(
             const coldRestoreStartup = buildColdRestoreAgentResumeStartup()
             clearPaneMode2031State()
             clearHiddenOutputRestoreState()
-            transportConnectInFlight = true
+            transportConnectInFlightSince = Date.now()
             const reattachPromise = transport.connect({
               url: '',
               cols,
@@ -6986,7 +6997,7 @@ export function connectPanePty(
             void Promise.resolve(reattachPromise)
               .catch(() => null)
               .finally(() => {
-                transportConnectInFlight = false
+                transportConnectInFlightSince = null
               })
             void Promise.resolve(reattachPromise)
               .then(async (result) => {
@@ -7145,7 +7156,7 @@ export function connectPanePty(
 
       let expiredReattachError = false
       const coldRestoreStartup = buildColdRestoreAgentResumeStartup()
-      transportConnectInFlight = true
+      transportConnectInFlightSince = Date.now()
       const reattachPromise = transport.connect({
         url: '',
         cols,
@@ -7177,7 +7188,7 @@ export function connectPanePty(
       void Promise.resolve(reattachPromise)
         .catch(() => null)
         .finally(() => {
-          transportConnectInFlight = false
+          transportConnectInFlightSince = null
         })
       void Promise.resolve(reattachPromise)
         .then(async (result) => {
