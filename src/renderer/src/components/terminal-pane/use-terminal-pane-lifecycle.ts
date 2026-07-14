@@ -1805,7 +1805,11 @@ export function useTerminalPaneLifecycle({
       releaseWebviewDragPassthrough = null
       managerRef.current = null
       if (e2eConfig.exposeStore) {
-        window.__paneManagers?.delete(tabId)
+        // Why: a replacement mount can register before this effect cleans up.
+        // Preserve the successor so E2E and recovery probes see the live pane.
+        if (window.__paneManagers?.get(tabId) === manager) {
+          window.__paneManagers.delete(tabId)
+        }
       }
       setTabPaneExpanded(tabId, false)
       setTabCanExpandPane(tabId, false)

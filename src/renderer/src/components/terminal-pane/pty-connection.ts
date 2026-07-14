@@ -3123,6 +3123,10 @@ export function connectPanePty(
   const hadExistingPaneTransportAtConnect = deps.paneTransportsRef.current.size > 0
   let lastTerminalInputAt = Number.NEGATIVE_INFINITY
   let hasReceivedPtyOutput = false
+  let deferredReattachLiveData: { data: string; meta?: PtyDataMeta }[] | null = null
+  let deferredReattachLiveDataChars = 0
+  const MAX_DEFERRED_REATTACH_LIVE_CHARS = 512 * 1024
+  const MAX_DEFERRED_REATTACH_LIVE_CHUNKS = 1_024
   const markTerminalInputSent = (): void => {
     lastTerminalInputAt = performance.now()
   }
@@ -6372,6 +6376,26 @@ export function connectPanePty(
     }
 
     const dataCallback = (data: string, meta?: PtyDataMeta): void => {
+      if (deferredReattachLiveData !== null) {
+        deferredReattachLiveData.push({ data, ...(meta ? { meta } : {}) })
+        deferredReattachLiveDataChars += data.length
+        let dropped = false
+        while (
+          deferredReattachLiveData.length > MAX_DEFERRED_REATTACH_LIVE_CHUNKS ||
+          deferredReattachLiveDataChars > MAX_DEFERRED_REATTACH_LIVE_CHARS
+        ) {
+          const removed = deferredReattachLiveData.shift()
+          deferredReattachLiveDataChars -= removed?.data.length ?? 0
+          dropped = true
+        }
+        if (dropped && deferredReattachLiveData[0]) {
+          deferredReattachLiveData[0].meta = {
+            ...deferredReattachLiveData[0].meta,
+            droppedOutput: true
+          }
+        }
+        return
+      }
       if (data.length > 0) {
         hasReceivedPtyOutput = true
         recordAgentHibernationPaneOutput(cacheKey)
@@ -6561,16 +6585,43 @@ export function connectPanePty(
       }
     })
 
+    const beginReattachLiveDataDeferral = (): void => {
+      deferredReattachLiveData = []
+      deferredReattachLiveDataChars = 0
+    }
+
+    const finishReattachLiveDataDeferral = (deliver: boolean): void => {
+      const chunks = deferredReattachLiveData
+      deferredReattachLiveData = null
+      deferredReattachLiveDataChars = 0
+      if (!deliver || disposed || !chunks) {
+        return
+      }
+      // Why: createOrAttach snapshots precede bytes emitted before its IPC
+      // reply. Paint the authoritative replay first, then admit those live
+      // chunks so the replay clear cannot erase newer output.
+      for (const chunk of chunks) {
+        dataCallback(chunk.data, chunk.meta)
+      }
+    }
+
     const handleReattachResult = (
       result: PtyConnectResult | string | void,
       staleSessionId?: string | null,
       coldRestoreStartup?: ColdRestoreAgentResumeStartup | null
-    ): void => {
+    ): boolean => {
       if (disposed) {
-        return
+        return false
       }
       const connectResult =
         result && typeof result === 'object' && 'id' in result ? (result as PtyConnectResult) : null
+
+      if (connectResult?.exitedBeforeAttach) {
+        // Why: the transport already delivered the dead session's final frame
+        // and exit. Treat it as terminal state, not a failed reattach that
+        // should silently replace a cancelled pinned exit with a fresh shell.
+        return true
+      }
 
       const ptyId =
         connectResult?.id ?? (typeof result === 'string' ? result : transport.getPtyId())
@@ -6595,7 +6646,7 @@ export function connectPanePty(
         startFreshColdRestoreAgentResume(coldRestoreStartup, {
           forceBlankRestoredViewport: true
         })
-        return
+        return false
       }
       registerEffectiveLaunchConfig(connectResult?.launchConfig, {
         ...(coldRestoreStartup ? { launchToken: coldRestoreStartup.launchToken } : {}),
@@ -6620,7 +6671,7 @@ export function connectPanePty(
         startFreshColdRestoreAgentResume(coldRestoreStartup, {
           forceBlankRestoredViewport: true
         })
-        return
+        return false
       }
       setPanePtyFitBinding(ptyId)
       reportPanePtyVisibility(ptyId, deps.isVisibleRef.current)
@@ -6770,6 +6821,7 @@ export function connectPanePty(
       scheduleReattachIdleAgentCursorReset()
 
       scheduleRuntimeGraphSync()
+      return true
     }
 
     // Why: if this tab has a deferred SSH session ID, trigger the SSH
@@ -6964,6 +7016,7 @@ export function connectPanePty(
             const coldRestoreStartup = buildColdRestoreAgentResumeStartup()
             clearPaneMode2031State()
             clearHiddenOutputRestoreState()
+            beginReattachLiveDataDeferral()
             transportConnectInFlightSince = Date.now()
             const reattachPromise = transport.connect({
               url: '',
@@ -7011,6 +7064,7 @@ export function connectPanePty(
                     : 'undefined'
                 )
                 if (!result && expiredReattachError) {
+                  finishReattachLiveDataDeferral(false)
                   const gen = await preSignalPromise
                   if (typeof gen === 'number') {
                     void window.api.pty.clearPendingPaneSerializer(cacheKey, gen).catch(() => {})
@@ -7025,7 +7079,8 @@ export function connectPanePty(
                   })
                   return
                 }
-                handleReattachResult(result, pendingSessionId, coldRestoreStartup)
+                const accepted = handleReattachResult(result, pendingSessionId, coldRestoreStartup)
+                finishReattachLiveDataDeferral(accepted)
                 const gen = await preSignalPromise
                 if (typeof gen === 'number') {
                   if (!isRemoteRuntimePtyId(pendingSessionId)) {
@@ -7034,6 +7089,7 @@ export function connectPanePty(
                 }
               })
               .catch(async (err) => {
+                finishReattachLiveDataDeferral(false)
                 const gen = await preSignalPromise
                 if (typeof gen === 'number') {
                   void window.api.pty.clearPendingPaneSerializer(cacheKey, gen).catch(() => {})
@@ -7156,6 +7212,7 @@ export function connectPanePty(
 
       let expiredReattachError = false
       const coldRestoreStartup = buildColdRestoreAgentResumeStartup()
+      beginReattachLiveDataDeferral()
       transportConnectInFlightSince = Date.now()
       const reattachPromise = transport.connect({
         url: '',
@@ -7193,6 +7250,7 @@ export function connectPanePty(
       void Promise.resolve(reattachPromise)
         .then(async (result) => {
           if (!result && expiredReattachError) {
+            finishReattachLiveDataDeferral(false)
             const gen = await preSignalPromise
             if (typeof gen === 'number') {
               void window.api.pty.clearPendingPaneSerializer(cacheKey, gen).catch(() => {})
@@ -7207,7 +7265,12 @@ export function connectPanePty(
             })
             return
           }
-          handleReattachResult(result, deferredReattachSessionId, coldRestoreStartup)
+          const accepted = handleReattachResult(
+            result,
+            deferredReattachSessionId,
+            coldRestoreStartup
+          )
+          finishReattachLiveDataDeferral(accepted)
           const gen = await preSignalPromise
           if (typeof gen === 'number') {
             if (!isRemoteRuntimePtyId(deferredReattachSessionId)) {
@@ -7216,6 +7279,7 @@ export function connectPanePty(
           }
         })
         .catch(async (err) => {
+          finishReattachLiveDataDeferral(false)
           const gen = await preSignalPromise
           if (typeof gen === 'number') {
             void window.api.pty.clearPendingPaneSerializer(cacheKey, gen).catch(() => {})
