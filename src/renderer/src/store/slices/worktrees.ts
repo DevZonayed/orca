@@ -25,6 +25,11 @@ import {
   getRepoIdFromWorktreeId,
   type WorktreeSlice
 } from './worktree-helpers'
+import { splitWorktreeIdForFilesystem } from '../../../../shared/worktree-id'
+import {
+  remapClosedTerminalTabSnapshotCwds,
+  type ClosedTerminalTabSnapshot
+} from './recently-closed-tabs'
 import { findRepoForHost } from './repo-host-identity'
 import { ensureHooksConfirmed } from '@/lib/ensure-hooks-confirmed'
 import { cleanupEphemeralVmRuntimesForDeleted } from '@/lib/ephemeral-vm-runtime-cleanup'
@@ -1764,7 +1769,8 @@ const WORKTREE_ID_KEYED_MAP_KEYS = [
   'showDotfilesByWorktree',
   'expandedDirs',
   'lastVisitedAtByWorktreeId',
-  'defaultTerminalTabsAppliedByWorktreeId'
+  'defaultTerminalTabsAppliedByWorktreeId',
+  'recentlyClosedTabKindsByWorktree'
 ] as const satisfies readonly (keyof AppState)[]
 
 /**
@@ -1824,6 +1830,17 @@ function buildWorktreeRenameState(
   // removeWorktree reducer — now also purge them on removal.)
   renameKey('recentlyClosedEditorTabsByWorktree', (files: { worktreeId: string }[]) =>
     files.map(withNewWorktreeId)
+  )
+  // Why: terminal reopen snapshots carry absolute startupCwd paths under the
+  // old worktree folder; remap them or Cmd+Shift+T respawns into a directory
+  // that no longer exists after the rename. Paths outside the renamed folder
+  // are untouched by the move and stay valid as-is.
+  const oldWorktreePath = splitWorktreeIdForFilesystem(oldWorktreeId)?.worktreePath
+  const newWorktreePath = splitWorktreeIdForFilesystem(newWorktreeId)?.worktreePath
+  renameKey('recentlyClosedTerminalTabsByWorktree', (snapshots: ClosedTerminalTabSnapshot[]) =>
+    oldWorktreePath && newWorktreePath
+      ? remapClosedTerminalTabSnapshotCwds(snapshots, oldWorktreePath, newWorktreePath)
+      : snapshots
   )
   renameKey('remoteStatusesByWorktree')
 
@@ -2242,6 +2259,8 @@ function buildWorktreePurgeState(s: AppState, worktreeIds: string[]): Partial<Ap
     // Why: keyed by worktreeId; re-keyed on rename but missed by both removal
     // paths, leaking the per-worktree editor-undo (Cmd/Ctrl+Shift+T) snapshots.
     recentlyClosedEditorTabsByWorktree: omitByWorktree(s.recentlyClosedEditorTabsByWorktree),
+    recentlyClosedTerminalTabsByWorktree: omitByWorktree(s.recentlyClosedTerminalTabsByWorktree),
+    recentlyClosedTabKindsByWorktree: omitByWorktree(s.recentlyClosedTabKindsByWorktree),
     // Top-level actives
     openFiles: nextOpenFiles,
     everActivatedWorktreeIds: nextEverActivatedWorktreeIds,
@@ -3595,6 +3614,18 @@ export const createWorktreeSlice: StateCreator<AppState, [], [], WorktreeSlice> 
           })(),
           recentlyClosedEditorTabsByWorktree: (() => {
             const next = { ...s.recentlyClosedEditorTabsByWorktree }
+            delete next[worktreeId]
+            return next
+          })(),
+          recentlyClosedTerminalTabsByWorktree: (() => {
+            const next = { ...s.recentlyClosedTerminalTabsByWorktree }
+            delete next[worktreeId]
+            return next
+          })(),
+          // Why: a deleted worktree's tabs can never be reopened, so purge the
+          // cross-type kind list symmetrically with the snapshot stacks above.
+          recentlyClosedTabKindsByWorktree: (() => {
+            const next = { ...s.recentlyClosedTabKindsByWorktree }
             delete next[worktreeId]
             return next
           })(),
