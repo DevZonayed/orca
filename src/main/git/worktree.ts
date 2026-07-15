@@ -39,6 +39,11 @@ type SparseWorktreeCreateError = Error & {
 export type GitWorktreeExecOptions = {
   wslDistro?: string
   signal?: AbortSignal
+  timeout?: number
+}
+
+type WorktreeRemovalPreflightOptions = GitWorktreeExecOptions & {
+  ignoredUntrackedPaths?: readonly string[]
 }
 
 export type AddWorktreeOptions = GitWorktreeExecOptions & {
@@ -81,15 +86,17 @@ const SPARSE_CHECKOUT_DETECTION_CONCURRENCY = 8
 // fast instead of spinning forever. Generous enough not to kill a legit large
 // checkout (mirrors the SYNC runner's cloud-placeholder floor, #7225).
 export const WORKTREE_ADD_TIMEOUT_MS = 180_000
+export const WORKTREE_REMOVAL_PREFLIGHT_TIMEOUT_MS = 30_000
 
 function gitExecOptions(
   cwd: string,
   options: GitWorktreeExecOptions = {}
-): { cwd: string; wslDistro?: string; signal?: AbortSignal } {
+): { cwd: string; wslDistro?: string; signal?: AbortSignal; timeout?: number } {
   return {
     cwd,
     ...(options.wslDistro ? { wslDistro: options.wslDistro } : {}),
-    ...(options.signal ? { signal: options.signal } : {})
+    ...(options.signal ? { signal: options.signal } : {}),
+    ...(options.timeout ? { timeout: options.timeout } : {})
   }
 }
 
@@ -1348,22 +1355,52 @@ async function isLocalBranchCheckedOut(
 export async function assertWorktreeCleanForRemoval(
   worktreePath: string,
   force = false,
-  options: GitWorktreeExecOptions = {}
+  options: WorktreeRemovalPreflightOptions = {}
 ): Promise<void> {
   if (force) {
     return
   }
 
-  const { stdout } = await gitExecFileAsync(['status', '--porcelain', '--untracked-files=all'], {
-    ...gitExecOptions(worktreePath, options)
-  })
-  if (!stdout.trim()) {
+  const { ignoredUntrackedPaths = [], ...gitOptions } = options
+  const useNullTerminatedStatus = ignoredUntrackedPaths.length > 0
+  const { stdout } = await gitExecFileAsync(
+    ['status', '--porcelain', ...(useNullTerminatedStatus ? ['-z'] : []), '--untracked-files=all'],
+    {
+      ...gitExecOptions(worktreePath, gitOptions),
+      timeout: gitOptions.timeout ?? WORKTREE_REMOVAL_PREFLIGHT_TIMEOUT_MS
+    }
+  )
+  if (
+    useNullTerminatedStatus
+      ? hasOnlyIgnoredUntrackedStatus(stdout, ignoredUntrackedPaths)
+      : !stdout.trim()
+  ) {
     return
   }
 
   const error = new Error('Worktree has uncommitted or untracked changes.')
   ;(error as Error & { stdout?: string }).stdout = stdout
   throw error
+}
+
+function hasOnlyIgnoredUntrackedStatus(
+  status: string,
+  ignoredUntrackedPaths: readonly string[]
+): boolean {
+  const ignored = new Set(
+    ignoredUntrackedPaths
+      .map((entry) =>
+        entry
+          .trim()
+          .replace(/^[\\/]+/, '')
+          .replace(/\\/g, '/')
+      )
+      .filter((entry) => entry && !entry.split('/').includes('..'))
+  )
+  return status
+    .split('\0')
+    .filter(Boolean)
+    .every((entry) => entry.startsWith('?? ') && ignored.has(entry.slice(3).replace(/\\/g, '/')))
 }
 
 function translateWorktreePath(

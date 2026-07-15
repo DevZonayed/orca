@@ -69,6 +69,7 @@ import { syncForkDefaultBranch, validateGitForkSyncExpectedUpstream } from '../s
 import { InFlightPromiseDedupe, stableInFlightKey } from '../shared/in-flight-promise-dedupe'
 import { GIT_FETCH_SKIP_AUTO_MAINTENANCE_CONFIG_ARGS } from '../shared/git-fetch-auto-maintenance'
 import { GitCapabilityCache } from '../shared/git-capability-cache'
+import type { RelayFilesystemWatchRegistry } from './relay-filesystem-watch-registry'
 import {
   hasUnsupportedRevParsePathFormatEcho,
   isUnsupportedRevParsePathFormatError
@@ -178,7 +179,11 @@ export class GitHandler {
 
   // Why: RelayContext is accepted for protocol back-compat (see
   // docs/relay-fs-allowlist-removal.md) but no longer consulted on git ops.
-  constructor(dispatcher: RelayDispatcher, _context: RelayContext) {
+  constructor(
+    dispatcher: RelayDispatcher,
+    _context: RelayContext,
+    private readonly watcherRegistry?: Pick<RelayFilesystemWatchRegistry, 'runWithRemovalFence'>
+  ) {
     this.dispatcher = dispatcher
     this.registerHandlers()
     // Why: a detached client's git.responseAck frames will never arrive; wake
@@ -1384,9 +1389,14 @@ export class GitHandler {
   }
 
   private async removeWorktree(params: Record<string, unknown>) {
-    return this.runWithGitReadCacheClear(() =>
-      removeWorktreeOp(this.git.bind(this), params, this.gitCapabilities)
-    )
+    const remove = () =>
+      this.runWithGitReadCacheClear(() =>
+        removeWorktreeOp(this.git.bind(this), params, this.gitCapabilities)
+      )
+    const worktreePath = params.worktreePath
+    return this.watcherRegistry && typeof worktreePath === 'string'
+      ? this.watcherRegistry.runWithRemovalFence(expandTilde(worktreePath), remove)
+      : remove()
   }
 
   private async worktreeIsClean(params: Record<string, unknown>) {

@@ -40,7 +40,8 @@ import {
   assertWorktreeCleanForRemoval,
   forceDeleteLocalBranch,
   listWorktrees,
-  removeWorktree
+  removeWorktree,
+  WORKTREE_REMOVAL_PREFLIGHT_TIMEOUT_MS
 } from './worktree'
 
 beforeEach(() => {
@@ -748,7 +749,7 @@ describe('assertWorktreeCleanForRemoval', () => {
 
     expect(gitExecFileAsyncMock).toHaveBeenCalledWith(
       ['status', '--porcelain', '--untracked-files=all'],
-      { cwd: '/repo-feature' }
+      { cwd: '/repo-feature', timeout: WORKTREE_REMOVAL_PREFLIGHT_TIMEOUT_MS }
     )
   })
 
@@ -759,6 +760,47 @@ describe('assertWorktreeCleanForRemoval', () => {
       message: 'Worktree has uncommitted or untracked changes.',
       stdout: '?? scratch.txt\n'
     })
+  })
+
+  it('ignores configured linked paths without mutating them before preflight', async () => {
+    gitExecFileAsyncMock.mockResolvedValueOnce({ stdout: '?? node_modules\0', stderr: '' })
+
+    await expect(
+      assertWorktreeCleanForRemoval('/repo-feature', false, {
+        ignoredUntrackedPaths: ['node_modules']
+      })
+    ).resolves.toBeUndefined()
+
+    expect(gitExecFileAsyncMock).toHaveBeenCalledWith(
+      ['status', '--porcelain', '-z', '--untracked-files=all'],
+      { cwd: '/repo-feature', timeout: WORKTREE_REMOVAL_PREFLIGHT_TIMEOUT_MS }
+    )
+  })
+
+  it('allows a shorter caller deadline for destructive preflight', async () => {
+    gitExecFileAsyncMock.mockRejectedValueOnce(new Error('git timed out.'))
+
+    await expect(
+      assertWorktreeCleanForRemoval('/repo-feature', false, { timeout: 25 })
+    ).rejects.toThrow('git timed out.')
+
+    expect(gitExecFileAsyncMock).toHaveBeenCalledWith(
+      ['status', '--porcelain', '--untracked-files=all'],
+      { cwd: '/repo-feature', timeout: 25 }
+    )
+  })
+
+  it('still rejects real changes when configured linked paths are ignored', async () => {
+    gitExecFileAsyncMock.mockResolvedValueOnce({
+      stdout: '?? node_modules\0 M src/index.ts\0',
+      stderr: ''
+    })
+
+    await expect(
+      assertWorktreeCleanForRemoval('/repo-feature', false, {
+        ignoredUntrackedPaths: ['node_modules']
+      })
+    ).rejects.toMatchObject({ message: 'Worktree has uncommitted or untracked changes.' })
   })
 
   it('rethrows preflight subprocess failures as-is', async () => {
