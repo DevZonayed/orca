@@ -238,6 +238,7 @@ yay -S stably-orca-bin
 - **微信:** 扫描二维码加入社区。如果第一个群已满，请使用备用微信群。
 
   <img src="../assets/wechat-qr.png" alt="Orca 社区微信群二维码" width="160" />
+  &nbsp;&nbsp;&nbsp;
   <img src="../assets/wechat-qr-backup.jpg" alt="Orca 社区备用微信群二维码" width="160" />
 
 - **反馈与想法:** 我们发布很快。缺少什么功能？[提交功能请求](https://github.com/stablyai/orca/issues)。
