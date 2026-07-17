@@ -112,6 +112,7 @@ export type KeybindingActionId =
   | 'terminal.closePane'
   | 'terminal.splitRight'
   | 'terminal.splitDown'
+  | 'terminal.switchInputSource'
 
 export type KeybindingOverrides = Partial<Record<KeybindingActionId, string[]>>
 
@@ -147,6 +148,7 @@ export type KeybindingDefinition = {
   defaultBindings: PlatformBindings
   allowInTerminal?: boolean
   allowBareKeybindings?: boolean
+  allowShiftOnlyKeybindings?: boolean
   conflictGroup?: string
 }
 
@@ -180,6 +182,7 @@ type ParsedKeybinding = {
 
 type NormalizeKeybindingOptions = {
   allowBareKeybindings?: boolean
+  allowShiftOnlyKeybindings?: boolean
 }
 
 export type KeybindingValidationResult = { ok: true; value: string } | { ok: false; error: string }
@@ -1038,6 +1041,32 @@ export const KEYBINDING_DEFINITIONS: readonly KeybindingDefinition[] = [
       win32: ['Alt+Shift+D']
     }
   },
+  {
+    id: 'terminal.switchInputSource',
+    title: 'Switch input source / language (native)',
+    group: 'Terminal Panes',
+    scope: 'terminal',
+    searchKeywords: [
+      'shortcut',
+      'input',
+      'source',
+      'language',
+      'korean',
+      'english',
+      'ime',
+      'switch',
+      'hangul',
+      'layout'
+    ],
+    defaultBindings: {
+      darwin: [],
+      linux: [],
+      win32: []
+    },
+    // Why: macOS permits Shift+Space as an input-source shortcut, while normal
+    // Orca actions reject Shift-only bindings to avoid stealing typed text.
+    allowShiftOnlyKeybindings: true
+  },
   ...buildAgentTabKeybindingDefinitions()
 ]
 
@@ -1389,13 +1418,21 @@ function normalizeKeybindingWithOptions(
   }
   const isShiftInsert = parsed.shift && parsed.key === 'Insert'
   const isBareAllowed = options.allowBareKeybindings === true && isSafeBareKey(parsed)
+  const isShiftOnlyAllowed =
+    options.allowShiftOnlyKeybindings === true &&
+    parsed.shift &&
+    !parsed.mod &&
+    !parsed.meta &&
+    !parsed.control &&
+    !parsed.alt
   if (
     !parsed.mod &&
     !parsed.meta &&
     !parsed.control &&
     !parsed.alt &&
     !isShiftInsert &&
-    !isBareAllowed
+    !isBareAllowed &&
+    !isShiftOnlyAllowed
   ) {
     return { ok: false, error: 'Include at least one modifier key.' }
   }
@@ -1455,8 +1492,10 @@ function normalizeKeybindingArrayWithOptions(
 }
 
 function normalizeOptionsForAction(actionId: KeybindingActionId): NormalizeKeybindingOptions {
+  const definition = DEFINITIONS_BY_ID.get(actionId)
   return {
-    allowBareKeybindings: DEFINITIONS_BY_ID.get(actionId)?.allowBareKeybindings === true
+    allowBareKeybindings: definition?.allowBareKeybindings === true,
+    allowShiftOnlyKeybindings: definition?.allowShiftOnlyKeybindings === true
   }
 }
 
@@ -1765,7 +1804,8 @@ export function keybindingFromInputForAction(
 function getDefaultBindings(definition: KeybindingDefinition, platform: NodeJS.Platform): string[] {
   return definition.defaultBindings[getKeybindingPlatform(platform)].map((binding) => {
     const normalized = normalizeKeybindingWithOptions(binding, {
-      allowBareKeybindings: definition.allowBareKeybindings === true
+      allowBareKeybindings: definition.allowBareKeybindings === true,
+      allowShiftOnlyKeybindings: definition.allowShiftOnlyKeybindings === true
     })
     return normalized.ok ? normalized.value : binding
   })
