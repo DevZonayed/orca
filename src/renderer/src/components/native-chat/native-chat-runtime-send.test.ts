@@ -33,6 +33,7 @@ describe('sendNativeChatMessage', () => {
   beforeEach(() => {
     vi.useFakeTimers()
     sendRuntimePtyInput.mockClear()
+    sendRuntimePtyInput.mockReturnValue(true)
   })
   afterEach(() => {
     vi.useRealTimers()
@@ -205,6 +206,8 @@ describe('sendNativeChatAskAnswer', () => {
   beforeEach(() => {
     vi.useFakeTimers()
     sendRuntimePtyInput.mockClear()
+    sendRuntimePtyInput.mockReturnValue(true)
+    sendRuntimePtyInputVerified.mockReset().mockResolvedValue(true)
   })
   afterEach(() => {
     vi.useRealTimers()
@@ -277,5 +280,40 @@ describe('sendNativeChatAskAnswer', () => {
     vi.runAllTimers()
     // Only the first keystroke landed; the rest were cancelled.
     expect(sendRuntimePtyInput).toHaveBeenCalledTimes(1)
+  })
+
+  it('reports verified delivery only after settling and suppresses it after cancellation', async () => {
+    const onSettled = vi.fn()
+    sendRuntimePtyInputVerified.mockResolvedValueOnce(true).mockResolvedValueOnce(false)
+    const handle = sendNativeChatAskAnswer(SETTINGS, PTY, [{ raw: '1' }, { raw: '\r' }], onSettled)
+
+    await vi.advanceTimersByTimeAsync(handle.settleAfterMs)
+    expect(onSettled).toHaveBeenCalledExactlyOnceWith(false)
+    expect(sendRuntimePtyInput).not.toHaveBeenCalled()
+
+    const canceledSettled = vi.fn()
+    const canceled = sendNativeChatAskAnswer(SETTINGS, PTY, [{ raw: '1' }], canceledSettled)
+    canceled.cancel()
+    await vi.runAllTimersAsync()
+    expect(canceledSettled).not.toHaveBeenCalled()
+  })
+
+  it('waits for remote acceptance before reporting delivery', async () => {
+    const onSettled = vi.fn()
+    let resolveAccepted!: (accepted: boolean) => void
+    sendRuntimePtyInputVerified.mockReturnValueOnce(
+      new Promise<boolean>((resolve) => {
+        resolveAccepted = resolve
+      })
+    )
+
+    const handle = sendNativeChatAskAnswer(SETTINGS, PTY, [{ raw: '2' }], onSettled)
+    await vi.advanceTimersByTimeAsync(handle.settleAfterMs)
+
+    expect(sendRuntimePtyInputVerified).toHaveBeenCalledWith(SETTINGS, PTY, '2')
+    expect(onSettled).not.toHaveBeenCalled()
+
+    resolveAccepted(true)
+    await vi.waitFor(() => expect(onSettled).toHaveBeenCalledExactlyOnceWith(true))
   })
 })
