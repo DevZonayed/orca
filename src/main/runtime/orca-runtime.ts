@@ -764,7 +764,11 @@ import {
   getFolderWorkspacePathStatusForPath,
   inferFolderWorkspacePathConnection
 } from '../project-groups/folder-workspace-path-status'
-import { getSshGitProvider, requireSshGitProvider } from '../providers/ssh-git-dispatch'
+import {
+  getSshGitProvider,
+  getSshGitProviderGeneration,
+  requireSshGitProvider
+} from '../providers/ssh-git-dispatch'
 import { detectRepoIconAndUpstream } from '../repo-icon-autodetect'
 import { enrichMissingRepoGitRemoteIdentities } from '../repo-git-remote-identity-enrichment'
 import { githubAvatarIcon } from '../../shared/repo-icon'
@@ -2031,6 +2035,19 @@ type RuntimeWorktreeScanResult =
   | { ok: true; worktrees: GitWorktreeInfo[] }
   | { ok: false; worktrees: GitWorktreeInfo[] }
 
+type RuntimeWorktreeScanCache = {
+  generation: number
+  runtimeKey: string
+  result: Extract<RuntimeWorktreeScanResult, { ok: true }>
+  expiresAt: number
+}
+
+type RuntimeWorktreeScanInFlight = {
+  generation: number
+  runtimeKey: string
+  promise: Promise<RuntimeWorktreeScanResult>
+}
+
 type WorktreeLineageCandidate = {
   source: 'env-workspace' | 'cwd-context' | 'terminal-context' | 'orchestration-context'
   parent: ResolvedWorkspaceParent
@@ -2223,6 +2240,9 @@ export class OrcaRuntimeService {
   private resolvedWorktreeCache: ResolvedWorktreeCache | null = null
   private resolvedWorktreeInFlight: ResolvedWorktreeInFlight | null = null
   private resolvedWorktreeGeneration = 0
+  private worktreeScanGenerations = new Map<string, number>()
+  private worktreeScanCache = new Map<string, RuntimeWorktreeScanCache>()
+  private worktreeScanInFlight = new Map<string, RuntimeWorktreeScanInFlight>()
   private cloneInFlightByPath = new Map<string, Promise<void>>()
   private agentDetector: AgentDetector | null = null
   private ptyForegroundAgentRefreshes = new Map<string, PtyForegroundAgentRefresh>()
@@ -3138,7 +3158,12 @@ export class OrcaRuntimeService {
   // Why: SSH state changes originate in main's ssh handlers, not in runtime
   // methods, so they need a public entry point onto the client-event stream.
   notifySshStateChanged(targetId: string, state: SshConnectionState): void {
+    this.invalidateSshWorktreeScanCache(targetId)
     this.emitClientEvent({ type: 'sshStateChanged', targetId, state })
+  }
+
+  invalidateSshWorktreeScanCache(targetId: string): void {
+    this.invalidateSshWorktreeScanCacheInternal(targetId)
   }
 
   // Why: renderer-initiated meta updates intentionally skip the renderer
@@ -12677,6 +12702,11 @@ export class OrcaRuntimeService {
       }
     }
     this.invalidateResolvedWorktreeCache()
+    for (const project of results) {
+      if (project.projectId) {
+        this.invalidateWorktreeScanCacheForRepo(project.projectId)
+      }
+    }
     this.notifyReposChanged()
     const rootGroup = groupResolver.getRootGroup()
     return {
@@ -12757,6 +12787,7 @@ export class OrcaRuntimeService {
           this.store.updateRepo(existing.id, { executionHostId }) ??
           ({ ...existing, executionHostId } as Repo)
         this.invalidateResolvedWorktreeCache()
+        this.invalidateWorktreeScanCacheForRepo(existing.id)
         this.notifyReposChanged()
         return adopted
       }
@@ -12783,6 +12814,7 @@ export class OrcaRuntimeService {
     this.store.addRepo(repo)
     await prepareLocalWorktreeRootForRepo(this.store, repo)
     this.invalidateResolvedWorktreeCache()
+    this.invalidateWorktreeScanCacheForRepo(repo.id)
     this.notifyReposChanged()
     return this.store.getRepo(repo.id) ?? repo
   }
@@ -12904,6 +12936,7 @@ export class OrcaRuntimeService {
     await prepareLocalWorktreeRootForRepo(this.store, repo)
     invalidateAuthorizedRootsCache()
     this.invalidateResolvedWorktreeCache()
+    this.invalidateWorktreeScanCacheForRepo(repo.id)
     this.notifyReposChanged()
     return { repo: this.store.getRepo(repo.id) ?? repo }
   }
@@ -13047,6 +13080,7 @@ export class OrcaRuntimeService {
           await prepareLocalWorktreeRootForRepo(this.store, updated)
           invalidateAuthorizedRootsCache()
           this.invalidateResolvedWorktreeCache()
+          this.invalidateWorktreeScanCacheForRepo(updated.id)
           this.notifyReposChanged()
           return updated
         }
@@ -13071,6 +13105,7 @@ export class OrcaRuntimeService {
     await prepareLocalWorktreeRootForRepo(this.store, repo)
     invalidateAuthorizedRootsCache()
     this.invalidateResolvedWorktreeCache()
+    this.invalidateWorktreeScanCacheForRepo(repo.id)
     this.notifyReposChanged()
     return this.store.getRepo(repo.id) ?? repo
   }
@@ -13149,6 +13184,9 @@ export class OrcaRuntimeService {
       invalidateAuthorizedRootsCache()
     }
     this.invalidateResolvedWorktreeCache()
+    if ('worktreeBasePath' in updates) {
+      this.invalidateWorktreeScanCacheForRepo(repo.id)
+    }
     this.notifyReposChanged()
     return updated
   }
@@ -13160,6 +13198,7 @@ export class OrcaRuntimeService {
     const repo = await this.resolveRepoSelector(repoSelector)
     this.store.removeProject(repo.id)
     this.invalidateResolvedWorktreeCache()
+    this.invalidateWorktreeScanCacheForRepo(repo.id)
     invalidateAuthorizedRootsCache()
     this.notifyReposChanged()
     return { removed: true }
@@ -16256,6 +16295,7 @@ export class OrcaRuntimeService {
     }
 
     this.invalidateResolvedWorktreeCache()
+    this.invalidateWorktreeScanCacheForRepo(repo.id)
     // Why: the filesystem-auth layer maintains a separate cache of registered
     // worktree roots used by git IPC handlers (branchCompare, diff, status, etc.)
     // to authorize paths. Without invalidating it here, CLI-created worktrees
@@ -16569,6 +16609,7 @@ export class OrcaRuntimeService {
     }
 
     this.invalidateResolvedWorktreeCache()
+    this.invalidateWorktreeScanCacheForRepo(repo.id)
     this.notifyWorktreesChanged(repo.id)
 
     let warning = result.warning
@@ -17259,6 +17300,10 @@ export class OrcaRuntimeService {
     }
     const worktree = await this.resolveWorktreeSelector(worktreeSelector)
     const { lineage, ...metaUpdates } = updates
+    if (lineage?.parentWorktree) {
+      this.invalidateResolvedWorktreeCache()
+      this.invalidateWorktreeScanCacheForRepo(worktree.repoId)
+    }
     const shouldClearPushTarget =
       Object.prototype.hasOwnProperty.call(metaUpdates, 'pushTarget') &&
       metaUpdates.pushTarget === null
@@ -17977,6 +18022,7 @@ export class OrcaRuntimeService {
           this.removeWorktreeMetadataAndHistory(store, removalTarget.id)
           this.preservedBranchCleanupByWorktreeId.delete(removalTarget.id)
           this.invalidateResolvedWorktreeCache()
+          this.invalidateWorktreeScanCacheForRepo(removalTarget.repoId)
           invalidateAuthorizedRootsCache()
           this.notifyWorktreesChanged(repo.id)
           return {}
@@ -18022,6 +18068,7 @@ export class OrcaRuntimeService {
             this.removeWorktreeMetadataAndHistory(store, removalTarget.id)
             this.preservedBranchCleanupByWorktreeId.delete(removalTarget.id)
             this.invalidateResolvedWorktreeCache()
+            this.invalidateWorktreeScanCacheForRepo(removalTarget.repoId)
             invalidateAuthorizedRootsCache()
             this.notifyWorktreesChanged(repo.id)
             return {}
@@ -18055,6 +18102,7 @@ export class OrcaRuntimeService {
           this.removeWorktreeMetadataAndHistory(store, removalTarget.id)
           this.preservedBranchCleanupByWorktreeId.delete(removalTarget.id)
           this.invalidateResolvedWorktreeCache()
+          this.invalidateWorktreeScanCacheForRepo(removalTarget.repoId)
           invalidateAuthorizedRootsCache()
           this.notifyWorktreesChanged(repo.id)
           return {}
@@ -18105,6 +18153,7 @@ export class OrcaRuntimeService {
         this.clearOptimisticReconcileToken(removalTarget.id)
         this.removeWorktreeMetadataAndHistory(store, removalTarget.id)
         this.invalidateResolvedWorktreeCache()
+        this.invalidateWorktreeScanCacheForRepo(removalTarget.repoId)
         invalidateAuthorizedRootsCache()
         this.notifyWorktreesChanged(repo.id)
         return removalResult ?? {}
@@ -18146,6 +18195,7 @@ export class OrcaRuntimeService {
         this.clearOptimisticReconcileToken(removalTarget.id)
         this.removeWorktreeMetadataAndHistory(store, removalTarget.id)
         this.invalidateResolvedWorktreeCache()
+        this.invalidateWorktreeScanCacheForRepo(removalTarget.repoId)
         invalidateAuthorizedRootsCache()
         this.notifyWorktreesChanged(repo.id)
         return removalResult ?? {}
@@ -18294,6 +18344,7 @@ export class OrcaRuntimeService {
             this.removeWorktreeMetadataAndHistory(store, removalTarget.id)
             this.preservedBranchCleanupByWorktreeId.delete(removalTarget.id)
             this.invalidateResolvedWorktreeCache()
+            this.invalidateWorktreeScanCacheForRepo(removalTarget.repoId)
             invalidateAuthorizedRootsCache()
             this.notifyWorktreesChanged(repo.id)
             removalCompleted = true
@@ -18325,6 +18376,7 @@ export class OrcaRuntimeService {
       this.clearOptimisticReconcileToken(removalTarget.id)
       this.removeWorktreeMetadataAndHistory(store, removalTarget.id)
       this.invalidateResolvedWorktreeCache()
+      this.invalidateWorktreeScanCacheForRepo(removalTarget.repoId)
       invalidateAuthorizedRootsCache()
       this.notifyWorktreesChanged(repo.id)
       return {
@@ -21038,10 +21090,61 @@ export class OrcaRuntimeService {
     repo: Repo,
     projectRuntimeByRepoId?: ReadonlyMap<string, ProjectExecutionRuntimeResolution>
   ): Promise<RuntimeWorktreeScanResult> {
+    const now = Date.now()
+    const generation = this.worktreeScanGenerations.get(repo.id) ?? 0
+    const projectRuntime = projectRuntimeByRepoId
+      ? projectRuntimeByRepoId.get(repo.id)
+      : !repo.connectionId
+        ? resolveLocalProjectRuntimeForRepo(this.requireStore(), repo)
+        : undefined
+    const runtimeKey = projectRuntime
+      ? projectRuntime.status === 'resolved'
+        ? projectRuntime.runtime.cacheKey
+        : projectRuntime.repair.cacheKey
+      : repo.connectionId
+        ? `ssh:${repo.connectionId}:${getSshGitProviderGeneration(repo.connectionId)}`
+        : 'local:default'
+    const cached = this.worktreeScanCache.get(repo.id)
+    if (
+      cached?.generation === generation &&
+      cached.runtimeKey === runtimeKey &&
+      cached.expiresAt > now
+    ) {
+      return cached.result
+    }
+    const inFlight = this.worktreeScanInFlight.get(repo.id)
+    if (inFlight?.generation === generation && inFlight.runtimeKey === runtimeKey) {
+      return inFlight.promise
+    }
+    const promise = this.listRepoWorktreesForResolutionUncached(repo, projectRuntime)
+    this.worktreeScanInFlight.set(repo.id, { generation, runtimeKey, promise })
+    try {
+      const result = await promise
+      if (
+        result.ok &&
+        generation === (this.worktreeScanGenerations.get(repo.id) ?? 0) &&
+        this.worktreeScanInFlight.get(repo.id)?.promise === promise
+      ) {
+        this.worktreeScanCache.set(repo.id, {
+          generation,
+          runtimeKey,
+          result,
+          expiresAt: Date.now() + WORKTREE_SCAN_CACHE_TTL_MS
+        })
+      }
+      return result
+    } finally {
+      if (this.worktreeScanInFlight.get(repo.id)?.promise === promise) {
+        this.worktreeScanInFlight.delete(repo.id)
+      }
+    }
+  }
+
+  private async listRepoWorktreesForResolutionUncached(
+    repo: Repo,
+    projectRuntime: ProjectExecutionRuntimeResolution | undefined
+  ): Promise<RuntimeWorktreeScanResult> {
     if (!repo.connectionId) {
-      const projectRuntime = projectRuntimeByRepoId
-        ? projectRuntimeByRepoId.get(repo.id)
-        : resolveLocalProjectRuntimeForRepo(this.requireStore(), repo)
       return {
         ok: true,
         worktrees: await listRepoWorktrees(
@@ -21100,11 +21203,34 @@ export class OrcaRuntimeService {
     this.resolvedWorktreeCache = null
   }
 
+  private invalidateWorktreeScanCacheForRepo(repoId: string): void {
+    this.worktreeScanGenerations.set(repoId, (this.worktreeScanGenerations.get(repoId) ?? 0) + 1)
+    this.worktreeScanCache.delete(repoId)
+    this.worktreeScanInFlight.delete(repoId)
+  }
+
+  private invalidateSshWorktreeScanCacheInternal(targetId: string): void {
+    const repos = this.store?.getRepos() ?? []
+    const affectedRepoIds = new Set(
+      repos.filter((repo) => repo.connectionId === targetId).map((repo) => repo.id)
+    )
+    for (const repoId of affectedRepoIds) {
+      this.worktreeScanGenerations.set(repoId, (this.worktreeScanGenerations.get(repoId) ?? 0) + 1)
+      this.worktreeScanCache.delete(repoId)
+      this.worktreeScanInFlight.delete(repoId)
+    }
+    if (affectedRepoIds.size > 0) {
+      this.resolvedWorktreeGeneration += 1
+      this.resolvedWorktreeCache = null
+    }
+  }
+
   /** Invalidate the worktree cache and tell the renderer to re-list, after an
    *  out-of-band branch change (e.g. auto-rename-from-work) so the new branch
    *  name surfaces without waiting for the next ambient refresh. */
   notifyBranchRenamed(repoId: string): void {
     this.invalidateResolvedWorktreeCache()
+    this.invalidateWorktreeScanCacheForRepo(repoId)
     this.notifyWorktreesChanged(repoId)
   }
 
@@ -21113,6 +21239,7 @@ export class OrcaRuntimeService {
    *  (from a folder rename) as a deletion. Same channel = guaranteed ordering. */
   notifyWorktreeFolderRenamed(repoId: string, oldWorktreeId: string, newWorktreeId: string): void {
     this.invalidateResolvedWorktreeCache()
+    this.invalidateWorktreeScanCacheForRepo(repoId)
     this.notifier?.worktreesChanged(repoId, { oldWorktreeId, newWorktreeId })
     // Mirror notifyBranchRenamed so in-process onClientEvent listeners also see the rename.
     this.emitClientEvent({ type: 'worktreesChanged', repoId })
@@ -25882,6 +26009,7 @@ const DEFAULT_WORKTREE_LIST_LIMIT = 200
 const DEFAULT_WORKTREE_PS_LIMIT = 200
 const DISCONNECTED_PTY_RECORD_MAX = 128
 const RESOLVED_WORKTREE_CACHE_TTL_MS = 1000
+const WORKTREE_SCAN_CACHE_TTL_MS = 30_000
 const RESOLVED_WORKTREE_REPO_TIMEOUT_MS = 5000
 const PTY_CONTROLLER_LIST_TIMEOUT_MS = 3000
 // Why (§3.3): 30s freshness window. A second worktree-create or dispatch-probe
