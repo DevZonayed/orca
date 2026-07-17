@@ -588,6 +588,27 @@
             "de50bef680": "macOS가 Orca 알림을 차단하고 있습니다"
           }
         }
+      },
+      "linear": {
+        "usage": {
+          "examples": {
+            "readTicket": "Read the linked ticket",
+            "postUpdate": "Post a progress update",
+            "moveState": "Move the ticket forward",
+            "attachPr": "Attach the PR link",
+            "triageFollowups": "Triage and create follow-ups",
+            "readTicketSummary": "Pull the linked Linear issue's full context before starting work.",
+            "readTicketPrompt": "Use {{value0}} to read the linked Linear issue for this worktree, then summarize the goal and acceptance criteria before you start.",
+            "postUpdateSummary": "Comment progress or a completion summary back to the Linear issue.",
+            "postUpdatePrompt": "Use {{value0}} to post a completion update on the linked Linear issue with what changed and how it was verified.",
+            "moveStateSummary": "Advance the Linear workflow state as the work progresses.",
+            "moveStatePrompt": "Use {{value0}} to move the linked Linear issue to In Review now that the change is ready.",
+            "attachPrSummary": "Link the pull request to the Linear issue when you open it.",
+            "attachPrPrompt": "Use {{value0}} to attach this PR to the linked Linear issue with a PR link.",
+            "triageFollowupsSummary": "Set assignee, priority, or estimate, and file parented follow-up tickets.",
+            "triageFollowupsPrompt": "Use {{value0}} to triage the linked Linear issue — set priority and estimate — and create a parented follow-up ticket for the deferred cleanup."
+          }
+        }
       }
     },
     "hooks": {
@@ -705,7 +726,9 @@
         "devSearchKeywordSonner": "sonner",
         "devSearchKeywordError": "error",
         "devSearchKeywordNotification": "notification",
-        "projectHostsSummary": "호스트 {{value0}}개"
+        "projectHostsSummary": "호스트 {{value0}}개",
+        "linearTitle": "Linear",
+        "linearDescription": "Give agents the skill to read and update your linked Linear tickets."
       },
       "useAppMenuPaste": {
         "pasteTooLarge": "붙여넣기 내용이 너무 큽니다."
@@ -5930,13 +5953,6 @@
           "3743ed080c": "명령 설정",
           "f79084947b": "새로운 앱"
         },
-        "OrchestrationExamplesDialog": {
-          "3d1aa105e3": "프롬프트 복사",
-          "9b4c004998": "완료",
-          "969cec9739": "{{value0}} 예시 프롬프트 복사",
-          "4e46da1889": "프롬프트를 복사하지 못했습니다.",
-          "80c6f2feb8": "예시 프롬프트를 복사했습니다."
-        },
         "OrchestrationPane": {
           "52e0634e2c": "핸드오프, 작업 트리 핸드오버, 순차 또는 병렬 하위 agents에 대한 오케스트레이션을 사용하도록 코디네이터 agents에 요청하세요.",
           "ae79504732": "사용방법",
@@ -6448,7 +6464,9 @@
           "2309068a6f": "파괴적",
           "65358016ea": "버리기",
           "dev": "Dev Tools",
-          "devDescription": "Dev-only tools for exercising UI states."
+          "devDescription": "Dev-only tools for exercising UI states.",
+          "linearTitle": "Linear",
+          "linearDescription": "Give agents the skill to read and update your linked Linear tickets."
         },
         "SettingsFormControls": {
           "42a4d15a30": "일치하는 글꼴이 없습니다.",
@@ -9089,6 +9107,10 @@
                   "description": "에이전트가 Linear 작업을 읽고 편집할 수 있도록 합니다.",
                   "copyCommand": "명령 복사"
                 }
+              },
+              "search": {
+                "title": "Linear",
+                "description": "Give agents the skill to read and update your linked Linear tickets."
               }
             }
           }
@@ -9169,6 +9191,23 @@
           "availability": "이용 가능:",
           "testFlight": "TestFlight",
           "androidApk": "Android APK"
+        },
+        "SkillUsageExampleDialog": {
+          "copiedPrompt": "예시 프롬프트를 복사했습니다.",
+          "copyFailed": "프롬프트를 복사하지 못했습니다.",
+          "copyExampleAria": "{{value0}} 예시 프롬프트 복사",
+          "done": "완료",
+          "copyPrompt": "프롬프트 복사"
+        },
+        "LinearAgentSkillPane": {
+          "title": "Linear",
+          "description": "Give agents the skill to read and update your linked Linear tickets.",
+          "skillTitle": "Linear skill",
+          "skillDescription": "Enables agents to read linked tickets and post updates to Linear through Orca.",
+          "howToUse": "How to use it",
+          "howToUseDescription": "Ask an agent working a Linear-linked worktree to read context, post updates, move the ticket, or attach the PR.",
+          "terminalTitle": "Linear skill setup",
+          "terminalAriaLabel": "Linear skill install terminal"
         }
       },
       "right": {
