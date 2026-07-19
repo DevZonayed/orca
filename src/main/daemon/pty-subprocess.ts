@@ -983,38 +983,59 @@ export function createPtySubprocess(opts: PtySubprocessOptions): SubprocessHandl
     // Why: daemon foreground reads are sync and run on the IPC hot path.
     // Refresh derived identities (shell/wrapper/helper -> codex/claude/etc.)
     // in the background and serve them from a short cache on later reads.
+    // Why: Windows may need an async membership check before this shared
+    // shell/wrapper retirement policy is safe to apply.
+    const retireStaleForegroundIdentity = (): void => {
+      const currentFallbackProcess = getFallbackForegroundProcess()
+      if (
+        fallbackIsShell &&
+        !getActiveStartupAgentForeground() &&
+        currentFallbackProcess !== null &&
+        isShellProcess(currentFallbackProcess)
+      ) {
+        cachedAgentForeground = null
+        startupAgentForeground = null
+      } else if (
+        cachedAgentForeground !== null &&
+        Date.now() - cachedAgentForeground.refreshedAt > FOREGROUND_AGENT_CACHE_TTL_MS &&
+        currentFallbackProcess !== null &&
+        isAgentForegroundWrapperProcess(currentFallbackProcess)
+      ) {
+        // Why: the wrapper's tree no longer resolves to an agent — an expired
+        // identity must not transfer to an unrelated wrapper (e.g. npm right
+        // after an agent exit). Fresh identities survive one-off scan hiccups.
+        cachedAgentForeground = null
+      }
+    }
     void resolveAgentForegroundProcessWithAvailability(proc.pid, fallbackProcess, {
       contextPaths: agentForegroundContextPaths
     })
-      .then(({ processName }) => {
+      .then<string | void>(({ processName, available }) => {
         if (dead) {
           return
         }
+        // Why: a degraded scan is not exit evidence; retiring here fires false
+        // completion while an agent is still working under CIM load.
+        if (!available) {
+          return
+        }
         if (!processName || !recognizeAgentProcess(processName)) {
-          const currentFallbackProcess = getFallbackForegroundProcess()
-          if (
-            fallbackIsShell &&
-            !getActiveStartupAgentForeground() &&
-            currentFallbackProcess !== null &&
-            isShellProcess(currentFallbackProcess)
-          ) {
-            cachedAgentForeground = null
-            startupAgentForeground = null
-          } else if (
-            cachedAgentForeground !== null &&
-            Date.now() - cachedAgentForeground.refreshedAt > FOREGROUND_AGENT_CACHE_TTL_MS &&
-            currentFallbackProcess !== null &&
-            isAgentForegroundWrapperProcess(currentFallbackProcess)
-          ) {
-            // Why: the wrapper's tree no longer resolves to an agent — an expired
-            // identity must not transfer to an unrelated wrapper (e.g. npm right
-            // after an agent exit). Fresh identities survive one-off scan hiccups.
-            cachedAgentForeground = null
+          // Why: a Windows snapshot can omit a live agent; only verified
+          // shell-only membership may retire its cached identity.
+          if (process.platform === 'win32' && fallbackIsShell && cachedAgentForeground !== null) {
+            return readWindowsConptyProcessIds(proc.pid).then((consoleProcessIds) => {
+              if (dead || consoleProcessIds === null || consoleProcessIds.size > 1) {
+                return
+              }
+              retireStaleForegroundIdentity()
+            })
           }
+          retireStaleForegroundIdentity()
           return
         }
         cachedAgentForeground = { processName, refreshedAt: Date.now() }
         startupAgentForeground = null
+        return processName
       })
       .catch(() => {
         // Best-effort only: foreground enrichment must never affect PTY health.
@@ -1069,14 +1090,18 @@ export function createPtySubprocess(opts: PtySubprocessOptions): SubprocessHandl
           return cachedAgentForeground.processName
         }
         // Why: a wrapper foreground (node/python) can never identify itself, and
-        // readers poll slower than the cache TTL — returning the raw wrapper here
+        // readers poll slower than the cache TTL — returning the raw fallback here
         // would hide the resolved identity forever. Serve the last resolved agent
-        // while the scheduled refresh revalidates; exit truth is safe because an
-        // exited agent's foreground falls back to the shell, not a wrapper.
+        // while the scheduled refresh revalidates. On Windows a shell fallback is
+        // also an unreliable exit signal (ConPTY lag under load surfaces the shell
+        // while the agent is alive), so trust the cache there too; the background
+        // refresh retires the identity only after a console-presence read confirms
+        // the agent left the console.
         if (
           cachedAgentForeground &&
           fallbackProcess !== null &&
-          isAgentForegroundWrapperProcess(fallbackProcess)
+          (isAgentForegroundWrapperProcess(fallbackProcess) ||
+            (process.platform === 'win32' && isShellProcess(fallbackProcess)))
         ) {
           return cachedAgentForeground.processName
         }
