@@ -1,5 +1,5 @@
 /* eslint-disable max-lines */
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
 import {
   ArrowDownUp,
   AlertTriangle,
@@ -267,6 +267,10 @@ import { resolveVisibleCreatePrHeaderAction } from './source-control-create-pr-i
 import { resolveBlockedCreateReviewNoticeMessage } from './source-control-create-review-blocked-action'
 import {
   buildLoadingHostedReviewCreationEligibility,
+  buildLocalBlockerHostedReviewCreationEligibility,
+  resolveHostedReviewCreationProviderForTarget
+} from './source-control-hosted-review-creation-eligibility-snapshot'
+import {
   resolveCreatePrHeaderAction,
   resolveProvisionalHostedReviewProvider
 } from './source-control-primary-create-pr-intent-action'
@@ -283,6 +287,7 @@ import {
   resolveHostedReviewStateForActions
 } from './source-control-hosted-review-push-target'
 import { buildSourceControlManualReviewUrlFromContext } from './source-control-manual-review-url'
+import { parseRemoteRepo } from './source-control-remote-repo'
 export { HostedReviewHeaderLink } from './hosted-review-header-chrome'
 import {
   createRunningCommitMessageGenerationRecord,
@@ -823,6 +828,10 @@ function SourceControlInner(): React.JSX.Element {
   const worktreeMap = useWorktreeMap()
   const rightSidebarTab = useAppStore((s) => s.rightSidebarTab)
   const activeRepo = useRepoById(activeWorktree?.repoId ?? null)
+  const activeRepoId = activeRepo?.id ?? null
+  const activeRepoPath = activeRepo?.path ?? null
+  const activeRepoConnectionId = activeRepo?.connectionId ?? null
+  const activeRepoExecutionHostId = activeRepo?.executionHostId ?? null
   const gitIdentityDisplay = activeWorktree ? getWorktreeGitIdentityDisplay(activeWorktree) : null
   const detachedHeadDisplay = gitIdentityDisplay?.kind === 'detached' ? gitIdentityDisplay : null
   const branchName = gitIdentityDisplay?.kind === 'branch' ? gitIdentityDisplay.branchName : ''
@@ -891,9 +900,20 @@ function SourceControlInner(): React.JSX.Element {
   // Why: git/file mutations and repo metadata requests belong to the repo
   // OWNER host, not the currently focused host in the sidebar.
   const activeRepoSettings = useMemo(
-    () => getRepoOwnerRoutedSettings(settings, activeRepo ?? null),
-    [activeRepo, settings]
+    () =>
+      getRepoOwnerRoutedSettings(
+        settings,
+        activeRepoId
+          ? {
+              id: activeRepoId,
+              connectionId: activeRepoConnectionId,
+              executionHostId: activeRepoExecutionHostId
+            }
+          : null
+      ),
+    [activeRepoConnectionId, activeRepoExecutionHostId, activeRepoId, settings]
   )
+  const activeRepoRuntimeEnvironmentId = activeRepoSettings?.activeRuntimeEnvironmentId ?? null
   const updateSettings = useAppStore((s) => s.updateSettings)
   const openSettingsTarget = useAppStore((s) => s.openSettingsTarget)
   const openSettingsPage = useAppStore((s) => s.openSettingsPage)
@@ -1240,7 +1260,7 @@ function SourceControlInner(): React.JSX.Element {
   const generateError =
     activeCommitMessageGenerationRecord?.error ?? generateErrors[activeWorktreeId ?? ''] ?? null
   const activeConnectionId = activeWorktreeId
-    ? (getConnectionId(activeWorktreeId) ?? activeRepo?.connectionId ?? null)
+    ? (getConnectionId(activeWorktreeId) ?? activeRepoConnectionId)
     : null
   const activeSourceControlLaunchPlatform = resolveSourceControlLaunchPlatform({
     connectionId: activeConnectionId,
@@ -1417,7 +1437,7 @@ function SourceControlInner(): React.JSX.Element {
   )
 
   useEffect(() => {
-    if (!isBranchVisible || !activeRepo || isFolder) {
+    if (!isBranchVisible || !activeRepoId || isFolder) {
       return
     }
 
@@ -1429,7 +1449,10 @@ function SourceControlInner(): React.JSX.Element {
     setDefaultBaseRef(null)
 
     let stale = false
-    void getRuntimeRepoBaseRefDefault(activeRepoSettings, activeRepo.id)
+    void getRuntimeRepoBaseRefDefault(
+      { activeRuntimeEnvironmentId: activeRepoRuntimeEnvironmentId },
+      activeRepoId
+    )
       .then((result) => {
         if (!stale) {
           // Why: IPC now returns a `{ defaultBaseRef, remoteCount }` envelope;
@@ -1451,7 +1474,16 @@ function SourceControlInner(): React.JSX.Element {
     return () => {
       stale = true
     }
-  }, [activeRepo, activeRepoSettings, isBranchVisible, isFolder])
+  }, [
+    // Why: only repo/host ownership changes should reset the base; unrelated
+    // repo metadata churn must not indirectly restart eligibility's timeout.
+    activeRepoConnectionId,
+    activeRepoExecutionHostId,
+    activeRepoId,
+    activeRepoRuntimeEnvironmentId,
+    isBranchVisible,
+    isFolder
+  ])
 
   const normalizedWorktreeBaseRef = activeWorktree?.baseRef?.trim() || null
   const normalizedRepoBaseRef = activeRepo?.worktreeBaseRef?.trim() || null
@@ -1566,6 +1598,13 @@ function SourceControlInner(): React.JSX.Element {
     hostedReviewCreationRequestMatchesCurrent &&
     hostedReviewCreationRequestState.status === 'loading' &&
     hostedReview === null
+  // Why: without a linked review or probe result the provider is unknown; infer
+  // it from the remote host so a GitLab (etc.) repo shows its own review copy
+  // instead of the GitHub default during loading and after a probe failure.
+  const remoteInferredHostedReviewProvider = useMemo(
+    () => parseRemoteRepo(activeRepo?.gitRemoteIdentity?.remoteUrl ?? '')?.provider ?? null,
+    [activeRepo?.gitRemoteIdentity?.remoteUrl]
+  )
   const provisionalHostedReviewProvider = useMemo(
     () =>
       resolveProvisionalHostedReviewProvider({
@@ -1582,7 +1621,8 @@ function SourceControlInner(): React.JSX.Element {
         linkedGitLabMR,
         linkedBitbucketPR,
         linkedAzureDevOpsPR,
-        linkedGiteaPR
+        linkedGiteaPR,
+        remoteInferredProvider: remoteInferredHostedReviewProvider
       }),
     [
       activeRepo?.id,
@@ -1593,8 +1633,16 @@ function SourceControlInner(): React.JSX.Element {
       linkedBitbucketPR,
       linkedGitHubPR,
       linkedGitLabMR,
-      linkedGiteaPR
+      linkedGiteaPR,
+      remoteInferredHostedReviewProvider
     ]
+  )
+  const resolveCurrentHostedReviewCreationProvider = useEffectEvent(() =>
+    resolveHostedReviewCreationProviderForTarget(
+      hostedReviewCreationProviderHintRef.current,
+      { repoId: activeRepoId, worktreeId: activeWorktreeId ?? null, branch: branchName },
+      provisionalHostedReviewProvider
+    )
   )
   useEffect(() => {
     const hasConcreteProviderHint =
@@ -1634,18 +1682,16 @@ function SourceControlInner(): React.JSX.Element {
     // upstream/dirty/base state is reconciling after commit or push, while
     // preserving provider copy from the previous safe snapshot.
     if (isHostedReviewCreationLoading) {
-      const providerHint = hostedReviewCreationProviderHintRef.current
-      const provider =
-        providerHint.repoId === (activeRepo?.id ?? null) &&
-        providerHint.worktreeId === (activeWorktreeId ?? null) &&
-        providerHint.branch === branchName
-          ? providerHint.provider
-          : provisionalHostedReviewProvider
+      const provider = resolveHostedReviewCreationProviderForTarget(
+        hostedReviewCreationProviderHintRef.current,
+        { repoId: activeRepoId, worktreeId: activeWorktreeId ?? null, branch: branchName },
+        provisionalHostedReviewProvider
+      )
       return buildLoadingHostedReviewCreationEligibility(provider)
     }
     return hostedReviewCreation
   }, [
-    activeRepo?.id,
+    activeRepoId,
     activeWorktreeId,
     branchName,
     hostedReviewCreation,
@@ -3224,7 +3270,14 @@ function SourceControlInner(): React.JSX.Element {
   ])
 
   useEffect(() => {
-    if (!isBranchVisible || !activeRepo || isFolder || !branchName || !activeWorktreeId) {
+    if (
+      !isBranchVisible ||
+      !activeRepoId ||
+      !activeRepoPath ||
+      isFolder ||
+      !branchName ||
+      !activeWorktreeId
+    ) {
       setHostedReviewCreationState(null)
       setHostedReviewCreationRequestState(null)
       return
@@ -3239,7 +3292,7 @@ function SourceControlInner(): React.JSX.Element {
     }
     let stale = false
     setHostedReviewCreationRequestState({
-      repoId: activeRepo.id,
+      repoId: activeRepoId,
       worktreeId: activeWorktreeId,
       branch: branchName,
       status: 'loading'
@@ -3248,8 +3301,8 @@ function SourceControlInner(): React.JSX.Element {
     // to click while the new preflight is still resolving.
     setHostedReviewCreationState(null)
     void getHostedReviewCreationEligibility({
-      repoPath: activeRepo.path,
-      repoId: activeRepo.id,
+      repoPath: activeRepoPath,
+      repoId: activeRepoId,
       ...(worktreePath ? { worktreePath } : {}),
       branch: branchName,
       base: effectiveBaseRef ?? null,
@@ -3267,7 +3320,7 @@ function SourceControlInner(): React.JSX.Element {
       .then((result) => {
         if (!stale) {
           setHostedReviewCreationState({
-            repoId: activeRepo.id,
+            repoId: activeRepoId,
             worktreeId: activeWorktreeId,
             branch: branchName,
             data: result
@@ -3277,21 +3330,51 @@ function SourceControlInner(): React.JSX.Element {
       })
       .catch((error) => {
         console.warn('[SourceControl] hosted review creation eligibility failed', error)
-        if (!stale) {
-          setHostedReviewCreationState(null)
-          setHostedReviewCreationRequestState({
-            repoId: activeRepo.id,
+        if (stale) {
+          return
+        }
+        // Why: a failed/timed-out remote probe must not leave an inert disabled
+        // button. When the local git status determines a blocker (dirty, no
+        // upstream, needs push/sync), surface the actionable preparation intent;
+        // otherwise fall back to the retryable failed state.
+        const localBlocker = buildLocalBlockerHostedReviewCreationEligibility(
+          resolveCurrentHostedReviewCreationProvider(),
+          {
+            branch: branchName,
+            baseRef: effectiveBaseRef,
+            hasUncommittedChanges: hasUncommittedEntries,
+            hasUpstream: remoteStatus?.hasUpstream,
+            ahead: remoteStatus?.ahead,
+            behind: remoteStatus?.behind
+          }
+        )
+        if (localBlocker) {
+          setHostedReviewCreationState({
+            repoId: activeRepoId,
             worktreeId: activeWorktreeId,
             branch: branchName,
-            status: 'failed'
+            data: localBlocker
           })
+          setHostedReviewCreationRequestState(null)
+          return
         }
+        setHostedReviewCreationState(null)
+        setHostedReviewCreationRequestState({
+          repoId: activeRepoId,
+          worktreeId: activeWorktreeId,
+          branch: branchName,
+          status: 'failed'
+        })
       })
     return () => {
       stale = true
     }
   }, [
-    activeRepo,
+    // Why: unrelated repo metadata replacement must not restart a hung probe's timeout.
+    activeRepoConnectionId,
+    activeRepoExecutionHostId,
+    activeRepoId,
+    activeRepoPath,
     branchName,
     effectiveBaseRef,
     getHostedReviewCreationEligibility,
