@@ -3235,7 +3235,11 @@ export function registerPtyHandlers(
           }
           runtime?.preparePtyExecutionContext?.(
             result.id,
-            args.connectionId ? null : (result.wslDistro ?? expectedWslDistro)
+            args.connectionId
+              ? null
+              : result.wslDistro === undefined
+                ? expectedWslDistro
+                : result.wslDistro
           )
         } catch (err) {
           if ((isMintedSessionId || preparedProvisionalExecutionContext) && effectiveSessionAppId) {
@@ -4228,7 +4232,11 @@ export function registerPtyHandlers(
           }
           runtime?.preparePtyExecutionContext?.(
             result.id,
-            args.connectionId ? null : (result.wslDistro ?? expectedWslDistro)
+            args.connectionId
+              ? null
+              : result.wslDistro === undefined
+                ? expectedWslDistro
+                : result.wslDistro
           )
           spawnTiming.mark('provider_spawn')
         } catch (err) {
