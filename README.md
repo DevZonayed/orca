@@ -23,7 +23,7 @@
 <h3 align="center"><a href="https://onorca.dev/download"><ins>Download Orca</ins></a></h3>
 
 <p align="center">
-  <strong>Windows users:</strong> download the <a href="https://github.com/stablyai/orca/releases#release-v1.4.147-rc.3">latest RC (v1.4.147-rc.3)</a> — it includes Windows-specific bug fixes not yet in stable.
+  <sub>Windows? Grab the <a href="https://github.com/stablyai/orca/releases#release-v1.4.147-rc.3">latest RC</a> — has Windows fixes.</sub>
 </p>
 
 <p align="center">
