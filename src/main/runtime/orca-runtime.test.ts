@@ -14615,6 +14615,57 @@ describe('OrcaRuntimeService', () => {
     unsubscribe()
   })
 
+  // Why: restored OMP panes can retain the hook while the wrapped Pi owns foreground (#6364).
+  it('keeps an OMP hook labeled OMP when the wrapped pi child owns the foreground', async () => {
+    const spawn = vi.fn().mockResolvedValue({ id: 'omp-flicker-pty' })
+    const runtime = new OrcaRuntimeService(store)
+    runtime.setPtyController({
+      spawn,
+      write: () => true,
+      kill: () => true,
+      // Why: the remote relay reads the deeper `pi` child of the omp process tree.
+      getForegroundProcess: async () => 'pi'
+    })
+    const events: RuntimeMobileSessionTabsResult[] = []
+    const unsubscribe = runtime.onMobileSessionTabsChanged((snapshot) => events.push(snapshot))
+
+    await runtime.createTerminal(`id:${TEST_WORKTREE_ID}`, {
+      tabId: 'omp-tab',
+      leafId: HEADLESS_LEAF_ID
+    })
+    // Restored/mirrored pane: no launchAgent, only the pi foreground read remains.
+    const pty = (
+      runtime as unknown as {
+        ptysById: Map<string, { launchAgent: string | null; foregroundAgent: string | null }>
+      }
+    ).ptysById.get('omp-flicker-pty')!
+    pty.launchAgent = null
+    pty.foregroundAgent = 'pi'
+    events.length = 0
+
+    runtime.onPtyData(
+      'omp-flicker-pty',
+      '\x1b]0;⠋ Pi\x07' +
+        '\x1b]9999;{"state":"working","prompt":"fix the bug","agentType":"omp"}\x07',
+      100
+    )
+
+    await waitForMobileSessionTabsEvents(events, 1)
+    expect(events[0]?.tabs[0]).toEqual(
+      expect.objectContaining({
+        type: 'terminal',
+        title: '⠋ OMP',
+        agentStatus: expect.objectContaining({
+          state: 'working',
+          agentType: 'omp',
+          terminalTitle: '⠋ OMP'
+        })
+      })
+    )
+
+    unsubscribe()
+  })
+
   it('does not republish mobile session tabs for repeated identical OSC 9999 payloads', async () => {
     const spawn = vi.fn().mockResolvedValue({ id: 'hook-ping-pty' })
     const runtime = new OrcaRuntimeService(store)
