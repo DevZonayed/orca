@@ -750,7 +750,7 @@ import {
   getTerminalViewAttributes,
   registerTerminalViewAttributesApplier
 } from './terminal-view-attribute-store'
-import { killAllProcessesForWorktree } from './worktree-teardown'
+import { killAllProcessesForWorktree, teardownRpcDeadline } from './worktree-teardown'
 import {
   MobileNotificationReplayBuffer,
   type ReplayableMobileNotification
@@ -1259,7 +1259,10 @@ type RuntimePtyController = {
   }): Promise<{ id: string; wslDistro?: string }>
   write(ptyId: string, data: string): boolean
   kill(ptyId: string): boolean
-  stopAndWait?(ptyId: string, opts?: { keepHistory?: boolean }): Promise<boolean>
+  stopAndWait?(
+    ptyId: string,
+    opts?: { keepHistory?: boolean; deadlineMs?: number }
+  ): Promise<boolean>
   getCwd?(ptyId: string): Promise<string | null>
   getForegroundProcess(ptyId: string): Promise<string | null>
   confirmForegroundProcess?(ptyId: string): Promise<string | null>
@@ -20435,6 +20438,16 @@ export class OrcaRuntimeService {
         if (options.stopPty) {
           // Why: destructive worktree cleanup must not let its cross-surface
           // dedupe treat fire-and-forget controller.kill as physical exit.
+          // Why: the RPC deadline makes shutdown/list RPCs settle before the sweep
+          // deadline so a wedged daemon yields the accurate stop failure; no deadline
+          // (non-destructive) keeps the provider default RPC timeout.
+          if (options.deadline !== undefined) {
+            return (
+              this.ptyController?.stopAndWait?.(ptyId, {
+                deadlineMs: teardownRpcDeadline(options.deadline)
+              }) ?? false
+            )
+          }
           return this.ptyController?.stopAndWait?.(ptyId) ?? false
         }
         return Boolean(this.ptyController?.kill(ptyId))
