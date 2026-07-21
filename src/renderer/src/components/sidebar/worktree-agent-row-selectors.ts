@@ -6,6 +6,12 @@ import type {
   MigrationUnsupportedPtyEntry
 } from '../../../../shared/agent-status-types'
 import { parsePaneKey } from '../../../../shared/stable-pane-id'
+import {
+  type LiveEntriesByWorktreeCache,
+  liveEntryWorktreeId,
+  patchLiveEntriesByWorktree,
+  recordLiveEntriesFullRebuild
+} from './worktree-agent-live-index-patch'
 import type { TerminalLayoutSnapshot } from '../../../../shared/types'
 
 const EMPTY_LIVE_ENTRIES: AgentStatusEntry[] = []
@@ -27,12 +33,6 @@ type WorktreeAgentRowsState = Pick<
 type TabWorktreeIndexCache = {
   tabsByWorktree: WorktreeAgentRowsState['tabsByWorktree']
   tabIdToWorktreeId: Map<string, string>
-}
-
-type LiveEntriesByWorktreeCache = {
-  tabsByWorktree: WorktreeAgentRowsState['tabsByWorktree']
-  agentStatusByPaneKey: WorktreeAgentRowsState['agentStatusByPaneKey']
-  entriesByWorktree: Map<string, AgentStatusEntry[]>
 }
 
 type MigrationUnsupportedByWorktreeCache = {
@@ -90,16 +90,26 @@ function getLiveEntriesByWorktree(state: WorktreeAgentRowsState): Map<string, Ag
   }
 
   const tabIdToWorktreeId = getTabIdToWorktreeId(tabsByWorktree)
+  if (liveEntriesByWorktreeCache?.tabsByWorktree === tabsByWorktree) {
+    const patched = patchLiveEntriesByWorktree(
+      liveEntriesByWorktreeCache,
+      agentStatusByPaneKey,
+      tabIdToWorktreeId
+    )
+    if (patched) {
+      liveEntriesByWorktreeCache = {
+        tabsByWorktree,
+        agentStatusByPaneKey,
+        entriesByWorktree: patched
+      }
+      return patched
+    }
+  }
+  recordLiveEntriesFullRebuild()
   const previous = liveEntriesByWorktreeCache?.entriesByWorktree
   const entriesByWorktree = new Map<string, AgentStatusEntry[]>()
   for (const [paneKey, entry] of Object.entries(agentStatusByPaneKey)) {
-    const parsed = parsePaneKey(paneKey)
-    if (!parsed) {
-      continue
-    }
-    const tabWorktreeId = tabIdToWorktreeId.get(parsed.tabId)
-    // Why: keep early attributed child rows, but hide completed rows once their tab is gone.
-    const worktreeId = tabWorktreeId ?? (entry.state === 'done' ? undefined : entry.worktreeId)
+    const worktreeId = liveEntryWorktreeId(paneKey, entry, tabIdToWorktreeId)
     if (!worktreeId) {
       continue
     }
