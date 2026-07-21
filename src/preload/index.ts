@@ -4,6 +4,11 @@ import { electronAPI } from '@electron-toolkit/preload'
 import { preloadE2EConfig } from './e2e-config'
 import { glApi } from './gitlab'
 import type { AppIdentity } from '../shared/app-identity'
+import type { DashboardSnapshot, DashboardRevealAgentArgs } from '../shared/dashboard-snapshot'
+import type {
+  TerminalPreviewConnectResult,
+  TerminalPreviewDataPayload
+} from '../shared/terminal-preview'
 import type { CliInstallStatus } from '../shared/cli-install-types'
 import type { AgentHookInstallStatus } from '../shared/agent-hook-types'
 import type { TerminalPaneSplitSource } from '../shared/feature-education-telemetry'
@@ -2067,6 +2072,73 @@ const api = {
         checklist?: Partial<OnboardingState['checklist']>
       }
     ): Promise<OnboardingState> => ipcRenderer.invoke('onboarding:update', updates)
+  },
+
+  dashboard: {
+    // Open the pop-out dashboard window, or focus it if already open.
+    openPopout: (): Promise<void> => ipcRenderer.invoke('dashboardPopout:open'),
+
+    // ── Producer side (main window) ──────────────────────────────────────
+    publishSnapshot: (snapshot: DashboardSnapshot): Promise<void> =>
+      ipcRenderer.invoke('dashboard:publishSnapshot', snapshot),
+    getPopoutOpen: (): Promise<boolean> => ipcRenderer.invoke('dashboard:getPopoutOpen'),
+    onPopoutOpenChanged: (callback: (open: boolean) => void): (() => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, open: boolean): void => callback(open)
+      ipcRenderer.on('dashboard:popoutOpenChanged', listener)
+      return () => ipcRenderer.removeListener('dashboard:popoutOpenChanged', listener)
+    },
+    onSnapshotRequested: (callback: () => void): (() => void) => {
+      const listener = (): void => callback()
+      ipcRenderer.on('dashboard:snapshotRequested', listener)
+      return () => ipcRenderer.removeListener('dashboard:snapshotRequested', listener)
+    },
+    onRevealAgent: (callback: (args: DashboardRevealAgentArgs) => void): (() => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, args: DashboardRevealAgentArgs): void =>
+        callback(args)
+      ipcRenderer.on('ui:revealDashboardAgent', listener)
+      return () => ipcRenderer.removeListener('ui:revealDashboardAgent', listener)
+    },
+    onAckAgent: (callback: (paneKey: string) => void): (() => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, paneKey: string): void =>
+        callback(paneKey)
+      ipcRenderer.on('ui:ackDashboardAgent', listener)
+      return () => ipcRenderer.removeListener('ui:ackDashboardAgent', listener)
+    },
+
+    // ── Consumer side (pop-out window) ───────────────────────────────────
+    requestSnapshot: (): Promise<void> => ipcRenderer.invoke('dashboard:requestSnapshot'),
+    onSnapshot: (callback: (snapshot: DashboardSnapshot) => void): (() => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, snapshot: DashboardSnapshot): void =>
+        callback(snapshot)
+      ipcRenderer.on('dashboard:snapshot', listener)
+      return () => ipcRenderer.removeListener('dashboard:snapshot', listener)
+    },
+    revealAgent: (args: DashboardRevealAgentArgs): Promise<void> =>
+      ipcRenderer.invoke('dashboardPopout:revealAgent', args),
+    ackAgent: (paneKey: string): Promise<void> =>
+      ipcRenderer.invoke('dashboardPopout:ackAgent', { paneKey })
+  },
+
+  terminalPreview: {
+    connect: (
+      ptyId: string,
+      opts?: { scrollbackRows?: number }
+    ): Promise<TerminalPreviewConnectResult> =>
+      ipcRenderer.invoke('terminalPreview:connect', { ptyId, opts }),
+    input: (ptyId: string, data: string): Promise<boolean> =>
+      ipcRenderer.invoke('terminalPreview:input', { ptyId, data }),
+    ack: (ptyId: string, bytes: number): Promise<void> =>
+      ipcRenderer.invoke('terminalPreview:ack', { ptyId, bytes }),
+    unsubscribe: (ptyId: string): Promise<void> =>
+      ipcRenderer.invoke('terminalPreview:unsubscribe', { ptyId }),
+    onData: (callback: (payload: TerminalPreviewDataPayload) => void): (() => void) => {
+      const listener = (
+        _event: Electron.IpcRendererEvent,
+        payload: TerminalPreviewDataPayload
+      ): void => callback(payload)
+      ipcRenderer.on('terminalPreview:data', listener)
+      return () => ipcRenderer.removeListener('terminalPreview:data', listener)
+    }
   },
 
   developerPermissions: {

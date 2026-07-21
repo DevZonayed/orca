@@ -9,6 +9,11 @@ import type {
   HostedReviewProvider
 } from '../shared/hosted-review'
 import type { NativeFileDropPayload } from '../shared/native-file-drop'
+import type { DashboardSnapshot, DashboardRevealAgentArgs } from '../shared/dashboard-snapshot'
+import type {
+  TerminalPreviewConnectResult,
+  TerminalPreviewDataPayload
+} from '../shared/terminal-preview'
 import type {
   TerminalTabCloseRequest,
   TerminalTabCloseResponse
@@ -2211,6 +2216,29 @@ export type PreloadApi = {
         checklist?: Partial<OnboardingState['checklist']>
       }
     ) => Promise<OnboardingState>
+  }
+  dashboard: {
+    openPopout: () => Promise<void>
+    publishSnapshot: (snapshot: DashboardSnapshot) => Promise<void>
+    getPopoutOpen: () => Promise<boolean>
+    onPopoutOpenChanged: (callback: (open: boolean) => void) => () => void
+    onSnapshotRequested: (callback: () => void) => () => void
+    onRevealAgent: (callback: (args: DashboardRevealAgentArgs) => void) => () => void
+    onAckAgent: (callback: (paneKey: string) => void) => () => void
+    requestSnapshot: () => Promise<void>
+    onSnapshot: (callback: (snapshot: DashboardSnapshot) => void) => () => void
+    revealAgent: (args: DashboardRevealAgentArgs) => Promise<void>
+    ackAgent: (paneKey: string) => Promise<void>
+  }
+  terminalPreview: {
+    connect: (
+      ptyId: string,
+      opts?: { scrollbackRows?: number }
+    ) => Promise<TerminalPreviewConnectResult>
+    input: (ptyId: string, data: string) => Promise<boolean>
+    ack: (ptyId: string, bytes: number) => Promise<void>
+    unsubscribe: (ptyId: string) => Promise<void>
+    onData: (callback: (payload: TerminalPreviewDataPayload) => void) => () => void
   }
   developerPermissions: {
     getStatus: () => Promise<DeveloperPermissionState[]>
