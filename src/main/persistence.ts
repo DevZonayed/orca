@@ -2960,6 +2960,18 @@ export class Store {
         ) {
           this.loadNeedsSave = true
         }
+        // Why (#9537): migrate the indistinguishable legacy host default once so WSL-default users follow their runtime.
+        const localAccountRuntimeAlreadyMigrated =
+          parsed.settings?.localAccountRuntimeDefaultedToAutoForAllUsers === true
+        const migratedLocalAccountRuntime: GlobalSettings['localAccountRuntime'] =
+          localAccountRuntimeAlreadyMigrated
+            ? (parsed.settings?.localAccountRuntime ?? defaults.settings.localAccountRuntime)
+            : parsed.settings?.localAccountRuntime === 'wsl'
+              ? 'wsl'
+              : 'auto'
+        if (!localAccountRuntimeAlreadyMigrated) {
+          this.loadNeedsSave = true
+        }
         if (!autoRenameBranchFromWorkDefaultedOn) {
           this.loadNeedsSave = true
         }
@@ -3039,6 +3051,8 @@ export class Store {
             terminalMacOptionAsAlt: migratedOptionAsAlt,
             terminalMacOptionAsAltMigrated: true,
             localWindowsRuntimeDefault: migratedWindowsRuntimeDefault,
+            localAccountRuntime: migratedLocalAccountRuntime,
+            localAccountRuntimeDefaultedToAutoForAllUsers: true,
             floatingTerminalEnabled: migratedFloatingTerminalEnabled,
             floatingTerminalDefaultedForAllUsers: true,
             floatingTerminalCwd: migratedFloatingTerminalCwd,
