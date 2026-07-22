@@ -4525,14 +4525,24 @@ export default function SessionScreen() {
               >
                 <Plus size={16} color={colors.textSecondary} strokeWidth={2.2} />
               </Pressable>
-              {quickCommandsSupported === true ? (
-                <QuickCommandsTabButton
-                  disabled={
-                    creating || creatingBrowser || creatingMarkdown || connState !== 'connected'
+              {/* Why: stable placement matters, while old hosts must stay gated because they strip agentPrompt. */}
+              <QuickCommandsTabButton
+                disabled={
+                  creating || creatingBrowser || creatingMarkdown || connState !== 'connected'
+                }
+                onPress={() => {
+                  if (quickCommandsSupported === true) {
+                    setShowQuickCommands(true)
+                    return
                   }
-                  onPress={() => setShowQuickCommands(true)}
-                />
-              ) : null}
+                  showToast(
+                    quickCommandsSupported === false
+                      ? 'Desktop update required for quick commands'
+                      : 'Checking desktop capabilities — try again in a moment',
+                    1600
+                  )
+                }}
+              />
             </View>
           )}
         </SafeAreaView>
