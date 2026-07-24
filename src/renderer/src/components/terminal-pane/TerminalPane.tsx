@@ -158,6 +158,15 @@ import {
 } from '@/components/terminal-quick-commands/TerminalQuickCommandDialog'
 import { keybindingMatchesAction } from '../../../../shared/keybindings'
 import { pasteTerminalClipboard } from './terminal-clipboard-paste'
+import {
+  firesNativePasteEvent,
+  getClipboardEventText,
+  isClipboardEventPasteRequired
+} from './terminal-clipboard-event-paste'
+import {
+  assertClipboardTextWithinLimitWithYield,
+  type ReadClipboardTextOptions
+} from '../../../../shared/clipboard-text'
 import { scheduleImagePasteWebglAtlasRecovery } from './terminal-webgl-atlas-recovery'
 import { restoreTerminalFitToDesktop, restoreTerminalFitsToDesktop } from './terminal-fit-restore'
 import { useVisibleTerminalTabClaim } from './use-visible-terminal-tab-claim'
@@ -2006,7 +2015,9 @@ export default function TerminalPane({
 
     const pasteFromClipboard = (
       pane: ManagedPane,
-      source: Extract<TerminalPasteSource, 'keyboard' | 'paste-event'>
+      source: Extract<TerminalPasteSource, 'keyboard' | 'paste-event'>,
+      readClipboardText: (options?: ReadClipboardTextOptions) => Promise<string> = window.api.ui
+        .readClipboardText
     ): void => {
       const connectionId = getConnectionId(worktreeId) ?? null
       const runtimeEnvironmentId = getRuntimeEnvironmentIdForWorktree(
@@ -2015,7 +2026,7 @@ export default function TerminalPane({
       )
       const activeElementAtDispatch = document.activeElement
       void pasteTerminalClipboard({
-        readClipboardText: window.api.ui.readClipboardText,
+        readClipboardText,
         saveClipboardImageAsTempFile: window.api.ui.saveClipboardImageAsTempFile,
         connectionId,
         runtimeEnvironmentId,
@@ -2069,6 +2080,13 @@ export default function TerminalPane({
         }
         return
       }
+      if (isClipboardEventPasteRequired() && firesNativePasteEvent(e, isMac)) {
+        // Why: without navigator.clipboard the chord's native paste event is the
+        // only clipboard access — let its default fire and handle it in onPaste.
+        // A remapped chord (e.g. Ctrl+Y) fires no paste event, so keep consuming it
+        // below instead of letting xterm encode it to the PTY as a raw control char.
+        return
+      }
       e.preventDefault()
       e.stopPropagation()
       const manager = managerRef.current
@@ -2117,6 +2135,13 @@ export default function TerminalPane({
       }
       const pane = manager.getActivePane() ?? manager.getPanes()[0]
       if (!pane) {
+        return
+      }
+      if (isClipboardEventPasteRequired()) {
+        const eventText = getClipboardEventText(e)
+        pasteFromClipboard(pane, 'paste-event', (options) =>
+          assertClipboardTextWithinLimitWithYield(eventText, options)
+        )
         return
       }
       pasteFromClipboard(pane, 'paste-event')
