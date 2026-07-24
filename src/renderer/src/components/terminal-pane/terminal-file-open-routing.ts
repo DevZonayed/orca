@@ -183,12 +183,13 @@ export function openDetectedFilePath(
       activateAndRevealWorktree(worktreeId)
     }
 
+    const language = detectLanguage(mappedFilePath)
     store.openFile(
       {
         filePath: mappedFilePath,
         relativePath,
         worktreeId: worktreeId || '',
-        language: detectLanguage(mappedFilePath),
+        language,
         mode: 'edit',
         runtimeEnvironmentId
       },
@@ -196,6 +197,14 @@ export function openDetectedFilePath(
     )
 
     if (line !== null) {
+      const openedStore = useAppStore.getState()
+      // Why: scope the reveal to the opened editor tab id so owner-qualified tabs
+      // across local/SSH/runtime contexts get it instead of an ambiguous path key.
+      const fileId = openedStore.activeFileIdByWorktree[worktreeId] ?? mappedFilePath
+      if (language === 'markdown') {
+        // Why: rich Markdown has no line-based reveal consumer; line links must mount Monaco.
+        openedStore.setMarkdownViewMode(fileId, 'source')
+      }
       const targetColumn = column ?? 1
       store.setPendingEditorReveal(null)
       schedulePendingEditorReveal(() => {
@@ -204,6 +213,7 @@ export function openDetectedFilePath(
         }
         store.setPendingEditorReveal({
           filePath: mappedFilePath,
+          fileId,
           line,
           column: targetColumn,
           matchLength: 0
