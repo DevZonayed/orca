@@ -3246,7 +3246,7 @@ export function connectPanePty(
       : []
   )
   const mirroredRuntimeEnvironmentId = mirroredRuntimeOwners.values().next().value ?? null
-  const terminalOwnerUnresolved =
+  const routeOwnerUnresolved =
     mirroredRuntimeOwners.size > 1 ||
     (terminalWorktreeRoute === null && !mirroredRuntimeEnvironmentId)
   const runtimeEnvironmentId = explicitRuntimeEnvironmentId
@@ -3254,6 +3254,16 @@ export function connectPanePty(
     : mirroredRuntimeEnvironmentId
       ? mirroredRuntimeEnvironmentId
       : null
+  const resolvedExecutionHostId = getExecutionHostIdForWorktree(state, deps.worktreeId)
+  const resolvedExecutionHost = parseExecutionHostId(resolvedExecutionHostId)
+  const executionHostSshConnectionId =
+    resolvedExecutionHost?.kind === 'ssh' ? resolvedExecutionHost.targetId : null
+  const connectionOwnerConflict =
+    runtimeEnvironmentId === null &&
+    executionHostSshConnectionId !== null &&
+    worktreeConnectionId != null &&
+    worktreeConnectionId !== executionHostSshConnectionId
+  const terminalOwnerUnresolved = routeOwnerUnresolved || connectionOwnerConflict
   // Why: host-agnostic synthetic ids (floating terminal, inline setup panels) have no repo
   // row by design, and a worktree row stamped 'local' proves its host on its own — both are
   // resolved-local, not pending hydration (#10151). Only when nothing names the host does
@@ -3268,11 +3278,12 @@ export function connectPanePty(
     !hostAgnosticTerminalWorktree &&
     !worktreeProvesLocalHost &&
     runtimeEnvironmentId === null &&
+    executionHostSshConnectionId === null &&
     worktreeConnectionId === undefined
   // Why: an SSH host nested under a HUB is execution identity, not permission for the paired client to dial that host.
   const connectionId =
     !terminalOwnerUnresolved && !connectionOwnerHydrating && runtimeEnvironmentId === null
-      ? (worktreeConnectionId ?? null)
+      ? (executionHostSshConnectionId ?? worktreeConnectionId ?? null)
       : null
   const shellOverride = tab?.shellOverride
   // Why: a serve/remote-runtime pane has no SSH connectionId and a Linux cwd, so
@@ -3282,7 +3293,7 @@ export function connectPanePty(
   // host is the authoritative signal: only a 'local' host is a local native PTY.
   const executionHostId = terminalOwnerUnresolved
     ? ('runtime:unresolved-owner' as const)
-    : getExecutionHostIdForWorktree(state, deps.worktreeId)
+    : resolvedExecutionHostId
   const isNativeWindowsConpty = isLocalNativeWindowsConpty({
     userAgent: navigator.userAgent,
     connectionId,

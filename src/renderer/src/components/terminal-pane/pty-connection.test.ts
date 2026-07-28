@@ -16430,6 +16430,79 @@ describe('connectPanePty', () => {
     expect(createIpcPtyTransport).toHaveBeenCalled()
   })
 
+  it('routes an explicit SSH worktree owner when compatibility connection metadata is missing', async () => {
+    const { connectPanePty } = await import('./pty-connection')
+    const { createIpcPtyTransport } = await import('./pty-transport')
+    const transport = createMockTransport()
+    transportFactoryQueue.push(transport)
+    mockStoreState = {
+      ...mockStoreState,
+      tabsByWorktree: { 'wt-remote': [{ id: 'tab-1', ptyId: null }] },
+      worktreesByRepo: {
+        repo1: [
+          {
+            id: 'wt-remote',
+            repoId: 'repo1',
+            path: '/home/jonayed/Documents/Projects',
+            hostId: 'ssh:ssh-1'
+          }
+        ]
+      },
+      repos: [{ id: 'repo1', connectionId: null, executionHostId: 'ssh:ssh-1' }],
+      sshConnectionStates: new Map([['ssh-1', { status: 'connected' }]])
+    } as StoreState
+
+    connectPanePty(
+      createPane(1) as never,
+      createManager(1) as never,
+      createDeps({
+        worktreeId: 'wt-remote',
+        cwd: '/home/jonayed/Documents/Projects'
+      }) as never
+    )
+
+    expect(createIpcPtyTransport).toHaveBeenCalled()
+    expect(createdTransportOptions[0]).toMatchObject({
+      connectionId: 'ssh-1',
+      executionHostId: 'ssh:ssh-1',
+      cwd: '/home/jonayed/Documents/Projects'
+    })
+    expect(createdTransportOptions[0]?.cwdFallback).toBeUndefined()
+  })
+
+  it('fails closed when compatibility connection metadata conflicts with the SSH owner', async () => {
+    const { connectPanePty } = await import('./pty-connection')
+    const { createIpcPtyTransport } = await import('./pty-transport')
+    const { createRemoteRuntimePtyTransport } = await import('./remote-runtime-pty-transport')
+    mockStoreState = {
+      ...mockStoreState,
+      tabsByWorktree: { 'wt-remote': [{ id: 'tab-1', ptyId: null }] },
+      worktreesByRepo: {
+        repo1: [
+          {
+            id: 'wt-remote',
+            repoId: 'repo1',
+            path: '/home/jonayed/Documents/Projects',
+            hostId: 'ssh:ssh-1'
+          }
+        ]
+      },
+      repos: [{ id: 'repo1', connectionId: 'ssh-2', executionHostId: 'ssh:ssh-1' }]
+    } as StoreState
+
+    connectPanePty(
+      createPane(1) as never,
+      createManager(1) as never,
+      createDeps({
+        worktreeId: 'wt-remote',
+        cwd: '/home/jonayed/Documents/Projects'
+      }) as never
+    )
+
+    expect(createIpcPtyTransport).not.toHaveBeenCalled()
+    expect(createRemoteRuntimePtyTransport).not.toHaveBeenCalled()
+  })
+
   it('withholds a local spawn while a repo-backed worktree has no hydrated host', async () => {
     // Regression: an SSH worktree whose repo row hadn't merged yet resolved to a null
     // connectionId and spawned on the local daemon with the remote cwd, so the pane never
