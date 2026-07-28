@@ -29,4 +29,20 @@ describe('server directory RPC methods', () => {
       result: { resolvedPath: '/home/me/new-project', entries: [] }
     })
   })
+
+  it('rejects empty server directory names before invoking the runtime', async () => {
+    const createServerDir = vi.fn()
+    const runtime = {
+      getRuntimeId: () => 'test-runtime',
+      createServerDir
+    } as unknown as OrcaRuntimeService
+    const dispatcher = new RpcDispatcher({ runtime, methods: FILE_METHODS })
+
+    const response = await dispatcher.dispatch(
+      makeRequest('files.createServerDir', { path: '/home/me', name: '' })
+    )
+
+    expect(response).toMatchObject({ ok: false })
+    expect(createServerDir).not.toHaveBeenCalled()
+  })
 })
