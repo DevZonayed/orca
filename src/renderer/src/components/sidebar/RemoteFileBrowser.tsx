@@ -19,6 +19,8 @@ import {
 } from './remote-file-browser-helpers'
 import { browseRuntimeServerDirectory } from '@/runtime/runtime-server-directory-browser'
 import { translate } from '@/i18n/i18n'
+import { RemoteDirectoryCreation } from './RemoteDirectoryCreation'
+import { createRemoteDirectory } from './remote-directory-creation'
 
 type RemoteFileBrowserProps = (
   | { targetId: string; runtimeEnvironmentId?: never }
@@ -56,6 +58,7 @@ export function RemoteFileBrowser({
   const [error, setError] = useState<string | null>(null)
   const [filter, setFilter] = useState('')
   const [fileHint, setFileHint] = useState(false)
+  const [createPending, setCreatePending] = useState(false)
   // Drives the list during path mode; separate from committed state so typing doesn't move the Select target before commit.
   const [preview, setPreview] = useState<PreviewState | null>(null)
   const genRef = useRef(0)
@@ -72,6 +75,7 @@ export function RemoteFileBrowser({
   const homePathRef = useRef<string | null>(null)
   // Committed-path portion (through the final `/`) the preview reflects; if unchanged next keystroke, skip re-resolving.
   const lastCommittedPrefixRef = useRef<string>('')
+  const browserAttachedRef = useRef(false)
 
   const clearFileHint = useCallback(() => {
     if (fileHintTimerRef.current) {
@@ -89,8 +93,10 @@ export function RemoteFileBrowser({
   const setBrowserRootRef = useCallback(
     (node: HTMLDivElement | null): void => {
       if (node !== null) {
+        browserAttachedRef.current = true
         return
       }
+      browserAttachedRef.current = false
       // Why: browse generations and timers are scoped to this picker owner; clear them when it detaches.
       invalidateBrowseRequests()
       for (const timerRef of [
@@ -195,6 +201,28 @@ export function RemoteFileBrowser({
     }
     navigate(parentPath(resolvedPath))
   }, [resolvedPath, navigate])
+
+  const handleCreateDirectory = useCallback(
+    async (name: string): Promise<void> => {
+      const createdPath = await createRemoteDirectory(
+        targetId
+          ? { kind: 'ssh', targetId }
+          : {
+              kind: 'runtime',
+              environmentId: requireRuntimeEnvironmentId(runtimeEnvironmentId)
+            },
+        resolvedPath,
+        name
+      )
+      if (!browserAttachedRef.current) {
+        return
+      }
+      listingCacheRef.current.delete(resolvedPath)
+      listingCacheRef.current.delete(createdPath)
+      navigate(createdPath)
+    },
+    [navigate, resolvedPath, runtimeEnvironmentId, targetId]
+  )
 
   const filteredEntries = useMemo(() => filterEntries(entries, filter), [entries, filter])
 
@@ -568,7 +596,7 @@ export function RemoteFileBrowser({
       )
 
   // Disable Select during a non-empty path preview so the committed dir isn't silently selected under a different-looking list.
-  const selectDisabled = loading || (isPreviewActive && filter !== '')
+  const selectDisabled = loading || createPending || (isPreviewActive && filter !== '')
 
   return (
     <div ref={setBrowserRootRef} className="flex flex-col gap-2 min-w-0 w-full">
@@ -734,19 +762,26 @@ export function RemoteFileBrowser({
               { value0: resolvedPath }
             )}
       </p>
-      <div className="flex items-center justify-end gap-2">
-        <Button variant="outline" size="sm" className="h-7 text-xs" onClick={onCancel}>
-          {translate('auto.components.sidebar.RemoteFileBrowser.f8b1deb1a4', 'Cancel')}
-        </Button>
-        <Button
-          size="sm"
-          className="h-7 text-xs"
-          onClick={handleSelect}
-          disabled={selectDisabled}
-          title={resolvedPath}
-        >
-          {translate('auto.components.sidebar.RemoteFileBrowser.9e060f5815', 'Select folder')}
-        </Button>
+      <div className="flex items-start justify-between gap-2">
+        <RemoteDirectoryCreation
+          disabled={selectDisabled || !resolvedPath}
+          onCreate={handleCreateDirectory}
+          onPendingChange={setCreatePending}
+        />
+        <div className="flex shrink-0 items-center justify-end gap-2">
+          <Button variant="outline" size="sm" className="h-7 text-xs" onClick={onCancel}>
+            {translate('auto.components.sidebar.RemoteFileBrowser.f8b1deb1a4', 'Cancel')}
+          </Button>
+          <Button
+            size="sm"
+            className="h-7 text-xs"
+            onClick={handleSelect}
+            disabled={selectDisabled}
+            title={resolvedPath}
+          >
+            {translate('auto.components.sidebar.RemoteFileBrowser.9e060f5815', 'Select folder')}
+          </Button>
+        </div>
       </div>
     </div>
   )

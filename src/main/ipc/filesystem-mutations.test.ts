@@ -161,6 +161,26 @@ describe('registerFilesystemMutationHandlers', () => {
     expect(mkdirMock).not.toHaveBeenCalled()
   })
 
+  it('creates remote directories through the no-clobber SSH operation', async () => {
+    const createDirNoClobber = vi.fn().mockResolvedValue(undefined)
+    registerSshFilesystemProvider('ssh-1', { createDirNoClobber } as never)
+
+    try {
+      await handlers.get('fs:createDir')!(null, {
+        dirPath: '/home/me/Projects/new-folder',
+        connectionId: 'ssh-1',
+        expectedExecutionHostId: 'ssh:ssh-1',
+        expectedSshTargetId: 'ssh-1',
+        expectedSshConnectionGeneration: 0
+      })
+    } finally {
+      unregisterSshFilesystemProvider('ssh-1')
+    }
+
+    expect(createDirNoClobber).toHaveBeenCalledWith('/home/me/Projects/new-folder')
+    expect(mkdirMock).not.toHaveBeenCalled()
+  })
+
   // ── fs:rename ──────────────────────────────────────────────────
 
   it('renames a file within the same directory', async () => {

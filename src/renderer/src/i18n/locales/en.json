@@ -4140,6 +4140,12 @@
           "00c4235c10": "No matches for '{{value0}}'",
           "largeInputNoMatches": "No matches for this long input"
         },
+        "RemoteDirectoryCreation": {
+          "newFolder": "New folder",
+          "folderName": "Folder name",
+          "create": "Create",
+          "dismiss": "Dismiss"
+        },
         "RemoveFolderDialog": {
           "4dc5b5065b": "Remove",
           "d36883e046": "Cancel",

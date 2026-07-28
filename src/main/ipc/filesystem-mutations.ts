@@ -111,7 +111,7 @@ export function registerFilesystemMutationHandlers(store: Store): void {
       )
       if (args.connectionId) {
         const provider = requireSshFilesystemProvider(args.connectionId)
-        return provider.createDir(args.dirPath)
+        return provider.createDirNoClobber(args.dirPath)
       }
       const dirPath = await resolveAuthorizedPath(args.dirPath, store)
       await assertNotExists(dirPath)

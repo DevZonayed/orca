@@ -4102,6 +4102,12 @@
           "00c4235c10": "No hay coincidencias para '{{value0}}'",
           "largeInputNoMatches": "No hay coincidencias para esta entrada larga"
         },
+        "RemoteDirectoryCreation": {
+          "newFolder": "Nueva carpeta",
+          "folderName": "Nombre de la carpeta",
+          "create": "Crear",
+          "dismiss": "Cerrar"
+        },
         "RemoveFolderDialog": {
           "4dc5b5065b": "Quitar",
           "d36883e046": "Cancelar",
