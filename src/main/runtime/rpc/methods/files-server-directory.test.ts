@@ -31,19 +31,22 @@ describe('server directory RPC methods', () => {
     })
   })
 
-  it('rejects empty server directory names before invoking the runtime', async () => {
-    const createServerDir = vi.fn()
-    const runtime = {
-      getRuntimeId: () => 'test-runtime',
-      createServerDir
-    } as unknown as OrcaRuntimeService
-    const dispatcher = new RpcDispatcher({ runtime, methods: FILE_METHODS })
+  it.each(['', '   ', 42])(
+    'rejects malformed server directory name %j before invoking the runtime',
+    async (name) => {
+      const createServerDir = vi.fn()
+      const runtime = {
+        getRuntimeId: () => 'test-runtime',
+        createServerDir
+      } as unknown as OrcaRuntimeService
+      const dispatcher = new RpcDispatcher({ runtime, methods: FILE_METHODS })
 
-    const response = await dispatcher.dispatch(
-      makeRequest('files.createServerDir', { path: '/home/me', name: '' })
-    )
+      const response = await dispatcher.dispatch(
+        makeRequest('files.createServerDir', { path: '/home/me', name })
+      )
 
-    expect(response).toMatchObject({ ok: false })
-    expect(createServerDir).not.toHaveBeenCalled()
-  })
+      expect(response).toMatchObject({ ok: false })
+      expect(createServerDir).not.toHaveBeenCalled()
+    }
+  )
 })
