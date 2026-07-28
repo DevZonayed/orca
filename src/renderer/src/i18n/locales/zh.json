@@ -4083,6 +4083,12 @@
           "00c4235c10": "没有匹配“{{value0}}”",
           "largeInputNoMatches": "没有匹配此长输入的结果"
         },
+        "RemoteDirectoryCreation": {
+          "newFolder": "新建文件夹",
+          "folderName": "文件夹名称",
+          "create": "创建",
+          "dismiss": "取消"
+        },
         "RemoveFolderDialog": {
           "4dc5b5065b": "移除",
           "d36883e046": "取消",

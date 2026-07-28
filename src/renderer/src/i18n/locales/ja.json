@@ -4083,6 +4083,12 @@
           "00c4235c10": "「{{value0}}」に一致するものはありません",
           "largeInputNoMatches": "この長い入力に一致するものはありません"
         },
+        "RemoteDirectoryCreation": {
+          "newFolder": "新しいフォルダー",
+          "folderName": "フォルダー名",
+          "create": "作成",
+          "dismiss": "閉じる"
+        },
         "RemoveFolderDialog": {
           "4dc5b5065b": "削除",
           "d36883e046": "キャンセル",

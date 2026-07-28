@@ -6795,6 +6795,29 @@ describe('OrcaRuntimeService', () => {
     }
   })
 
+  it('creates runtime server directories without crossing the selected parent', async () => {
+    const tempRoot = await mkdtemp(join(tmpdir(), 'orca-runtime-create-dir-'))
+    try {
+      const runtime = new OrcaRuntimeService(store)
+
+      const result = await runtime.createServerDir(tempRoot, "client's project")
+
+      expect(result).toEqual({
+        resolvedPath: join(tempRoot, "client's project"),
+        entries: []
+      })
+      await expect(lstat(join(tempRoot, "client's project"))).resolves.toMatchObject({})
+      await expect(runtime.createServerDir(tempRoot, '../escape')).rejects.toThrow(
+        'Enter a valid folder name'
+      )
+      await expect(runtime.createServerDir(tempRoot, "client's project")).rejects.toThrow(
+        "A file or folder named 'client's project' already exists"
+      )
+    } finally {
+      await rm(tempRoot, { recursive: true, force: true })
+    }
+  })
+
   it('defaults runtime addRepo badgeColor to DEFAULT_REPO_BADGE_COLOR', async () => {
     const added: Record<string, unknown>[] = []
     const colorStore = {

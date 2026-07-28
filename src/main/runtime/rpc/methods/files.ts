@@ -112,6 +112,13 @@ const ServerDirectoryBrowse = z.object({
     .pipe(z.string())
 })
 
+const ServerDirectoryCreate = ServerDirectoryBrowse.extend({
+  name: z
+    .unknown()
+    .transform((v) => (typeof v === 'string' ? v : ''))
+    .pipe(z.string())
+})
+
 // Why: write content must be a real string. Coercing a missing/non-string value
 // to '' silently truncated the target file to empty instead of erroring. An
 // explicit '' is still accepted (writing an empty file is legitimate).
@@ -316,6 +323,11 @@ export const FILE_METHODS: RpcAnyMethod[] = [
     name: 'files.browseServerDir',
     params: ServerDirectoryBrowse,
     handler: async (params, { runtime }) => runtime.browseServerDir(params.path)
+  }),
+  defineMethod({
+    name: 'files.createServerDir',
+    params: ServerDirectoryCreate,
+    handler: async (params, { runtime }) => runtime.createServerDir(params.path, params.name)
   }),
   defineMethod({
     name: 'files.write',

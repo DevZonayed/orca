@@ -1,9 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { browseRuntimeServerDirectory } from './runtime-server-directory-browser'
+import {
+  browseRuntimeServerDirectory,
+  createRuntimeServerDirectory,
+  SERVER_DIRECTORY_CREATE_UPDATE_REQUIRED_MESSAGE
+} from './runtime-server-directory-browser'
 import { clearRuntimeCompatibilityCacheForTests } from './runtime-rpc-client'
 import {
   MIN_COMPATIBLE_RUNTIME_CLIENT_VERSION,
-  RUNTIME_PROTOCOL_VERSION
+  RUNTIME_PROTOCOL_VERSION,
+  SERVER_DIRECTORY_CREATE_RUNTIME_CAPABILITY
 } from '../../../shared/protocol-version'
 
 const runtimeEnvironmentCall = vi.fn()
@@ -18,7 +23,8 @@ beforeEach(() => {
         ok: true,
         result: {
           runtimeProtocolVersion: RUNTIME_PROTOCOL_VERSION,
-          minCompatibleRuntimeClientVersion: MIN_COMPATIBLE_RUNTIME_CLIENT_VERSION
+          minCompatibleRuntimeClientVersion: MIN_COMPATIBLE_RUNTIME_CLIENT_VERSION,
+          capabilities: [SERVER_DIRECTORY_CREATE_RUNTIME_CAPABILITY]
         },
         _meta: { runtimeId: 'remote-runtime' }
       })
@@ -55,5 +61,36 @@ describe('runtime server directory browser', () => {
       params: { path: '~' },
       timeoutMs: 15_000
     })
+  })
+
+  it('routes directory creation through the selected runtime environment', async () => {
+    await createRuntimeServerDirectory('env-1', '/home/me', 'new-project')
+
+    expect(runtimeEnvironmentCall).toHaveBeenLastCalledWith({
+      selector: 'env-1',
+      method: 'files.createServerDir',
+      params: { path: '/home/me', name: 'new-project' },
+      timeoutMs: 15_000
+    })
+  })
+
+  it('requires a host that advertises server directory creation', async () => {
+    runtimeEnvironmentCall.mockImplementation(() =>
+      Promise.resolve({
+        id: 'status',
+        ok: true,
+        result: {
+          runtimeProtocolVersion: RUNTIME_PROTOCOL_VERSION,
+          minCompatibleRuntimeClientVersion: MIN_COMPATIBLE_RUNTIME_CLIENT_VERSION,
+          capabilities: []
+        },
+        _meta: { runtimeId: 'remote-runtime' }
+      })
+    )
+
+    await expect(
+      createRuntimeServerDirectory('env-legacy', '/home/me', 'new-project')
+    ).rejects.toThrow(SERVER_DIRECTORY_CREATE_UPDATE_REQUIRED_MESSAGE)
+    expect(runtimeEnvironmentCall).toHaveBeenCalledTimes(1)
   })
 })

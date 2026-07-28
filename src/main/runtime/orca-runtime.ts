@@ -89,6 +89,7 @@ import {
 } from '../git/repo-clone-path'
 import { getGitCloneFailureMessage } from '../../shared/git-clone-failure-message'
 import { GIT_FETCH_SKIP_AUTO_MAINTENANCE_CONFIG_ARGS } from '../../shared/git-fetch-auto-maintenance'
+import { validateRemoteDirectoryName } from '../../shared/remote-directory-name'
 import { createHash, randomUUID } from 'node:crypto'
 import { homedir } from 'node:os'
 import { isAbsolute, join, resolve } from 'node:path'
@@ -2199,6 +2200,17 @@ function resolveServerBrowsePath(pathValue: string): string {
   // Why: remote clients do not share the server process cwd; relative browse
   // inputs are anchored to the server user's home to match the `~` picker root.
   return resolve(homedir(), trimmed)
+}
+
+function rethrowServerDirectoryCreateError(error: unknown, name: string): never {
+  const code = error instanceof Error ? (error as NodeJS.ErrnoException).code : undefined
+  if (code === 'EEXIST') {
+    throw new Error(`A file or folder named '${name}' already exists in this location`)
+  }
+  if (code === 'EACCES' || code === 'EPERM') {
+    throw new Error(`Permission denied: unable to create '${name}'`)
+  }
+  throw error
 }
 
 type ResolvedWorktree = Worktree & {
@@ -15647,6 +15659,25 @@ export class OrcaRuntimeService {
       return a.name.localeCompare(b.name)
     })
     return { resolvedPath: dirPath, entries: mapped }
+  }
+
+  async createServerDir(
+    pathValue: string,
+    name: string
+  ): Promise<{ resolvedPath: string; entries: DirEntry[] }> {
+    const parentPath = resolveServerBrowsePath(pathValue)
+    const parentStat = await stat(parentPath)
+    if (!parentStat.isDirectory()) {
+      throw new Error(`${parentPath} is not a directory`)
+    }
+    const directoryName = validateRemoteDirectoryName(name)
+    const dirPath = join(parentPath, directoryName)
+    try {
+      await mkdir(dirPath)
+    } catch (error) {
+      rethrowServerDirectoryCreateError(error, directoryName)
+    }
+    return this.browseServerDir(dirPath)
   }
 
   async isGitAvailable(): Promise<boolean> {

@@ -4083,6 +4083,12 @@
           "00c4235c10": "'{{value0}}'과(와) 일치하는 항목이 없습니다.",
           "largeInputNoMatches": "이 긴 입력과 일치하는 항목 없음"
         },
+        "RemoteDirectoryCreation": {
+          "newFolder": "새 폴더",
+          "folderName": "폴더 이름",
+          "create": "만들기",
+          "dismiss": "닫기"
+        },
         "RemoveFolderDialog": {
           "4dc5b5065b": "제거",
           "d36883e046": "취소",
