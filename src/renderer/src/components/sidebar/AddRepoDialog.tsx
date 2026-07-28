@@ -21,6 +21,7 @@ import {
   type AddRepoDialogHostedController
 } from './use-add-repo-hosted-controller'
 
+/** Guides project creation on the selected local, SSH, or runtime host. */
 const AddRepoDialog = React.memo(function AddRepoDialog({
   hosted
 }: {

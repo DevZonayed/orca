@@ -1,3 +1,4 @@
+/** Returns a normalized leaf name or rejects path and control characters. */
 export function validateRemoteDirectoryName(name: string): string {
   const trimmed = name.trim()
   const hasControlCharacter = Array.from(trimmed).some((char) => {

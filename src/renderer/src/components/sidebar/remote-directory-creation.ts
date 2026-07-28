@@ -9,6 +9,7 @@ type RemoteDirectoryTarget =
   | { kind: 'ssh'; targetId: string }
   | { kind: 'runtime'; environmentId: string }
 
+/** Creates one validated child directory on the selected remote host. */
 export async function createRemoteDirectory(
   target: RemoteDirectoryTarget,
   parentPath: string,

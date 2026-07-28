@@ -21,6 +21,7 @@ type ShowNestedRepoReview = (args: {
   scanId: string | null
 }) => void
 
+/** Adds or scans a server path through the selected runtime host. */
 export function useAddRepoServerPathFlow({
   addRepoPath,
   closeModal,

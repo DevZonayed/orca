@@ -45,6 +45,7 @@ type PreviewState = {
   loading: boolean
 }
 
+/** Browses and selects directories on an SSH or paired-runtime host. */
 export function RemoteFileBrowser({
   targetId,
   runtimeEnvironmentId,
@@ -202,6 +203,7 @@ export function RemoteFileBrowser({
     navigate(parentPath(resolvedPath))
   }, [resolvedPath, navigate])
 
+  /** Creates and enters a directory without reusing a stale listing. */
   const handleCreateDirectory = useCallback(
     async (name: string): Promise<void> => {
       const createdPath = await createRemoteDirectory(

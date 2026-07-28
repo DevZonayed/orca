@@ -14,6 +14,7 @@ export type RuntimeServerDirectoryListing = {
   entries: DirEntry[]
 }
 
+/** Browses one directory through a paired-runtime RPC. */
 export async function browseRuntimeServerDirectory(
   environmentId: string,
   path: string
@@ -26,6 +27,7 @@ export async function browseRuntimeServerDirectory(
   )
 }
 
+/** Creates a directory through a capability-gated paired-runtime RPC. */
 export async function createRuntimeServerDirectory(
   environmentId: string,
   path: string,
