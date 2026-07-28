@@ -113,7 +113,7 @@ const ServerDirectoryBrowse = z.object({
 })
 
 const ServerDirectoryCreate = ServerDirectoryBrowse.extend({
-  name: z.string().min(1)
+  name: z.string().trim().min(1)
 })
 
 // Why: write content must be a real string. Coercing a missing/non-string value
