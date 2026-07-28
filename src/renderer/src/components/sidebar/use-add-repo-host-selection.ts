@@ -24,6 +24,7 @@ export function useAddRepoHostSelection({
   hostOptions: ReturnType<typeof useSidebarHostScopeOptions>['hostOptions']
   selectedHostId: ExecutionHostId
   selectedParsedHost: ReturnType<typeof parseExecutionHostId>
+  selectedRuntimeEnvironmentId: string | null
   selectedSshTargetId: string | null
   hostSelectorOpen: boolean
   setHostSelectorOpen: (open: boolean) => void
@@ -70,6 +71,8 @@ export function useAddRepoHostSelection({
     selectableHostOptions[0]
   const selectedHostId = selectedHost?.id ?? LOCAL_EXECUTION_HOST_ID
   const selectedParsedHost = parseExecutionHostId(selectedHostId)
+  const selectedRuntimeEnvironmentId =
+    selectedParsedHost?.kind === 'runtime' ? selectedParsedHost.environmentId : null
   const selectedSshTargetId =
     selectedParsedHost?.kind === 'ssh' ? selectedParsedHost.targetId : null
 
@@ -171,6 +174,7 @@ export function useAddRepoHostSelection({
     hostOptions: selectableHostOptions,
     selectedHostId,
     selectedParsedHost,
+    selectedRuntimeEnvironmentId,
     selectedSshTargetId,
     hostSelectorOpen,
     setHostSelectorOpen,

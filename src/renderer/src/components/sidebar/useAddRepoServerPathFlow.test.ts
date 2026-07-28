@@ -84,15 +84,55 @@ describe('useAddRepoServerPathFlow', () => {
       setNestedScanInProgress: mocks.setNestedScanInProgress,
       showNestedRepoReview: mocks.showNestedRepoReview,
       onGitRepoReady: mocks.onGitRepoReady,
-      setAddProjectBusyLabel: mocks.setAddProjectBusyLabel
+      setAddProjectBusyLabel: mocks.setAddProjectBusyLabel,
+      runtimeEnvironmentId: 'env-ubuntu'
     })
     await result.handleAddServerPath('folder')
 
-    expect(mocks.addRepoPath).toHaveBeenCalledWith('/server/docs', 'folder')
+    expect(mocks.addRepoPath).toHaveBeenCalledWith('/server/docs', 'folder', {
+      runtimeEnvironmentId: 'env-ubuntu'
+    })
     expect(mocks.scanNestedRepos).not.toHaveBeenCalled()
     expect(mocks.fetchWorktrees).not.toHaveBeenCalled()
     expect(mocks.onGitRepoReady).not.toHaveBeenCalled()
     expect(mocks.markOnboardingProjectAdded).toHaveBeenCalledWith('addedFolder')
     expect(mocks.closeModal).toHaveBeenCalled()
+  })
+
+  it('routes Git scans and adds to the selected runtime', async () => {
+    mocks.addRepoPath.mockResolvedValue(makeRepo({ kind: 'git' }))
+    mocks.getNestedRepoRuntimeKind.mockReturnValue('runtime')
+    mocks.scanNestedRepos.mockResolvedValue({
+      selectedPath: '/server/docs',
+      selectedPathKind: 'git_repo',
+      repos: [],
+      stopped: false,
+      maxDepth: 3,
+      maxRepos: 100,
+      timeoutMs: null
+    })
+    const { useAddRepoServerPathFlow } = await import('./useAddRepoServerPathFlow')
+
+    const result = useAddRepoServerPathFlow({
+      addRepoPath: mocks.addRepoPath,
+      closeModal: mocks.closeModal,
+      fetchWorktrees: mocks.fetchWorktrees,
+      getNestedRepoRuntimeKind: mocks.getNestedRepoRuntimeKind,
+      scanNestedRepos: mocks.scanNestedRepos,
+      setActiveNestedScanId: mocks.setActiveNestedScanId,
+      setNestedScanInProgress: mocks.setNestedScanInProgress,
+      showNestedRepoReview: mocks.showNestedRepoReview,
+      onGitRepoReady: mocks.onGitRepoReady,
+      setAddProjectBusyLabel: mocks.setAddProjectBusyLabel,
+      runtimeEnvironmentId: 'env-ubuntu'
+    })
+    await result.handleAddServerPath('git')
+
+    expect(mocks.scanNestedRepos).toHaveBeenCalledWith('/server/docs', undefined, {
+      runtimeEnvironmentId: 'env-ubuntu'
+    })
+    expect(mocks.addRepoPath).toHaveBeenCalledWith('/server/docs', 'git', {
+      runtimeEnvironmentId: 'env-ubuntu'
+    })
   })
 })
