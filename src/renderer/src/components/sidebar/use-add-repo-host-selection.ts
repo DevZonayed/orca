@@ -14,6 +14,7 @@ import { useSidebarHostScopeOptions } from './use-sidebar-host-scope-options'
 import { canSelectAddRepoHost } from './add-repo-host-availability'
 import { translate } from '@/i18n/i18n'
 
+/** Owns host selection and SSH connection state for the add-project flow. */
 export function useAddRepoHostSelection({
   isOpen,
   setStep

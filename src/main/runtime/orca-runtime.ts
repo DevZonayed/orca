@@ -2202,6 +2202,7 @@ function resolveServerBrowsePath(pathValue: string): string {
   return resolve(homedir(), trimmed)
 }
 
+/** Maps filesystem creation failures to actionable remote-picker messages. */
 function rethrowServerDirectoryCreateError(error: unknown, name: string): never {
   const code = error instanceof Error ? (error as NodeJS.ErrnoException).code : undefined
   if (code === 'EEXIST') {
@@ -15661,6 +15662,7 @@ export class OrcaRuntimeService {
     return { resolvedPath: dirPath, entries: mapped }
   }
 
+  /** Creates one validated child directory and returns its initial listing. */
   async createServerDir(
     pathValue: string,
     name: string
