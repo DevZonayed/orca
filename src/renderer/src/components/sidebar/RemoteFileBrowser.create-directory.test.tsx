@@ -13,12 +13,14 @@ const browseDir = vi.fn(async ({ dirPath }: { dirPath: string; targetId: string 
 const createDir = vi.fn()
 const getState = vi.fn()
 
+/** Drains queued microtasks before React state assertions. */
 async function flushPromises(count = 6): Promise<void> {
   for (let index = 0; index < count; index += 1) {
     await Promise.resolve()
   }
 }
 
+/** Finds a rendered button by its visible label. */
 function findButton(container: HTMLElement, label: string): HTMLButtonElement {
   const button = [...container.querySelectorAll('button')].find(
     (candidate) => candidate.textContent?.trim() === label
@@ -29,6 +31,7 @@ function findButton(container: HTMLElement, label: string): HTMLButtonElement {
   return button
 }
 
+/** Mounts the SSH browser after its initial listing resolves. */
 async function renderBrowser(): Promise<{ container: HTMLDivElement; root: Root }> {
   const container = document.createElement('div')
   document.body.appendChild(container)
@@ -40,6 +43,7 @@ async function renderBrowser(): Promise<{ container: HTMLDivElement; root: Root 
   return { container, root }
 }
 
+/** Opens the folder form and enters a name through its DOM event path. */
 async function enterFolderName(container: HTMLElement, name: string): Promise<void> {
   await act(async () => {
     findButton(container, 'New folder').click()
