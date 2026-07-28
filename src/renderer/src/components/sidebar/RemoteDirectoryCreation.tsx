@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { translate } from '@/i18n/i18n'
 
+/** Renders the inline new-folder form for a remote filesystem picker. */
 export function RemoteDirectoryCreation({
   disabled,
   onCreate,
@@ -26,6 +27,7 @@ export function RemoteDirectoryCreation({
     }
   }, [])
 
+  /** Resets the form once no creation request is active. */
   const cancel = (): void => {
     if (submitting) {
       return
@@ -35,6 +37,7 @@ export function RemoteDirectoryCreation({
     setError(null)
   }
 
+  /** Creates the requested folder while keeping failures inline. */
   const submit = async (event: React.FormEvent): Promise<void> => {
     event.preventDefault()
     if (submitting) {
@@ -54,9 +57,9 @@ export function RemoteDirectoryCreation({
         setError(creationError instanceof Error ? creationError.message : String(creationError))
       }
     } finally {
+      onPendingChange(false)
       if (mountedRef.current) {
         setSubmitting(false)
-        onPendingChange(false)
       }
     }
   }

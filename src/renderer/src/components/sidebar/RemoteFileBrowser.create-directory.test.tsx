@@ -3,6 +3,7 @@
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { RemoteDirectoryCreation } from './RemoteDirectoryCreation'
 import { RemoteFileBrowser } from './RemoteFileBrowser'
 
 const browseDir = vi.fn(async ({ dirPath }: { dirPath: string; targetId: string }) => ({
@@ -124,5 +125,41 @@ describe('RemoteFileBrowser directory creation', () => {
     expect(browseDir).toHaveBeenCalledTimes(1)
 
     await act(async () => root.unmount())
+  })
+
+  it('releases parent pending state when the creation form unmounts', async () => {
+    let finishCreate: (() => void) | undefined
+    const createPromise = new Promise<void>((resolve) => {
+      finishCreate = resolve
+    })
+    const onPendingChange = vi.fn()
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const root = createRoot(container)
+
+    await act(async () => {
+      root.render(
+        <RemoteDirectoryCreation
+          disabled={false}
+          onCreate={() => createPromise}
+          onPendingChange={onPendingChange}
+        />
+      )
+    })
+    await enterFolderName(container, 'new project')
+    await act(async () => {
+      findButton(container, 'Create').click()
+      await flushPromises()
+    })
+    expect(onPendingChange).toHaveBeenLastCalledWith(true)
+
+    await act(async () => root.unmount())
+    await act(async () => {
+      finishCreate?.()
+      await createPromise
+      await flushPromises()
+    })
+
+    expect(onPendingChange).toHaveBeenLastCalledWith(false)
   })
 })
