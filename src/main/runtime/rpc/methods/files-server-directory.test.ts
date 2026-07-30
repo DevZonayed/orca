@@ -15,7 +15,8 @@ describe('server directory RPC methods', () => {
       getRuntimeId: () => 'test-runtime',
       createServerDir: vi.fn().mockResolvedValue({
         resolvedPath: '/home/me/new-project',
-        entries: []
+        entries: [],
+        pathFlavor: 'posix'
       })
     } as unknown as OrcaRuntimeService
     const dispatcher = new RpcDispatcher({ runtime, methods: FILE_METHODS })
@@ -27,7 +28,7 @@ describe('server directory RPC methods', () => {
     expect(runtime.createServerDir).toHaveBeenCalledWith('/home/me', 'new-project')
     expect(response).toMatchObject({
       ok: true,
-      result: { resolvedPath: '/home/me/new-project', entries: [] }
+      result: { resolvedPath: '/home/me/new-project', entries: [], pathFlavor: 'posix' }
     })
   })
 

@@ -31,7 +31,8 @@ import {
 import {
   FOLDER_WORKSPACE_PATH_STATUS_RUNTIME_CAPABILITY,
   PROJECT_HOST_SETUP_RUNTIME_CAPABILITY,
-  WORKSPACE_RUN_CONTEXT_RUNTIME_CAPABILITY
+  WORKSPACE_RUN_CONTEXT_RUNTIME_CAPABILITY,
+  WORKTREE_LINKED_WORK_ITEM_CONTEXT_RUNTIME_CAPABILITY
 } from '../../../../shared/protocol-version'
 import {
   FOLDER_WORKSPACE_PATH_STATUS_TTL_MS,
@@ -71,7 +72,7 @@ import { toRuntimeWorktreeSelector } from '../../runtime/runtime-worktree-select
 import { buildDismissedOnboardingFolderAgentStartup } from '@/lib/onboarding-folder-agent-startup'
 import { markOnboardingProjectAdded } from '@/lib/onboarding-project-checklist'
 import { filterSetupScriptPromptDismissalsToValidRepos } from '@/lib/setup-script-prompt'
-import { notifyInstalledAgentSkillsChanged } from '@/hooks/useInstalledAgentSkills'
+import { notifyInstalledAgentSkillsChanged } from '@/hooks/installed-agent-skill-discovery'
 import { translate } from '@/i18n/i18n'
 import {
   getRepoExecutionHostId,
@@ -136,6 +137,7 @@ type FolderWorkspaceUpdates = Partial<
     | 'name'
     | 'folderPath'
     | 'linkedTask'
+    | 'linkedTaskSourceContext'
     | 'comment'
     | 'isArchived'
     | 'isUnread'
@@ -1582,6 +1584,7 @@ export type RepoSlice = {
       folderPath?: string | null
       connectionId?: string | null
       linkedTask?: FolderWorkspace['linkedTask']
+      linkedTaskSourceContext?: FolderWorkspace['linkedTaskSourceContext']
       createdWithAgent?: FolderWorkspace['createdWithAgent']
       pendingFirstAgentMessageRename?: boolean
     },
@@ -1693,6 +1696,7 @@ export const createRepoSlice: StateCreator<AppState, [], [], RepoSlice> = (set, 
         const reconciliation = reconcileSupersededSshRepos(result.repos, s)
         const prunedRepos = applyManualRepoOrder(reconciliation.repos, s.manualRepoOrder)
         const validRepoIds = new Set(prunedRepos.map((repo) => repo.id))
+        const validRepoHostIdentities = new Set(prunedRepos.map(getRepoHostIdentity))
         const projectCompatibility = projectCompatibilityForReconciledRepos(
           prunedRepos,
           catalog.projectHostSetupCompatibility
@@ -1723,7 +1727,7 @@ export const createRepoSlice: StateCreator<AppState, [], [], RepoSlice> = (set, 
           filterRepoIds: s.filterRepoIds.filter((projectId) => validRepoIds.has(projectId)),
           setupScriptPromptDismissedRepoIds: filterSetupScriptPromptDismissalsToValidRepos(
             s.setupScriptPromptDismissedRepoIds,
-            validRepoIds
+            validRepoHostIdentities
           )
         }
       })
@@ -1765,6 +1769,7 @@ export const createRepoSlice: StateCreator<AppState, [], [], RepoSlice> = (set, 
         const reconciliation = reconcileSupersededSshRepos(result.repos, s)
         const finalizedRepos = applyManualRepoOrder(reconciliation.repos, s.manualRepoOrder)
         const validRepoIds = new Set(finalizedRepos.map((repo) => repo.id))
+        const validRepoHostIdentities = new Set(finalizedRepos.map(getRepoHostIdentity))
         const projectCompatibility = projectCompatibilityForReconciledRepos(
           finalizedRepos,
           catalog.projectHostSetupCompatibility
@@ -1794,7 +1799,7 @@ export const createRepoSlice: StateCreator<AppState, [], [], RepoSlice> = (set, 
           filterRepoIds: s.filterRepoIds.filter((projectId) => validRepoIds.has(projectId)),
           setupScriptPromptDismissedRepoIds: filterSetupScriptPromptDismissalsToValidRepos(
             s.setupScriptPromptDismissedRepoIds,
-            validRepoIds
+            validRepoHostIdentities
           )
         }
       })
@@ -1862,12 +1867,13 @@ export const createRepoSlice: StateCreator<AppState, [], [], RepoSlice> = (set, 
     const validateRepoScopedUi = (): void => {
       set((s) => {
         const validRepoIds = new Set(s.repos.map((repo) => repo.id))
+        const validRepoHostIdentities = new Set(s.repos.map(getRepoHostIdentity))
         return {
           activeRepoId: s.activeRepoId && validRepoIds.has(s.activeRepoId) ? s.activeRepoId : null,
           filterRepoIds: s.filterRepoIds.filter((projectId) => validRepoIds.has(projectId)),
           setupScriptPromptDismissedRepoIds: filterSetupScriptPromptDismissalsToValidRepos(
             s.setupScriptPromptDismissedRepoIds,
-            validRepoIds
+            validRepoHostIdentities
           ),
           trustedOrcaHooks: filterTrustedOrcaHooksToValidRepos(s.trustedOrcaHooks, validRepoIds)
         }
@@ -2222,6 +2228,16 @@ export const createRepoSlice: StateCreator<AppState, [], [], RepoSlice> = (set, 
       const target = getActiveRuntimeTarget(
         getFolderWorkspacePathStatusRouteSettings(options, get().settings)
       )
+      if (
+        target.kind === 'environment' &&
+        (args.linkedTask?.provider === 'jira' || args.linkedTaskSourceContext?.provider === 'jira')
+      ) {
+        await assertRuntimeEnvironmentCapability(
+          target.environmentId,
+          WORKTREE_LINKED_WORK_ITEM_CONTEXT_RUNTIME_CAPABILITY,
+          'Update the remote runtime to link Jira'
+        )
+      }
       const workspace =
         target.kind === 'local'
           ? await window.api.folderWorkspaces.create(args)
@@ -2254,6 +2270,18 @@ export const createRepoSlice: StateCreator<AppState, [], [], RepoSlice> = (set, 
     const runtimeEnvironmentId = getRuntimeEnvironmentIdForFolderWorkspace(state, folderWorkspaceId)
     // Why: owner-scoped mutations must not follow whichever runtime happens to be focused.
     const target = getActiveRuntimeTarget({ activeRuntimeEnvironmentId: runtimeEnvironmentId })
+    // Why: same gate as folderWorkspace.create — an older paired runtime would drop the Jira link silently.
+    if (
+      target.kind === 'environment' &&
+      (updates.linkedTask?.provider === 'jira' ||
+        updates.linkedTaskSourceContext?.provider === 'jira')
+    ) {
+      await assertRuntimeEnvironmentCapability(
+        target.environmentId,
+        WORKTREE_LINKED_WORK_ITEM_CONTEXT_RUNTIME_CAPABILITY,
+        'Update the remote runtime to link Jira'
+      )
+    }
     const updateTicket = folderWorkspaceUpdates.begin(
       folderWorkspaceId,
       Object.keys(updates) as FolderWorkspaceUpdateField[]
@@ -2644,14 +2672,19 @@ export const createRepoSlice: StateCreator<AppState, [], [], RepoSlice> = (set, 
     try {
       const target = getProjectSetupRuntimeTarget(args.hostId)
       await assertProjectHostSetupMutationRuntimeCapabilities(target)
+      const projectProviderIdentity =
+        args.projectProviderIdentity ??
+        get().projects.find((project) => project.id === args.projectId)?.providerIdentity
+      // Why: the target host may not have a project record yet; carry the selected source-host identity across the boundary.
+      const setupArgs = projectProviderIdentity ? { ...args, projectProviderIdentity } : args
       const result =
         target.kind === 'local'
-          ? await window.api.projects.setupExistingFolder(args)
+          ? await window.api.projects.setupExistingFolder(setupArgs)
           : (
               await callRuntimeRpc<{ result: ProjectHostSetupResult }>(
                 target,
                 'projectHostSetup.setupExistingFolder',
-                args,
+                setupArgs,
                 { timeoutMs: 15_000 }
               )
             ).result
@@ -3173,7 +3206,11 @@ export const createRepoSlice: StateCreator<AppState, [], [], RepoSlice> = (set, 
         const target = ownerTarget
         const updatedRepo =
           target.kind === 'local'
-            ? await window.api.repos.update({ repoId: projectId, updates: sanitizedUpdates })
+            ? await window.api.repos.update({
+                repoId: projectId,
+                updates: sanitizedUpdates,
+                ...(ownerHasExplicitHost ? { hostId: ownerHostId } : {})
+              })
             : (
                 await callRuntimeRpc<{ repo: Repo }>(
                   target,
