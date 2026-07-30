@@ -8,7 +8,8 @@ import { RemoteFileBrowser } from './RemoteFileBrowser'
 
 const browseDir = vi.fn(async ({ dirPath }: { dirPath: string; targetId: string }) => ({
   entries: [],
-  resolvedPath: dirPath === '~' ? '/home/alice/Projects' : dirPath
+  resolvedPath: dirPath === '~' ? '/home/alice/Projects' : dirPath,
+  pathFlavor: 'posix' as const
 }))
 const createDir = vi.fn()
 const getState = vi.fn()

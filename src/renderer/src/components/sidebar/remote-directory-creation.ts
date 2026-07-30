@@ -1,5 +1,6 @@
 import { toSshExecutionHostId } from '../../../../shared/execution-host'
 import { validateRemoteDirectoryName } from '../../../../shared/remote-directory-name'
+import type { FilesystemPathFlavor } from '../../../../shared/types'
 import { createRuntimeServerDirectory } from '@/runtime/runtime-server-directory-browser'
 import { joinPath } from './remote-file-browser-helpers'
 
@@ -13,7 +14,8 @@ type RemoteDirectoryTarget =
 export async function createRemoteDirectory(
   target: RemoteDirectoryTarget,
   parentPath: string,
-  name: string
+  name: string,
+  pathFlavor: FilesystemPathFlavor = 'posix'
 ): Promise<string> {
   const directoryName = validateRemoteDirectoryName(name)
   if (target.kind === 'ssh') {
@@ -24,7 +26,7 @@ export async function createRemoteDirectory(
     ) {
       throw new Error('Remote connection changed. Reconnect and try again.')
     }
-    const dirPath = joinPath(parentPath, directoryName)
+    const dirPath = joinPath(parentPath, directoryName, pathFlavor)
     await window.api.fs.createDir({
       dirPath,
       connectionId: target.targetId,

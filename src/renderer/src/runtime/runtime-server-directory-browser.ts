@@ -1,4 +1,4 @@
-import type { DirEntry } from '../../../shared/types'
+import type { DirEntry, FilesystemPathFlavor } from '../../../shared/types'
 import { SERVER_DIRECTORY_CREATE_RUNTIME_CAPABILITY } from '../../../shared/protocol-version'
 import {
   assertRuntimeEnvironmentCapability,
@@ -12,6 +12,7 @@ export const SERVER_DIRECTORY_CREATE_UPDATE_REQUIRED_MESSAGE =
 export type RuntimeServerDirectoryListing = {
   resolvedPath: string
   entries: DirEntry[]
+  pathFlavor: FilesystemPathFlavor
 }
 
 /** Browses one directory through a paired-runtime RPC. */

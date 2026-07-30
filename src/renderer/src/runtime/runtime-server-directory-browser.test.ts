@@ -34,6 +34,7 @@ beforeEach(() => {
       ok: true,
       result: {
         resolvedPath: '/home/me',
+        pathFlavor: 'posix',
         entries: [{ name: 'repo', isDirectory: true, isSymlink: false }]
       },
       _meta: { runtimeId: 'remote-runtime' }
@@ -52,6 +53,7 @@ describe('runtime server directory browser', () => {
   it('routes browse requests through the selected runtime environment', async () => {
     await expect(browseRuntimeServerDirectory('env-1', '~')).resolves.toEqual({
       resolvedPath: '/home/me',
+      pathFlavor: 'posix',
       entries: [{ name: 'repo', isDirectory: true, isSymlink: false }]
     })
 

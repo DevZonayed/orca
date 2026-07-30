@@ -46,7 +46,8 @@ describe('remote directory creation', () => {
   it('creates a directory on the explicitly selected runtime environment', async () => {
     vi.mocked(createRuntimeServerDirectory).mockResolvedValue({
       resolvedPath: '/home/me/Projects/new-project',
-      entries: []
+      entries: [],
+      pathFlavor: 'posix'
     })
 
     await expect(
@@ -63,6 +64,28 @@ describe('remote directory creation', () => {
       'new-project'
     )
     expect(getState).not.toHaveBeenCalled()
+  })
+
+  it('preserves Windows separators when creating on an SSH host', async () => {
+    getState.mockResolvedValue({
+      targetId: 'ssh-1',
+      status: 'connected',
+      connectionGeneration: 7
+    })
+    createDir.mockResolvedValue(undefined)
+
+    await expect(
+      createRemoteDirectory(
+        { kind: 'ssh', targetId: 'ssh-1' },
+        'C:\\Users\\me\\Projects',
+        'new project',
+        'win32'
+      )
+    ).resolves.toBe('C:\\Users\\me\\Projects\\new project')
+
+    expect(createDir).toHaveBeenCalledWith(
+      expect.objectContaining({ dirPath: 'C:\\Users\\me\\Projects\\new project' })
+    )
   })
 
   it.each(['', ' ', '.', '..', '../escape', 'nested/folder', 'nested\\folder', 'bad\u0000name'])(
