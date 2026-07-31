@@ -8,6 +8,7 @@ import {
   isQuestionAnsweredSubmitInput,
   type AgentQuestionAnsweredInferenceRequest
 } from '../../../../shared/agent-question-answered-intent'
+import type { AnsweredQuestionOption } from '../../../../shared/agent-question-answered-option'
 import { isExplicitAgentStatusFresh } from '@/lib/agent-status'
 
 export type AgentQuestionAnsweredInference = {
@@ -23,10 +24,17 @@ type AgentQuestionAnsweredInferenceDeps = {
   now?: () => number
 }
 
+/** How the answer reached us: a keystroke main must resolve, or answers the
+ *  surface already knows. Never both — they come from different surfaces. */
+type AnswerEvidence =
+  | { submittedData: string }
+  | { answeredQuestions: AnsweredQuestionOption[] }
+  | undefined
+
 function inferQuestionAnsweredFromEntry(
   deps: AgentQuestionAnsweredInferenceDeps,
   entry: AgentStatusEntry | undefined,
-  submittedData?: string
+  evidence?: AnswerEvidence
 ): boolean {
   const now = deps.now ?? Date.now
   if (
@@ -44,7 +52,7 @@ function inferQuestionAnsweredFromEntry(
     baselineStateStartedAt: entry.stateStartedAt,
     baselinePrompt: entry.prompt,
     baselineAgentType: entry.agentType,
-    ...(submittedData === undefined ? {} : { submittedData })
+    ...evidence
   })
   return true
 }
@@ -53,9 +61,14 @@ function inferQuestionAnsweredFromEntry(
  *  instead of xterm (notably native chat). The same fresh-status baseline is
  *  used, so a real hook that wins the race prevents the fallback IPC. */
 export function inferQuestionAnsweredFromCurrentStatus(
-  deps: AgentQuestionAnsweredInferenceDeps
+  deps: AgentQuestionAnsweredInferenceDeps,
+  answeredQuestions?: AnsweredQuestionOption[]
 ): boolean {
-  return inferQuestionAnsweredFromEntry(deps, deps.getStatusEntry())
+  return inferQuestionAnsweredFromEntry(
+    deps,
+    deps.getStatusEntry(),
+    answeredQuestions && answeredQuestions.length > 0 ? { answeredQuestions } : undefined
+  )
 }
 
 /** Sibling of the interrupt inference for a hook Claude never sends: answering
@@ -84,7 +97,7 @@ export function createAgentQuestionAnsweredInference({
       inferQuestionAnsweredFromEntry(
         { paneKey, getStatusEntry, inferQuestionAnswered, now },
         entry,
-        data
+        { submittedData: data }
       )
     }
   }

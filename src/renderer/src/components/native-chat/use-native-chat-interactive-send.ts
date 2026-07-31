@@ -12,6 +12,7 @@ import {
   buildCodexAskAnswerKeys,
   formatAskAnswer,
   hasAskAnswer,
+  readAnsweredQuestions,
   type AskAnswerSelection,
   type AskPrompt
 } from './native-chat-interactive-prompt'
@@ -115,15 +116,21 @@ export function useNativeChatInteractiveSend(
               inFlightRef.current = null
             }
             if (delivered) {
-              inferQuestionAnsweredFromCurrentStatus({
-                paneKey,
-                getStatusEntry: () => questionStatusBaseline,
-                inferQuestionAnswered: (request) =>
-                  window.api.agentStatus.inferQuestionAnswered(request).catch((err) => {
-                    console.warn('[agent-question] native-chat inference failed:', err)
-                    return false
-                  })
-              })
+              inferQuestionAnsweredFromCurrentStatus(
+                {
+                  paneKey,
+                  getStatusEntry: () => questionStatusBaseline,
+                  inferQuestionAnswered: (request) =>
+                    window.api.agentStatus.inferQuestionAnswered(request).catch((err) => {
+                      console.warn('[agent-question] native-chat inference failed:', err)
+                      return false
+                    })
+                },
+                // Why: this surface holds the selections, so it knows the exact
+                // labels — including multi-select and free text, which a single
+                // keystroke cannot express and the terminal path cannot recover.
+                readAnsweredQuestions(prompt, selections)
+              )
             }
             onDeliverySettled?.(delivered)
           }

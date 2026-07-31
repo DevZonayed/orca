@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { NativeChatBlock, NativeChatMessage } from './native-chat-types'
-import { extractPendingAsk, parseAskFromStatus } from './native-chat-ask'
+import { extractPendingAsk, parseAskFromStatus, readAnsweredQuestions } from './native-chat-ask'
 
 function message(id: string, blocks: NativeChatBlock[]): NativeChatMessage {
   return { id, role: 'assistant', blocks, timestamp: 1, source: 'transcript' }
@@ -78,5 +78,72 @@ describe('parseAskFromStatus', () => {
       JSON.stringify({ questions: [{ question: 'Pick', options: ['a', 'b'] }] })
     )
     expect(prompt?.questions[0]?.options.map((o) => o.label)).toEqual(['a', 'b'])
+  })
+})
+
+describe('readAnsweredQuestions', () => {
+  const prompt = {
+    questions: [
+      {
+        question: 'Which auth method should we use?',
+        header: 'Auth method',
+        multiSelect: false,
+        options: [{ label: 'JWT' }, { label: 'Session cookies' }]
+      },
+      {
+        question: 'Which features should be on?',
+        multiSelect: true,
+        options: [{ label: 'Search' }, { label: 'Export' }, { label: 'Sync' }]
+      }
+    ]
+  }
+
+  it('reports the chosen label with its header', () => {
+    const answered = readAnsweredQuestions(prompt, [{ indices: [1] }, { indices: [] }])
+    expect(answered).toEqual([
+      {
+        header: 'Auth method',
+        question: 'Which auth method should we use?',
+        answer: 'Session cookies'
+      }
+    ])
+  })
+
+  it('joins every pick of a multi-select', () => {
+    const answered = readAnsweredQuestions(prompt, [{ indices: [] }, { indices: [0, 2] }])
+    expect(answered).toEqual([{ question: 'Which features should be on?', answer: 'Search, Sync' }])
+  })
+
+  it('includes free-text answers', () => {
+    const answered = readAnsweredQuestions(prompt, [
+      { indices: [], other: 'mTLS' },
+      { indices: [] }
+    ])
+    expect(answered[0].answer).toBe('mTLS')
+  })
+
+  it('appends free text after the picked labels', () => {
+    const answered = readAnsweredQuestions(prompt, [
+      { indices: [0], other: 'and rotate' },
+      { indices: [] }
+    ])
+    expect(answered[0].answer).toBe('JWT, and rotate')
+  })
+
+  it('omits unanswered questions rather than reporting an empty answer', () => {
+    expect(readAnsweredQuestions(prompt, [{ indices: [] }, { indices: [] }])).toEqual([])
+  })
+
+  it('reports every answered question when several were answered', () => {
+    const answered = readAnsweredQuestions(prompt, [{ indices: [0] }, { indices: [1] }])
+    expect(answered.map((entry) => entry.answer)).toEqual(['JWT', 'Export'])
+  })
+
+  it('ignores selections with no matching option', () => {
+    expect(readAnsweredQuestions(prompt, [{ indices: [9] }, { indices: [] }])).toEqual([])
+  })
+
+  it('tolerates missing selections entirely', () => {
+    expect(readAnsweredQuestions(prompt, [])).toEqual([])
   })
 })
