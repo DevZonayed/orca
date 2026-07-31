@@ -17,13 +17,12 @@ on:
         default: mac
         options:
           - mac
-          - win
           - linux
 
 jobs:
   build:
     if: github.repository != 'stablyai/orca'
-    runs-on: ${{ inputs.platform == 'mac' && 'macos-15' || inputs.platform == 'win' && 'windows-2022' || 'ubuntu-latest' }}
+    runs-on: ${{ inputs.platform == 'mac' && 'macos-15' || 'ubuntu-latest' }}
     timeout-minutes: 120
 
     steps:
@@ -71,10 +70,6 @@ jobs:
         if: runner.os == 'macOS'
         run: pnpm exec electron-builder --config config/electron-builder.config.cjs --mac --publish never
 
-      - name: Package Windows
-        if: runner.os == 'Windows'
-        run: pnpm exec electron-builder --config config/electron-builder.config.cjs --win --publish never
-
       - name: Package Linux
         if: runner.os == 'Linux'
         run: pnpm exec electron-builder --config config/electron-builder.config.cjs --linux AppImage deb --publish never
@@ -85,7 +80,6 @@ jobs:
           path: |
             dist/*.dmg
             dist/*.zip
-            dist/*.exe
             dist/*.AppImage
             dist/*.deb
           if-no-files-found: error
