@@ -230,7 +230,10 @@ describe('useNativeChatInteractiveSend', () => {
       baselineUpdatedAt: waitingQuestion.updatedAt,
       baselineStateStartedAt: waitingQuestion.stateStartedAt,
       baselinePrompt: 'pick one',
-      baselineAgentType: 'claude'
+      baselineAgentType: 'claude',
+      // The surface resolved the answer itself, so main records it without
+      // having to re-derive a label from a keystroke it never saw.
+      answeredQuestions: [{ question: 'q', answer: 'B' }]
     })
   })
 
@@ -264,7 +267,10 @@ describe('useNativeChatInteractiveSend', () => {
       baselineUpdatedAt: waitingQuestion.updatedAt,
       baselineStateStartedAt: waitingQuestion.stateStartedAt,
       baselinePrompt: 'pick one',
-      baselineAgentType: 'claude'
+      baselineAgentType: 'claude',
+      // The surface resolved the answer itself, so main records it without
+      // having to re-derive a label from a keystroke it never saw.
+      answeredQuestions: [{ question: 'q', answer: 'B' }]
     })
   })
 

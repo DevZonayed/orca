@@ -565,6 +565,18 @@ function attachClaudePermissionToolUseId(
   }
 }
 
+/** One answer at most: a keystroke can express a single single-select pick. */
+function resolveQuestionAnswerFromKeystroke(
+  promptJson: string,
+  submittedData: string | undefined
+): AnsweredQuestionOption[] {
+  if (submittedData === undefined) {
+    return []
+  }
+  const answered = resolveAnsweredQuestionOption(promptJson, submittedData)
+  return answered ? [answered] : []
+}
+
 export class AgentHookServer {
   private server: ReturnType<typeof createServer> | null = null
   private port = 0
@@ -812,29 +824,33 @@ export class AgentHookServer {
    *  and a storage failure must not change whether the card clears. */
   private emitQuestionAnswered(
     existing: EnrichedAgentHookEventPayload,
-    submittedData: string | undefined
+    request: AgentQuestionAnsweredInferenceRequest
   ): void {
-    if (!this.onQuestionAnswered || submittedData === undefined) {
+    if (!this.onQuestionAnswered) {
       return
     }
     const promptJson = existing.payload.interactivePrompt
     if (!promptJson) {
       return
     }
-    const answered = resolveAnsweredQuestionOption(promptJson, submittedData)
-    if (!answered) {
-      return
-    }
-    try {
-      this.onQuestionAnswered({
-        paneKey: existing.paneKey,
-        agentType: existing.payload.agentType ?? 'unknown',
-        ...(existing.worktreeId ? { worktreeId: existing.worktreeId } : {}),
-        promptJson,
-        answered
-      })
-    } catch (error) {
-      console.warn('[agent-hooks] question-answered listener failed', error)
+    // Why: a surface that holds the selections already knows the exact labels,
+    // including multi-select and free text. Only fall back to resolving a
+    // keystroke, which can express one single-select pick at most.
+    const answers = request.answeredQuestions?.length
+      ? request.answeredQuestions
+      : resolveQuestionAnswerFromKeystroke(promptJson, request.submittedData)
+    for (const answered of answers) {
+      try {
+        this.onQuestionAnswered({
+          paneKey: existing.paneKey,
+          agentType: existing.payload.agentType ?? 'unknown',
+          ...(existing.worktreeId ? { worktreeId: existing.worktreeId } : {}),
+          promptJson,
+          answered
+        })
+      } catch (error) {
+        console.warn('[agent-hooks] question-answered listener failed', error)
+      }
     }
   }
 
@@ -868,7 +884,7 @@ export class AgentHookServer {
     }
     // Why: capture before the wait clears. interactivePrompt is non-inheriting,
     // so this is the last moment the question text still exists on the pane.
-    this.emitQuestionAnswered(existing, request.submittedData)
+    this.emitQuestionAnswered(existing, request)
     // Why: sync the listener's lead-turn record too, or a later child event re-emits the stale waiting state and resurrects the card.
     const restored = clearClaudeAnsweredQuestionWait(this.state, existing.paneKey)
     const inferred = this.applyNormalizedStatus({

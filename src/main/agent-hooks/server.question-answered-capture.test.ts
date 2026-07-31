@@ -38,7 +38,8 @@ function waitingQuestionServer(): AgentHookServer {
 
 function answeredRequest(
   server: AgentHookServer,
-  submittedData?: string
+  submittedData?: string,
+  answeredQuestions?: { header?: string; question: string; answer?: string }[]
 ): Parameters<AgentHookServer['inferQuestionAnswered']>[0] {
   const [entry] = server.getStatusSnapshot()
   return {
@@ -47,7 +48,8 @@ function answeredRequest(
     baselineStateStartedAt: entry.stateStartedAt,
     baselinePrompt: entry.prompt as string,
     baselineAgentType: entry.agentType,
-    ...(submittedData === undefined ? {} : { submittedData })
+    ...(submittedData === undefined ? {} : { submittedData }),
+    ...(answeredQuestions === undefined ? {} : { answeredQuestions })
   }
 }
 
@@ -121,5 +123,66 @@ describe('question-answered capture', () => {
 
     expect(server.inferQuestionAnswered(answeredRequest(server, '1'))).toBe(true)
     expect(server.getStatusSnapshot()[0]).toMatchObject({ state: 'working' })
+  })
+
+  it('records answers a surface resolved for itself, without any keystroke', () => {
+    // Native chat holds the selections, so it never produces a submit keystroke.
+    const server = waitingQuestionServer()
+    const listener = vi.fn<(record: QuestionAnsweredRecord) => void>()
+    server.setQuestionAnsweredListener(listener)
+
+    expect(
+      server.inferQuestionAnswered(
+        answeredRequest(server, undefined, [
+          { header: 'Auth method', question: 'Which auth method should we use?', answer: 'JWT' }
+        ])
+      )
+    ).toBe(true)
+    expect(listener).toHaveBeenCalledOnce()
+    expect(listener.mock.calls[0][0].answered).toEqual({
+      header: 'Auth method',
+      question: 'Which auth method should we use?',
+      answer: 'JWT'
+    })
+  })
+
+  it('records one decision per answered question', () => {
+    const server = waitingQuestionServer()
+    const listener = vi.fn<(record: QuestionAnsweredRecord) => void>()
+    server.setQuestionAnsweredListener(listener)
+
+    server.inferQuestionAnswered(
+      answeredRequest(server, undefined, [
+        { question: 'Which auth method should we use?', answer: 'JWT' },
+        { question: 'Which database?', answer: 'Postgres' }
+      ])
+    )
+    expect(listener).toHaveBeenCalledTimes(2)
+    expect(listener.mock.calls.map((call) => call[0].answered.answer)).toEqual(['JWT', 'Postgres'])
+  })
+
+  it('prefers resolved answers over the keystroke when both arrive', () => {
+    // A multi-select answer cannot be expressed as one digit, so the resolved
+    // answer must win rather than being overwritten by a lossy re-derivation.
+    const server = waitingQuestionServer()
+    const listener = vi.fn<(record: QuestionAnsweredRecord) => void>()
+    server.setQuestionAnsweredListener(listener)
+
+    server.inferQuestionAnswered(
+      answeredRequest(server, '1', [
+        { question: 'Which auth method should we use?', answer: 'JWT, Session cookies' }
+      ])
+    )
+    expect(listener).toHaveBeenCalledOnce()
+    expect(listener.mock.calls[0][0].answered.answer).toBe('JWT, Session cookies')
+  })
+
+  it('records nothing when neither answers nor a keystroke are supplied', () => {
+    const server = waitingQuestionServer()
+    const listener = vi.fn<(record: QuestionAnsweredRecord) => void>()
+    server.setQuestionAnsweredListener(listener)
+
+    server.inferQuestionAnswered(answeredRequest(server))
+    expect(listener).not.toHaveBeenCalled()
   })
 })

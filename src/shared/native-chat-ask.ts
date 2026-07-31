@@ -5,6 +5,7 @@ import type {
   InteractiveQuestionParser
 } from './native-chat-ask-types'
 import type { NativeChatMessage } from './native-chat-types'
+import type { AnsweredQuestionOption } from './agent-question-answered-option'
 
 export type { AskOption, AskPrompt, AskQuestion, InteractiveQuestionParser }
 
@@ -147,6 +148,35 @@ function answerLabels(question: AskQuestion, sel: AskAnswerSelection | undefined
  *  question tool commits a pasted answer (not Claude's arrow-navigate selector). */
 export function formatAskAnswer(prompt: AskPrompt, selections: AskAnswerSelection[]): string {
   return prompt.questions.map((q, i) => answerLabels(q, selections[i]).join(', ')).join('\n')
+}
+
+/**
+ * What the human actually chose, per answered question.
+ *
+ * Native chat holds the selections themselves, so unlike the terminal keystroke
+ * path it can report multi-select picks and free-text answers exactly. Skips
+ * unanswered questions rather than reporting an empty answer, because "asked but
+ * not answered" is not a decision.
+ */
+export function readAnsweredQuestions(
+  prompt: AskPrompt,
+  selections: AskAnswerSelection[]
+): AnsweredQuestionOption[] {
+  const answered: AnsweredQuestionOption[] = []
+  prompt.questions.forEach((question, index) => {
+    // Why: an unanswered question yields no labels, so the empty check covers
+    // both "nothing picked" and "picked an option that no longer exists".
+    const answer = answerLabels(question, selections[index]).join(', ')
+    if (!answer) {
+      return
+    }
+    answered.push({
+      ...(question.header ? { header: question.header } : {}),
+      question: question.question,
+      answer
+    })
+  })
+  return answered
 }
 
 // Claude's AskUserQuestion is an arrow-navigate selector: a bare Enter commits

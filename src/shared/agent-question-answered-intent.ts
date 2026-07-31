@@ -1,4 +1,5 @@
 import type { AgentType } from './agent-status-types'
+import type { AnsweredQuestionOption } from './agent-question-answered-option'
 
 /** Baseline snapshot the renderer captured when it observed the submit
  *  keystroke. The main process re-validates every field against its own
@@ -12,6 +13,10 @@ export type AgentQuestionAnsweredInferenceRequest = {
   /** The submit keystroke, so main can resolve which option was chosen against
    *  its own cached prompt. Absent for answer surfaces that never see one. */
   submittedData?: string
+  /** Already-resolved answers from a surface that holds the selections itself
+   *  (native chat). Preferred over `submittedData`: it knows multi-select picks
+   *  and free text, which a single keystroke cannot express. */
+  answeredQuestions?: AnsweredQuestionOption[]
 }
 
 /** True for the ask-the-user-a-question tool across agents: Claude's
