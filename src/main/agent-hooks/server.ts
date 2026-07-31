@@ -68,6 +68,10 @@ import {
   isAskUserQuestionTool,
   type AgentQuestionAnsweredInferenceRequest
 } from '../../shared/agent-question-answered-intent'
+import {
+  resolveAnsweredQuestionOption,
+  type AnsweredQuestionOption
+} from '../../shared/agent-question-answered-option'
 import { parseLegacyNumericPaneKey, parsePaneKey } from '../../shared/stable-pane-id'
 import type { LegacyPaneKeyAliasEntry } from '../../shared/types'
 import {
@@ -131,6 +135,18 @@ export type AgentHookAuthorityAttestation = Readonly<{
 type StatusChangeListener = (statuses: AgentHookStatusChangeEntry[]) => void
 type ProviderSessionChangeListener = (providerSessions: AgentHookProviderSessionIdentity[]) => void
 type PaneStatusClearListener = (clear: AgentStatusClearIpcPayload) => void
+
+/** A question the human just settled, emitted for Autopilot's decision store.
+ *  Kept as a listener so the hook server stays free of storage concerns. */
+export type QuestionAnsweredRecord = {
+  paneKey: string
+  agentType: string
+  worktreeId?: string
+  promptJson: string
+  answered: AnsweredQuestionOption
+}
+
+type QuestionAnsweredListener = (record: QuestionAnsweredRecord) => void
 type PaneKeyAliasPersistenceListener = (entries: LegacyPaneKeyAliasEntry[]) => void
 type PaneKeyAliasEntry = {
   stablePaneKey: string
@@ -558,6 +574,7 @@ export class AgentHookServer {
   private onAgentStatus: ((payload: EnrichedAgentHookEventPayload) => void) | null = null
   private onClaudeStatusLine: ((event: ClaudeStatusLineRateLimits) => void) | null = null
   private onPaneStatusCleared: PaneStatusClearListener | null = null
+  private onQuestionAnswered: QuestionAnsweredListener | null = null
   private statusChangeListeners = new Set<StatusChangeListener>()
   private providerSessionChangeListeners = new Set<ProviderSessionChangeListener>()
   // Why: setListener is a single slot owned by the main-window fanout; the
@@ -636,6 +653,10 @@ export class AgentHookServer {
     return () => {
       this.enrichedStatusListeners.delete(listener)
     }
+  }
+
+  setQuestionAnsweredListener(listener: QuestionAnsweredListener | null): void {
+    this.onQuestionAnswered = listener
   }
 
   setPaneStatusClearListener(listener: PaneStatusClearListener | null): void {
@@ -786,6 +807,37 @@ export class AgentHookServer {
 
   /** Guarded fallback for a hook Claude never sends: answering AskUserQuestion produces no event, so re-validate the
    *  renderer's baseline against the cached status (a racing real hook wins) and synthesize the post-answer state. */
+  /** Resolve the chosen option against main's own cached prompt and hand it to
+   *  the listener. Never throws: capture is a side effect of clearing the wait,
+   *  and a storage failure must not change whether the card clears. */
+  private emitQuestionAnswered(
+    existing: EnrichedAgentHookEventPayload,
+    submittedData: string | undefined
+  ): void {
+    if (!this.onQuestionAnswered || submittedData === undefined) {
+      return
+    }
+    const promptJson = existing.payload.interactivePrompt
+    if (!promptJson) {
+      return
+    }
+    const answered = resolveAnsweredQuestionOption(promptJson, submittedData)
+    if (!answered) {
+      return
+    }
+    try {
+      this.onQuestionAnswered({
+        paneKey: existing.paneKey,
+        agentType: existing.payload.agentType ?? 'unknown',
+        ...(existing.worktreeId ? { worktreeId: existing.worktreeId } : {}),
+        promptJson,
+        answered
+      })
+    } catch (error) {
+      console.warn('[agent-hooks] question-answered listener failed', error)
+    }
+  }
+
   inferQuestionAnswered(request: AgentQuestionAnsweredInferenceRequest): boolean {
     if (!isValidPaneKey(request.paneKey)) {
       return false
@@ -814,6 +866,9 @@ export class AgentHookServer {
     ) {
       return false
     }
+    // Why: capture before the wait clears. interactivePrompt is non-inheriting,
+    // so this is the last moment the question text still exists on the pane.
+    this.emitQuestionAnswered(existing, request.submittedData)
     // Why: sync the listener's lead-turn record too, or a later child event re-emits the stale waiting state and resurrects the card.
     const restored = clearClaudeAnsweredQuestionWait(this.state, existing.paneKey)
     const inferred = this.applyNormalizedStatus({

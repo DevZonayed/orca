@@ -12,6 +12,7 @@ import {
   migrateMobilePairingDataToCanonicalUserDataPath
 } from './persistence'
 import { initSessionParseCachePersistence } from './ai-vault/session-parse-cache-persistence'
+import { closeAutopilotDecisionStore, recordAnsweredQuestion } from './autopilot/decision-recorder'
 import { ensureActiveOrcaProfile, initOrcaProfilePaths } from './orca-profiles/profile-index-store'
 import { getOrcaCloudAuthConfig } from './orca-profiles/profile-cloud-auth-config'
 import { getProfileUserDataPath } from './orca-profiles/profile-storage-paths'
@@ -1452,6 +1453,7 @@ function openMainWindow(): BrowserWindow {
     }
     mainWindow?.webContents.send('agentStatus:clear', clear)
   })
+  agentHookServer.setQuestionAnsweredListener(recordAnsweredQuestion)
   setMigrationUnsupportedPtyListener((event) => {
     if (mainWindow?.isDestroyed()) {
       return
@@ -2934,6 +2936,7 @@ app.on('will-quit', (e) => {
   // Why: stats.flush() must precede killAllPty() so still-running agents emit synthetic agent_stop events (killAllPty skips runtime.onPtyExit()).
   starNag?.stop()
   automations?.stop()
+  closeAutopilotDecisionStore()
   // Why: plugin hosts are forked children; dispose sends shutdown and
   // escalates to SIGKILL so they cannot outlive the app. The promise joins
   // the teardown barrier below — quitting before it resolves would let
