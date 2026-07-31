@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { AutopilotDecisionStore, type AutopilotDecisionInput } from './decision-store'
+import {
+  AutopilotDecisionStore,
+  type AutopilotDecisionInput,
+  type ShadowProposalInput
+} from './decision-store'
 
 function store(): AutopilotDecisionStore {
   return new AutopilotDecisionStore(':memory:')
@@ -100,6 +104,108 @@ describe('AutopilotDecisionStore', () => {
   it('stamps the schema version', () => {
     const db = store()
     expect(db.countDecisions()).toBe(0)
+    db.close()
+  })
+})
+
+function proposal(overrides: Partial<ShadowProposalInput> = {}): ShadowProposalInput {
+  return {
+    paneKey: 'pane-1',
+    agentType: 'claude',
+    questionText: 'Which auth method should we use?',
+    promptJson: '{"questions":[]}',
+    source: 'generated',
+    proposedAnswer: 'JWT',
+    reason: 'generated and matched a declared option',
+    ...overrides
+  }
+}
+
+describe('AutopilotDecisionStore shadow proposals', () => {
+  it('records a proposal as pending until the human answers', () => {
+    const db = store()
+    const row = db.recordProposal(proposal())
+    expect(row.proposedAnswer).toBe('JWT')
+    expect(row.matched).toBeUndefined()
+    expect(db.shadowAgreement()).toMatchObject({ pending: 1, resolved: 0 })
+    db.close()
+  })
+
+  it('drops any answer supplied alongside an abstention', () => {
+    const db = store()
+    const row = db.recordProposal(
+      proposal({ source: 'abstain', proposedAnswer: 'JWT', reason: 'multi-select' })
+    )
+    expect(row.proposedAnswer).toBeUndefined()
+    db.close()
+  })
+
+  it('rejects an unknown proposal source', () => {
+    const db = store()
+    expect(() =>
+      db.recordProposal(proposal({ source: 'guessed' as ShadowProposalInput['source'] }))
+    ).toThrow()
+    db.close()
+  })
+
+  it('scores a matching human answer', () => {
+    const db = store()
+    db.recordProposal(proposal())
+    const resolved = db.resolveProposal('pane-1', 'Which auth method should we use?', 'JWT')
+    expect(resolved?.matched).toBe(true)
+    expect(resolved?.humanAnswer).toBe('JWT')
+    expect(db.shadowAgreement()).toMatchObject({ resolved: 1, matched: 1, pending: 0 })
+    db.close()
+  })
+
+  it('scores a differing human answer as a miss', () => {
+    const db = store()
+    db.recordProposal(proposal())
+    const resolved = db.resolveProposal('pane-1', 'Which auth method should we use?', 'Sessions')
+    expect(resolved?.matched).toBe(false)
+    expect(db.shadowAgreement()).toMatchObject({ resolved: 1, matched: 0 })
+    db.close()
+  })
+
+  it('never counts an abstention as a match', () => {
+    const db = store()
+    db.recordProposal(proposal({ source: 'abstain', proposedAnswer: undefined }))
+    const resolved = db.resolveProposal('pane-1', 'Which auth method should we use?', 'JWT')
+    expect(resolved?.matched).toBe(false)
+    // An abstention proposed nothing, so it is not part of the agreement rate.
+    expect(db.shadowAgreement()).toMatchObject({ resolved: 0, matched: 0, abstained: 1 })
+    db.close()
+  })
+
+  it('resolves the newest open proposal when a pane is asked twice', () => {
+    const db = store()
+    db.recordProposal(proposal({ proposedAnswer: 'JWT' }))
+    db.recordProposal(proposal({ proposedAnswer: 'Sessions' }))
+    const resolved = db.resolveProposal('pane-1', 'Which auth method should we use?', 'Sessions')
+    expect(resolved?.matched).toBe(true)
+    expect(db.shadowAgreement()).toMatchObject({ resolved: 1, pending: 1 })
+    db.close()
+  })
+
+  it('returns null when no proposal is open for the pane', () => {
+    const db = store()
+    expect(db.resolveProposal('pane-9', 'Which auth method should we use?', 'JWT')).toBeNull()
+    db.close()
+  })
+
+  it('does not resolve a proposal twice', () => {
+    const db = store()
+    db.recordProposal(proposal())
+    db.resolveProposal('pane-1', 'Which auth method should we use?', 'JWT')
+    expect(db.resolveProposal('pane-1', 'Which auth method should we use?', 'Sessions')).toBeNull()
+    db.close()
+  })
+
+  it('keeps proposals out of the human decision corpus', () => {
+    const db = store()
+    db.recordProposal(proposal())
+    expect(db.countDecisions()).toBe(0)
+    expect(db.findPriorAnswers('Which auth method should we use?')).toEqual([])
     db.close()
   })
 })

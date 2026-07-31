@@ -9,6 +9,21 @@ export type AnsweredQuestionOption = {
   answer?: string
 }
 
+/** One declared choice, as the agent described it to the human. */
+export type AskUserQuestionOption = {
+  label: string
+  description?: string
+}
+
+/** A structured single-question AskUserQuestion payload. */
+export type AskUserQuestionPrompt = {
+  header?: string
+  question: string
+  multiSelect: boolean
+  /** Empty when the payload declared none, which the callers treat as unanswerable. */
+  options: AskUserQuestionOption[]
+}
+
 type PromptQuestion = {
   header?: unknown
   question?: unknown
@@ -49,6 +64,48 @@ function readSingleQuestion(interactivePrompt: string | undefined): PromptQuesti
     return null
   }
   return question
+}
+
+function readOptionDescription(option: unknown): string | undefined {
+  if (option && typeof option === 'object') {
+    const description = (option as { description?: unknown }).description
+    if (typeof description === 'string' && description.length > 0) {
+      return description
+    }
+  }
+  return undefined
+}
+
+/**
+ * Structured view of a single-question AskUserQuestion payload.
+ *
+ * Same single-question gate as the answer resolver, because a decider that
+ * cannot name the whole prompt cannot answer it either.
+ */
+export function readAskUserQuestionPrompt(
+  interactivePrompt: string | undefined
+): AskUserQuestionPrompt | null {
+  const question = readSingleQuestion(interactivePrompt)
+  if (!question) {
+    return null
+  }
+  const options: AskUserQuestionOption[] = []
+  if (Array.isArray(question.options)) {
+    for (const option of question.options) {
+      const label = readOptionLabel(option)
+      if (label) {
+        const description = readOptionDescription(option)
+        options.push(description ? { label, description } : { label })
+      }
+    }
+  }
+  const header = typeof question.header === 'string' ? question.header : undefined
+  return {
+    ...(header ? { header } : {}),
+    question: question.question as string,
+    multiSelect: question.multiSelect === true,
+    options
+  }
 }
 
 /**

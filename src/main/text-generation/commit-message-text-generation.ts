@@ -91,7 +91,11 @@ export type RemoteCommitMessageExecResult = {
   spawnError?: string
 }
 
-export type TextGenerationOperation = 'commit-message' | 'pull-request-fields' | 'branch-name'
+export type TextGenerationOperation =
+  | 'commit-message'
+  | 'pull-request-fields'
+  | 'branch-name'
+  | 'autopilot-answer'
 
 export type CommitMessageGenerationTarget =
   | { kind: 'local'; cwd: string; env?: NodeJS.ProcessEnv; wslDistro?: string }
@@ -111,7 +115,7 @@ type ResolveCommitMessageSettingsResult =
   | { ok: true; params: GenerateCommitMessageParams }
   | { ok: false; error: string }
 
-type InternalTextGenerationResult =
+export type InternalTextGenerationResult =
   | { success: true; rawOutput: string; agentLabel?: string }
   | {
       success: false
@@ -551,7 +555,7 @@ function buildWslLauncherEnv(explicitEnv: NodeJS.ProcessEnv | undefined): NodeJS
   return env
 }
 
-async function runLocalPlan(
+export async function runLocalPlan(
   plan: CommitMessagePlan,
   cwd: string,
   env: NodeJS.ProcessEnv | undefined,

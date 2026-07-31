@@ -12,7 +12,13 @@ import {
   migrateMobilePairingDataToCanonicalUserDataPath
 } from './persistence'
 import { initSessionParseCachePersistence } from './ai-vault/session-parse-cache-persistence'
-import { closeAutopilotDecisionStore, recordAnsweredQuestion } from './autopilot/decision-recorder'
+import {
+  closeAutopilotDecisionStore,
+  getAutopilotDecisionStore,
+  recordAnsweredQuestion
+} from './autopilot/decision-recorder'
+import { AutopilotShadowObserver } from './autopilot/shadow-observer'
+import { createAutopilotAnswerGenerator } from './autopilot/answer-generation'
 import { ensureActiveOrcaProfile, initOrcaProfilePaths } from './orca-profiles/profile-index-store'
 import { getOrcaCloudAuthConfig } from './orca-profiles/profile-cloud-auth-config'
 import { getProfileUserDataPath } from './orca-profiles/profile-storage-paths'
@@ -418,6 +424,30 @@ if (appImageCliRedirect.redirected) {
 
 // Kill switch for the first-work on-disk folder rename; the renderer reconciles the id change (migrateWorktreeIdentity) so it isn't mistaken for a deletion.
 const ENABLE_FIRST_WORK_FOLDER_RENAME = false
+
+// Why: shadow mode only. The observer has no send path, so this records what
+// Autopilot would have answered and nothing reaches the pane. See card 002.
+let autopilotShadowObserver: AutopilotShadowObserver | null = null
+
+function getAutopilotShadowObserver(): AutopilotShadowObserver | null {
+  const currentStore = store
+  const currentRuntime = runtime
+  if (!currentStore || !currentRuntime) {
+    return null
+  }
+  autopilotShadowObserver ??= new AutopilotShadowObserver({
+    getStore: getAutopilotDecisionStore,
+    createGenerator: () =>
+      createAutopilotAnswerGenerator({
+        getSettings: () => currentStore.getSettings(),
+        getAgentEnvResolvers: () => currentRuntime.getCommitMessageAgentEnvironmentResolvers(),
+        // Why: a neutral directory. The generating CLI reasons about the question
+        // text alone, so it must not inherit a project's agent configuration.
+        getLocalCwd: () => app.getPath('home')
+      })
+  })
+  return autopilotShadowObserver
+}
 
 // Why: inject the index.ts store/runtime singletons so the rename orchestrator stays module-state-free and unit-testable.
 function maybeAutoRenameBranchOnFirstWorkFromHook(event: {
@@ -1454,6 +1484,14 @@ function openMainWindow(): BrowserWindow {
     mainWindow?.webContents.send('agentStatus:clear', clear)
   })
   agentHookServer.setQuestionAnsweredListener(recordAnsweredQuestion)
+  agentHookServer.subscribeEnrichedStatus((enriched) => {
+    // Why: replayed rows are cache echoes of questions already dealt with;
+    // proposing against them would spend a generation call on stale state.
+    if (enriched.isReplay) {
+      return
+    }
+    getAutopilotShadowObserver()?.observe(enriched)
+  })
   setMigrationUnsupportedPtyListener((event) => {
     if (mainWindow?.isDestroyed()) {
       return
