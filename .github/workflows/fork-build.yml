@@ -1,0 +1,78 @@
+name: Fork Build
+
+run-name: Fork build ${{ inputs.platform }} (${{ github.ref_name }})
+
+# Why: release-cut, release-mac-build and hourly-mac-build are all gated to
+# stablyai/orca and use org-only Blacksmith runners, so a fork has no way to
+# produce an installable artifact. This is that way: unsigned, no notarization,
+# no publish — just pack and upload. Never runs on upstream.
+
+on:
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: Platform to build
+        required: true
+        type: choice
+        default: mac
+        options:
+          - mac
+          - win
+          - linux
+
+jobs:
+  build:
+    if: github.repository != 'stablyai/orca'
+    runs-on: ${{ inputs.platform == 'mac' && 'macos-15' || inputs.platform == 'win' && 'windows-2022' || 'ubuntu-latest' }}
+    timeout-minutes: 120
+
+    steps:
+      - uses: actions/checkout@v6
+
+      # pnpm must precede setup-node so its store can be cached.
+      - uses: pnpm/action-setup@v6
+        with:
+          run_install: false
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: package.json
+          cache: pnpm
+
+      # Mirrors release-cut: pnpm's bundled node-gyp fails the native postinstall on Linux.
+      - name: Use external node-gyp (Linux only)
+        if: runner.os == 'Linux'
+        run: |
+          npm install -g node-gyp@11.5.0
+          echo "npm_config_node_gyp=$(npm root -g)/node-gyp/bin/node-gyp.js" >> "$GITHUB_ENV"
+
+      - name: Install Linux computer-use provider dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y python3-gi gir1.2-atspi-2.0 at-spi2-core xclip xdotool
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build macOS
+        if: runner.os == 'macOS'
+        run: pnpm run build:mac
+
+      - name: Build Windows
+        if: runner.os == 'Windows'
+        run: pnpm run build:win
+
+      - name: Build Linux
+        if: runner.os == 'Linux'
+        run: pnpm run build:linux
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: orca-${{ inputs.platform }}-${{ github.sha }}
+          path: |
+            dist/*.dmg
+            dist/*.zip
+            dist/*.exe
+            dist/*.AppImage
+            dist/*.deb
+          if-no-files-found: error
+          retention-days: 14
