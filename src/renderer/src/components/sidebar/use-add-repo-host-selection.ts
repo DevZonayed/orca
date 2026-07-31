@@ -14,7 +14,6 @@ import { useSidebarHostScopeOptions } from './use-sidebar-host-scope-options'
 import { canSelectAddRepoHost } from './add-repo-host-availability'
 import { translate } from '@/i18n/i18n'
 
-/** Owns host selection and SSH connection state for the add-project flow. */
 export function useAddRepoHostSelection({
   isOpen,
   setStep
@@ -25,7 +24,6 @@ export function useAddRepoHostSelection({
   hostOptions: ReturnType<typeof useSidebarHostScopeOptions>['hostOptions']
   selectedHostId: ExecutionHostId
   selectedParsedHost: ReturnType<typeof parseExecutionHostId>
-  selectedRuntimeEnvironmentId: string | null
   selectedSshTargetId: string | null
   hostSelectorOpen: boolean
   setHostSelectorOpen: (open: boolean) => void
@@ -72,8 +70,6 @@ export function useAddRepoHostSelection({
     selectableHostOptions[0]
   const selectedHostId = selectedHost?.id ?? LOCAL_EXECUTION_HOST_ID
   const selectedParsedHost = parseExecutionHostId(selectedHostId)
-  const selectedRuntimeEnvironmentId =
-    selectedParsedHost?.kind === 'runtime' ? selectedParsedHost.environmentId : null
   const selectedSshTargetId =
     selectedParsedHost?.kind === 'ssh' ? selectedParsedHost.targetId : null
 
@@ -175,7 +171,6 @@ export function useAddRepoHostSelection({
     hostOptions: selectableHostOptions,
     selectedHostId,
     selectedParsedHost,
-    selectedRuntimeEnvironmentId,
     selectedSshTargetId,
     hostSelectorOpen,
     setHostSelectorOpen,
