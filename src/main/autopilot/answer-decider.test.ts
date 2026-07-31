@@ -97,6 +97,30 @@ describe('decideAutopilotAnswer', () => {
     expect(generate).not.toHaveBeenCalled()
   })
 
+  it('never recalls a related answer — it answers a different question', async () => {
+    const generate = vi.fn().mockResolvedValue({ success: true, reply: 'UNSURE' })
+    const decision = await decideAutopilotAnswer(
+      inputs({
+        // 'API keys' is a live option, but it was chosen for another question.
+        relatedAnswers: [{ question: 'Which auth for the mobile app?', answer: 'API keys' }],
+        generate
+      })
+    )
+    expect(decision.source).toBe('abstain')
+    expect(decision.answer).toBeUndefined()
+  })
+
+  it('passes related answers to generation as evidence', async () => {
+    const generate = vi.fn().mockResolvedValue({ success: true, reply: 'API keys' })
+    await decideAutopilotAnswer(
+      inputs({
+        relatedAnswers: [{ question: 'Which auth for the mobile app?', answer: 'API keys' }],
+        generate
+      })
+    )
+    expect(generate.mock.calls[0][0]).toContain('Which auth for the mobile app?')
+  })
+
   it('never returns an answer alongside an abstention', async () => {
     const decision = await decideAutopilotAnswer(
       inputs({ generate: async () => ({ success: true, reply: 'UNSURE' }) })

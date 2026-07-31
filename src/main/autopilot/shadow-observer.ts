@@ -54,6 +54,17 @@ function toPriorAnswers(
   return priors
 }
 
+function toRelatedAnswers(
+  store: AutopilotDecisionStore,
+  questionText: string,
+  header: string | undefined
+): PriorAnswerExample[] {
+  const rows = store.findRelatedAnswers(questionText, header ? { header } : {})
+  return rows.flatMap((row) =>
+    row.answer ? [{ question: row.questionText, answer: row.answer }] : []
+  )
+}
+
 /**
  * Watch for questions and record what Autopilot would have answered.
  *
@@ -119,6 +130,9 @@ export class AutopilotShadowObserver {
     const proposal = await decideAutopilotAnswer({
       prompt,
       priorAnswers,
+      // Why: answers to *different* questions. Evidence for generation only —
+      // the decider must never recall-and-send one, because it answers something else.
+      relatedAnswers: toRelatedAnswers(store, questionText, prompt.header),
       context: {
         ...(status.payload.prompt ? { taskPrompt: status.payload.prompt } : {}),
         ...(status.payload.lastAssistantMessage

@@ -209,3 +209,133 @@ describe('AutopilotDecisionStore shadow proposals', () => {
     db.close()
   })
 })
+
+describe('AutopilotDecisionStore seeding', () => {
+  const seeds = [
+    { questionText: 'Which auth method should we use?', answer: 'JWT' },
+    { questionText: 'Which database?', answer: 'Postgres' }
+  ]
+
+  it('seeds mined answers as human decisions', () => {
+    const db = store()
+    expect(db.seedMinedDecisions(seeds)).toBe(2)
+    expect(db.findPriorAnswers('Which database?', { provenance: 'human' })[0].answer).toBe(
+      'Postgres'
+    )
+    db.close()
+  })
+
+  it('is idempotent, so a re-scan cannot duplicate history', () => {
+    const db = store()
+    db.seedMinedDecisions(seeds)
+    expect(db.seedMinedDecisions(seeds)).toBe(0)
+    expect(db.countDecisions()).toBe(2)
+    db.close()
+  })
+
+  it('does not collide with observed decisions from a real pane', () => {
+    const db = store()
+    db.seedMinedDecisions([{ questionText: 'Which database?', answer: 'Postgres' }])
+    db.recordDecision(
+      decision({ questionText: 'Which database?', answer: 'Postgres', paneKey: 'pane-1' })
+    )
+    expect(db.countDecisions()).toBe(2)
+    db.close()
+  })
+
+  it('remembers which transcripts were mined, by fingerprint', () => {
+    const db = store()
+    expect(db.isFileMined('/t/a.jsonl', '10:20')).toBe(false)
+    db.markFileMined('/t/a.jsonl', '10:20', 3)
+    expect(db.isFileMined('/t/a.jsonl', '10:20')).toBe(true)
+    // A changed file must be re-read, not skipped.
+    expect(db.isFileMined('/t/a.jsonl', '11:21')).toBe(false)
+    expect(db.getMinedFingerprints()).toEqual({ '/t/a.jsonl': '10:20' })
+    db.close()
+  })
+
+  it('updates the fingerprint when a transcript grows', () => {
+    const db = store()
+    db.markFileMined('/t/a.jsonl', '10:20', 1)
+    db.markFileMined('/t/a.jsonl', '99:99', 4)
+    expect(db.getMinedFingerprints()).toEqual({ '/t/a.jsonl': '99:99' })
+    db.close()
+  })
+})
+
+describe('AutopilotDecisionStore related answers', () => {
+  function seeded(): AutopilotDecisionStore {
+    const db = store()
+    db.seedMinedDecisions([
+      { questionText: 'Which auth method should the API use?', answer: 'JWT' },
+      { questionText: 'Which auth library should we adopt?', answer: 'Passport' },
+      { questionText: 'What colour should the banner be?', answer: 'Blue' }
+    ])
+    return db
+  }
+
+  it('finds answers to different but related questions', () => {
+    const db = seeded()
+    const related = db.findRelatedAnswers('Which auth method should the mobile client use?')
+    expect(related.map((row) => row.answer)).toContain('JWT')
+    db.close()
+  })
+
+  it('excludes the exact question, which recall already covers', () => {
+    const db = seeded()
+    const related = db.findRelatedAnswers('Which auth method should the API use?')
+    expect(related.map((row) => row.questionText)).not.toContain(
+      'Which auth method should the API use?'
+    )
+    db.close()
+  })
+
+  it('ignores unrelated questions', () => {
+    const db = seeded()
+    const related = db.findRelatedAnswers('Which auth method should the mobile client use?')
+    expect(related.map((row) => row.answer)).not.toContain('Blue')
+    db.close()
+  })
+
+  it('never surfaces an autopilot answer as evidence', () => {
+    const db = store()
+    db.recordDecision(
+      decision({
+        questionText: 'Which auth method should the API use?',
+        answer: 'JWT',
+        provenance: 'autopilot'
+      })
+    )
+    expect(db.findRelatedAnswers('Which auth method should the client use?')).toEqual([])
+    db.close()
+  })
+
+  it('ranks a shared header above incidental word overlap', () => {
+    const db = store()
+    db.recordDecision(
+      decision({
+        questionText: 'Totally different wording here',
+        answer: 'Header match',
+        questionHeader: 'Auth'
+      })
+    )
+    db.recordDecision(
+      decision({
+        questionText: 'Which auth method should we pick',
+        answer: 'Word overlap',
+        questionHeader: 'Other'
+      })
+    )
+    const related = db.findRelatedAnswers('Which auth method should the API use?', {
+      header: 'Auth'
+    })
+    expect(related[0].answer).toBe('Header match')
+    db.close()
+  })
+
+  it('returns nothing when the question has no meaningful words', () => {
+    const db = seeded()
+    expect(db.findRelatedAnswers('is it a?')).toEqual([])
+    db.close()
+  })
+})

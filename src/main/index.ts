@@ -20,6 +20,7 @@ import {
 import { AutopilotShadowObserver } from './autopilot/shadow-observer'
 import { createAutopilotAnswerGenerator } from './autopilot/answer-generation'
 import { sendAutopilotAnswer } from './autopilot/answer-sender'
+import { seedAutopilotMemoryFromHistory } from './autopilot/mining-runner'
 import { ensureActiveOrcaProfile, initOrcaProfilePaths } from './orca-profiles/profile-index-store'
 import { getOrcaCloudAuthConfig } from './orca-profiles/profile-cloud-auth-config'
 import { getProfileUserDataPath } from './orca-profiles/profile-storage-paths'
@@ -1498,6 +1499,16 @@ function openMainWindow(): BrowserWindow {
     mainWindow?.webContents.send('agentStatus:clear', clear)
   })
   agentHookServer.setQuestionAnsweredListener(recordAnsweredQuestion)
+  // Why: seeds Autopilot's memory from transcripts already on this machine, in a
+  // worker so the multi-gigabyte first pass never touches the main thread. Fully
+  // best-effort — a failure just means Autopilot starts with no history.
+  void seedAutopilotMemoryFromHistory(getAutopilotDecisionStore())
+    .then((summary) => {
+      if (summary && summary.seeded > 0) {
+        console.info('[autopilot] seeded from history', summary)
+      }
+    })
+    .catch((error) => console.warn('[autopilot] history seeding failed', error))
   agentHookServer.subscribeEnrichedStatus((enriched) => {
     // Why: replayed rows are cache echoes of questions already dealt with;
     // proposing against them would spend a generation call on stale state.

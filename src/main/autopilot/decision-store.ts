@@ -1,97 +1,35 @@
 import { chmodSync, existsSync, mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
 import Database from '../sqlite/sync-database'
+import { rankRelatedQuestions } from './question-similarity'
+import { AUTOPILOT_SCHEMA_VERSION, createAutopilotTables } from './autopilot-schema'
+import {
+  toRow,
+  type AutopilotDecisionInput,
+  type AutopilotDecisionRow,
+  type DecisionDbRow,
+  type DecisionProvenance
+} from './decision-rows'
 
-// Schema versions: v1 initial decisions table. v2 adds shadow_proposals.
-const SCHEMA_VERSION = 2
+export type {
+  AutopilotDecisionInput,
+  AutopilotDecisionRow,
+  DecisionProvenance
+} from './decision-rows'
+import {
+  toProposalRow,
+  type ShadowAgreement,
+  type ShadowProposalDbRow,
+  type ShadowProposalInput,
+  type ShadowProposalRow
+} from './shadow-proposal-rows'
 
-/** Who produced an answer. Recorded from the first row so a later mining pass
- *  can never ingest Autopilot's own answers as human decisions. */
-export type DecisionProvenance = 'human' | 'autopilot'
-
-export type AutopilotDecisionInput = {
-  paneKey: string
-  agentType: string
-  questionText: string
-  promptJson: string
-  provenance: DecisionProvenance
-  questionHeader?: string
-  /** Absent when the answer is unknowable — Enter, or a multi-select. */
-  answer?: string
-  worktreeId?: string
-  cwd?: string
-}
-
-export type AutopilotDecisionRow = AutopilotDecisionInput & {
-  id: number
-  recordedAt: string
-}
-
-type DecisionDbRow = {
-  id: number
-  recorded_at: string
-  pane_key: string
-  agent_type: string
-  worktree_id: string | null
-  cwd: string | null
-  question_header: string | null
-  question_text: string
-  prompt_json: string
-  answer: string | null
-  provenance: string
-}
-
-/** Where a shadow proposal came from. `abstain` carries no answer by construction. */
-export type ProposalSource = 'recall' | 'generated' | 'abstain'
-
-export type ShadowProposalInput = {
-  paneKey: string
-  agentType: string
-  questionText: string
-  promptJson: string
-  source: ProposalSource
-  questionHeader?: string
-  /** The option Autopilot would have picked. Always absent when abstaining. */
-  proposedAnswer?: string
-  reason?: string
-  worktreeId?: string
-  cwd?: string
-}
-
-export type ShadowProposalRow = ShadowProposalInput & {
-  id: number
-  proposedAt: string
-  humanAnswer?: string
-  /** True when the human picked what Autopilot proposed. Absent until resolved. */
-  matched?: boolean
-  resolvedAt?: string
-}
-
-type ShadowProposalDbRow = {
-  id: number
-  proposed_at: string
-  pane_key: string
-  agent_type: string
-  worktree_id: string | null
-  cwd: string | null
-  question_header: string | null
-  question_text: string
-  prompt_json: string
-  proposed_answer: string | null
-  source: string
-  reason: string | null
-  human_answer: string | null
-  matched: number | null
-  resolved_at: string | null
-}
-
-export type ShadowAgreement = {
-  /** Proposals that named an option and have since been resolved. */
-  resolved: number
-  matched: number
-  abstained: number
-  pending: number
-}
+export type {
+  ProposalSource,
+  ShadowAgreement,
+  ShadowProposalInput,
+  ShadowProposalRow
+} from './shadow-proposal-rows'
 
 function hardenDatabaseFiles(dbPath: string): void {
   if (dbPath === ':memory:' || process.platform === 'win32') {
@@ -102,42 +40,6 @@ function hardenDatabaseFiles(dbPath: string): void {
     if (existsSync(path)) {
       chmodSync(path, 0o600)
     }
-  }
-}
-
-function toRow(row: DecisionDbRow): AutopilotDecisionRow {
-  return {
-    id: row.id,
-    recordedAt: row.recorded_at,
-    paneKey: row.pane_key,
-    agentType: row.agent_type,
-    questionText: row.question_text,
-    promptJson: row.prompt_json,
-    provenance: row.provenance as DecisionProvenance,
-    ...(row.question_header === null ? {} : { questionHeader: row.question_header }),
-    ...(row.answer === null ? {} : { answer: row.answer }),
-    ...(row.worktree_id === null ? {} : { worktreeId: row.worktree_id }),
-    ...(row.cwd === null ? {} : { cwd: row.cwd })
-  }
-}
-
-function toProposalRow(row: ShadowProposalDbRow): ShadowProposalRow {
-  return {
-    id: row.id,
-    proposedAt: row.proposed_at,
-    paneKey: row.pane_key,
-    agentType: row.agent_type,
-    questionText: row.question_text,
-    promptJson: row.prompt_json,
-    source: row.source as ProposalSource,
-    ...(row.question_header === null ? {} : { questionHeader: row.question_header }),
-    ...(row.proposed_answer === null ? {} : { proposedAnswer: row.proposed_answer }),
-    ...(row.reason === null ? {} : { reason: row.reason }),
-    ...(row.worktree_id === null ? {} : { worktreeId: row.worktree_id }),
-    ...(row.cwd === null ? {} : { cwd: row.cwd }),
-    ...(row.human_answer === null ? {} : { humanAnswer: row.human_answer }),
-    ...(row.matched === null ? {} : { matched: row.matched === 1 }),
-    ...(row.resolved_at === null ? {} : { resolvedAt: row.resolved_at })
   }
 }
 
@@ -164,51 +66,15 @@ export class AutopilotDecisionStore {
   }
 
   private createTables(): void {
-    this.db.exec(`
-      CREATE TABLE IF NOT EXISTS decisions (
-        id              INTEGER PRIMARY KEY AUTOINCREMENT,
-        recorded_at     TEXT NOT NULL DEFAULT (datetime('now')),
-        pane_key        TEXT NOT NULL,
-        agent_type      TEXT NOT NULL,
-        worktree_id     TEXT,
-        cwd             TEXT,
-        question_header TEXT,
-        question_text   TEXT NOT NULL,
-        prompt_json     TEXT NOT NULL,
-        answer          TEXT,
-        provenance      TEXT NOT NULL CHECK (provenance IN ('human', 'autopilot'))
-      );
-      CREATE INDEX IF NOT EXISTS decisions_question_idx
-        ON decisions (question_text, provenance);
-
-      CREATE TABLE IF NOT EXISTS shadow_proposals (
-        id              INTEGER PRIMARY KEY AUTOINCREMENT,
-        proposed_at     TEXT NOT NULL DEFAULT (datetime('now')),
-        pane_key        TEXT NOT NULL,
-        agent_type      TEXT NOT NULL,
-        worktree_id     TEXT,
-        cwd             TEXT,
-        question_header TEXT,
-        question_text   TEXT NOT NULL,
-        prompt_json     TEXT NOT NULL,
-        proposed_answer TEXT,
-        source          TEXT NOT NULL CHECK (source IN ('recall', 'generated', 'abstain')),
-        reason          TEXT,
-        human_answer    TEXT,
-        matched         INTEGER,
-        resolved_at     TEXT
-      );
-      CREATE INDEX IF NOT EXISTS shadow_proposals_open_idx
-        ON shadow_proposals (pane_key, question_text, resolved_at);
-    `)
+    createAutopilotTables(this.db)
   }
 
   private migrate(): void {
     const current = Number(this.db.pragma('user_version', { simple: true }) ?? 0)
-    if (current >= SCHEMA_VERSION) {
+    if (current >= AUTOPILOT_SCHEMA_VERSION) {
       return
     }
-    this.db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`)
+    this.db.exec(`PRAGMA user_version = ${AUTOPILOT_SCHEMA_VERSION}`)
   }
 
   recordDecision(decision: AutopilotDecisionInput): AutopilotDecisionRow {
@@ -259,6 +125,87 @@ export class AutopilotDecisionStore {
   countDecisions(): number {
     const row = this.db.prepare('SELECT COUNT(*) AS n FROM decisions').get() as { n: number }
     return row.n
+  }
+
+  /** True when this transcript has already been mined at this exact size+mtime. */
+  isFileMined(path: string, fingerprint: string): boolean {
+    const row = this.db.prepare('SELECT fingerprint FROM mined_files WHERE path = ?').get(path) as
+      | { fingerprint: string }
+      | undefined
+    return row?.fingerprint === fingerprint
+  }
+
+  /** Every already-mined transcript, so a re-scan can skip unchanged files. */
+  getMinedFingerprints(): Record<string, string> {
+    const rows = this.db.prepare('SELECT path, fingerprint FROM mined_files').all() as {
+      path: string
+      fingerprint: string
+    }[]
+    return Object.fromEntries(rows.map((row) => [row.path, row.fingerprint]))
+  }
+
+  markFileMined(path: string, fingerprint: string, found: number): void {
+    this.db
+      .prepare(
+        `INSERT INTO mined_files (path, fingerprint, found, mined_at)
+         VALUES (?, ?, ?, datetime('now'))
+         ON CONFLICT(path) DO UPDATE
+           SET fingerprint = excluded.fingerprint,
+               found = excluded.found,
+               mined_at = excluded.mined_at`
+      )
+      .run(path, fingerprint, found)
+  }
+
+  /**
+   * Insert answers recovered from history, skipping ones already seeded.
+   *
+   * Mined rows carry `provenance: 'human'` because they *are* the human's real
+   * choices, and an empty `pane_key` because no pane produced them — which is
+   * also what the partial unique index keys on. Returns how many were new.
+   */
+  seedMinedDecisions(
+    seeds: readonly { questionText: string; answer: string; cwd?: string }[]
+  ): number {
+    const statement = this.db.prepare(
+      `INSERT OR IGNORE INTO decisions
+         (pane_key, agent_type, cwd, question_text, prompt_json, answer, provenance)
+       VALUES ('', 'claude', ?, ?, '', ?, 'human')`
+    )
+    let inserted = 0
+    for (const seed of seeds) {
+      const result = statement.run(seed.cwd ?? null, seed.questionText, seed.answer)
+      inserted += Number(result.changes ?? 0)
+    }
+    return inserted
+  }
+
+  /**
+   * Human answers to *different* questions that look related to this one.
+   *
+   * Evidence for a generated answer, never a decision in itself: an answer to
+   * another question says how this person tends to choose, not what they chose
+   * here. `findPriorAnswers` remains the only exact-match path, and only that
+   * one may drive a recall send.
+   *
+   * ponytail: linear scan + word overlap, no embeddings. The corpus is tens of
+   * rows; revisit only past a few thousand.
+   */
+  findRelatedAnswers(
+    questionText: string,
+    options: { header?: string; limit?: number } = {}
+  ): AutopilotDecisionRow[] {
+    const rows = this.db
+      .prepare(
+        `SELECT * FROM decisions
+          WHERE provenance = 'human' AND answer IS NOT NULL AND question_text <> ?
+          ORDER BY id DESC LIMIT 500`
+      )
+      .all(questionText) as DecisionDbRow[]
+    return rankRelatedQuestions(rows, questionText, {
+      ...(options.header ? { header: options.header } : {}),
+      limit: options.limit ?? 5
+    }).map(toRow)
   }
 
   /** Record what Autopilot would have answered. Shadow mode never sends this. */

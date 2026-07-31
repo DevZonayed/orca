@@ -21,7 +21,10 @@ export type GenerateAnswerResult =
 
 export type AutopilotDecisionInputs = {
   prompt: AskUserQuestionPrompt
+  /** Answers to *this exact question*. Only these may drive a recall. */
   priorAnswers: PriorAnswerExample[]
+  /** Answers to related but different questions. Generation context only. */
+  relatedAnswers?: PriorAnswerExample[]
   context: Omit<AutopilotAnswerContext, 'prompt' | 'priorAnswers'>
   /** Absent when no generation agent is configured, which is an abstention, not an error. */
   generate?: (generationPrompt: string) => Promise<GenerateAnswerResult>
@@ -64,7 +67,14 @@ export async function decideAutopilotAnswer(
   if (!generate) {
     return abstain('no generation agent configured')
   }
-  const generationPrompt = buildAutopilotAnswerPrompt({ ...context, prompt, priorAnswers })
+  // Why: related answers join the prompt only here, below the recall branch.
+  // They describe how this human tends to choose; they are not a choice for
+  // this question, so they must never short-circuit into a sent answer.
+  const generationPrompt = buildAutopilotAnswerPrompt({
+    ...context,
+    prompt,
+    priorAnswers: [...priorAnswers, ...(inputs.relatedAnswers ?? [])]
+  })
   let result: GenerateAnswerResult
   try {
     result = await generate(generationPrompt)
