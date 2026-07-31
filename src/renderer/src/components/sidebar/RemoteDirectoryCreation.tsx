@@ -21,6 +21,7 @@ export function RemoteDirectoryCreation({
   const mountedRef = useRef(true)
 
   useEffect(() => {
+    // Strict Mode replays cleanup before the component's live effect.
     mountedRef.current = true
     return () => {
       mountedRef.current = false
