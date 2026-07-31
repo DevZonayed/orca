@@ -8,6 +8,7 @@ import type {
   HostedReviewInfo,
   HostedReviewProvider
 } from '../shared/hosted-review'
+import type { AutopilotActivity } from '../shared/autopilot-activity'
 import type { NativeFileDropPayload } from '../shared/native-file-drop'
 import type { BrowserFindSource } from '../shared/browser-find-source'
 import type { DashboardSnapshot, DashboardRevealAgentArgs } from '../shared/dashboard-snapshot'
@@ -3537,6 +3538,11 @@ export type PreloadApi = {
     refresh: () => Promise<PluginHostListEntry[]>
     /** Fires whenever installed plugins, worker states, panels, or content packs change. */
     onChanged: (callback: (event: PluginChangeEvent) => void) => () => void
+  }
+  autopilot: {
+    /** Read-only shadow-mode activity for the settings panel. Pulled on demand:
+     *  the main-side read is synchronous sqlite, so it must not run per render. */
+    getActivity: () => Promise<AutopilotActivity>
   }
   agentStatus: {
     /** Listen for agent status updates forwarded from native hook receivers. */
