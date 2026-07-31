@@ -4,12 +4,15 @@ import {
 } from '../../shared/agent-question-answered-option'
 import type { PriorAnswerExample } from '../../shared/autopilot-answer-prompt'
 import { decideAutopilotAnswer, type GenerateAnswerResult } from './answer-decider'
+import type { AutopilotSendRequest, AutopilotSendResult } from './answer-sender'
 import type { AutopilotDecisionStore } from './decision-store'
 
 /** The subset of an enriched hook payload the observer reads. */
 export type ObservedAgentStatus = {
   paneKey: string
   worktreeId?: string
+  /** Null for a local pane; anything else means the pane lives over SSH. */
+  connectionId?: string | null
   payload: {
     state: string
     prompt?: string
@@ -24,6 +27,8 @@ export type ShadowObserverDeps = {
   /** Null when no generation agent is configured; the decider abstains. */
   createGenerator: () => ((prompt: string) => Promise<GenerateAnswerResult>) | null
   getCwdForPane?: (status: ObservedAgentStatus) => string | undefined
+  /** Absent in shadow-only builds and tests, where no send path exists at all. */
+  send?: (request: AutopilotSendRequest) => AutopilotSendResult
 }
 
 const MAX_TRACKED_PANES = 200
@@ -123,6 +128,8 @@ export class AutopilotShadowObserver {
       },
       ...(generate ? { generate } : {})
     })
+    // Why: recorded before any send is attempted, and unconditionally. Turning
+    // Autopilot on must not blind the audit that justifies turning it on.
     store.recordProposal({
       paneKey: status.paneKey,
       agentType: status.payload.agentType ?? 'unknown',
@@ -132,6 +139,33 @@ export class AutopilotShadowObserver {
       reason: proposal.reason,
       ...(prompt.header ? { questionHeader: prompt.header } : {}),
       ...(proposal.answer ? { proposedAnswer: proposal.answer } : {}),
+      ...(status.worktreeId ? { worktreeId: status.worktreeId } : {}),
+      ...(cwd ? { cwd } : {})
+    })
+
+    if (!proposal.answer || !this.deps.send) {
+      return
+    }
+    const result = this.deps.send({
+      paneKey: status.paneKey,
+      decidedInteractivePrompt: interactivePrompt,
+      answer: proposal.answer,
+      agentType: status.payload.agentType,
+      connectionId: status.connectionId ?? null
+    })
+    if (!result.sent) {
+      return
+    }
+    // Why: provenance 'autopilot'. This row must never be recalled as evidence
+    // of what the human wants — that is the whole reason the column exists.
+    store.recordDecision({
+      paneKey: status.paneKey,
+      agentType: status.payload.agentType ?? 'unknown',
+      questionText,
+      promptJson: interactivePrompt,
+      provenance: 'autopilot',
+      answer: proposal.answer,
+      ...(prompt.header ? { questionHeader: prompt.header } : {}),
       ...(status.worktreeId ? { worktreeId: status.worktreeId } : {}),
       ...(cwd ? { cwd } : {})
     })

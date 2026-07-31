@@ -10022,6 +10022,40 @@ export class OrcaRuntimeService {
     }
   }
 
+  /**
+   * Write a single answer keystroke to a pane that is still showing an expected
+   * question, for Autopilot.
+   *
+   * Deliberately narrow. It re-reads the live snapshot and refuses unless the
+   * pane is still waiting on the byte-identical `interactivePrompt` the caller
+   * decided against, so a question answered by the human — or replaced by a
+   * different one — in the interval cannot be typed over. One character, never
+   * a newline: a digit completes a single-select on its own, and not
+   * synthesizing Enter removes the mangled-submit failure mode outright
+   * (cf. terminal-input-quarantine.ts).
+   */
+  writeAutopilotAnswerKeystroke(request: {
+    paneKey: string
+    expectedInteractivePrompt: string
+    data: string
+  }): { sent: boolean; reason?: string } {
+    const snapshot = this.latestAgentStatusByPaneKey.get(request.paneKey)
+    if (!snapshot) {
+      return { sent: false, reason: 'pane-unknown' }
+    }
+    if (snapshot.payload.state !== 'waiting') {
+      return { sent: false, reason: 'pane-not-waiting' }
+    }
+    if (snapshot.payload.interactivePrompt !== request.expectedInteractivePrompt) {
+      return { sent: false, reason: 'prompt-changed' }
+    }
+    if (request.data.length !== 1) {
+      return { sent: false, reason: 'not-a-single-keystroke' }
+    }
+    const wrote = this.ptyController?.write(snapshot.ptyId, request.data) ?? false
+    return wrote ? { sent: true } : { sent: false, reason: 'not-writable' }
+  }
+
   getPtyOutputSequence(ptyId: string): number {
     return this.ptyOutputSequenceById.get(ptyId) ?? 0
   }

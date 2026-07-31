@@ -9159,6 +9159,10 @@
           "19ad21615a": "Auto-generate tab titles",
           "b036c7a409": "Derive short stable tab names from the first known agent prompt. Manual renames always win."
         },
+        "autopilot-auto-answer-copy": {
+          "title": "Autopilot answers",
+          "description": "Answers non-destructive agent questions on local panes for you, using your past choices. Questions that mention anything consequential are always left for you."
+        },
         "cli": {
           "source": {
             "control": {

@@ -32,6 +32,10 @@ import {
 } from './agent-generated-tab-title-copy'
 import { getAgentStatusHooksDescription, getAgentStatusHooksTitle } from './agent-status-hooks-copy'
 import {
+  getAutopilotAutoAnswerDescription,
+  getAutopilotAutoAnswerTitle
+} from './autopilot-auto-answer-copy'
+import {
   SettingsBadge,
   SettingsSegmentedControl,
   SettingsSubsectionHeader,
@@ -867,6 +871,8 @@ export function AgentsPane({
 
       <AgentGeneratedTabTitlesSetting settings={settings} updateSettings={updateSettings} />
 
+      <AutopilotAutoAnswerSetting settings={settings} updateSettings={updateSettings} />
+
       <AgentAwakeSetting settings={settings} updateSettings={updateSettings} />
 
       <AgentCacheTimerSection settings={settings} updateSettings={updateSettings} />
@@ -1047,6 +1053,28 @@ export function AgentStatusHooksSetting({
           })
         }
         ariaLabel={getAgentStatusHooksTitle()}
+      />
+    </section>
+  )
+}
+
+export function AutopilotAutoAnswerSetting({
+  settings,
+  updateSettings
+}: AgentsPaneProps): React.JSX.Element {
+  const enabled = settings.autopilotAutoAnswerEnabled === true
+  return (
+    <section className="space-y-3">
+      <SettingsSwitchRow
+        label={getAutopilotAutoAnswerTitle()}
+        description={getAutopilotAutoAnswerDescription()}
+        checked={enabled}
+        onChange={() =>
+          updateSettings({
+            autopilotAutoAnswerEnabled: !enabled
+          })
+        }
+        ariaLabel={getAutopilotAutoAnswerTitle()}
       />
     </section>
   )
