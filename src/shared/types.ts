@@ -2715,6 +2715,10 @@ export type GlobalSettings = {
   richMarkdownSpellcheckEnabled?: boolean
   /** Whether local markdown review note controls and the review panel are shown. */
   markdownReviewToolsEnabled: boolean
+  /** When enabled, Autopilot answers non-destructive agent questions on local
+   *  panes without waiting for a keystroke. Off unless explicitly turned on:
+   *  it is the only setting that types into a live agent session. */
+  autopilotAutoAnswerEnabled?: boolean
   /** Why: mirrors terminal selection-paste muscle memory without mutating the
    *  normal system clipboard; Linux and macOS enable it by default, Windows
    *  leaves middle-click semantics unchanged unless the user opts in. */

@@ -198,6 +198,9 @@ export function getDefaultSettings(homedir: string): GlobalSettings {
     editorWordWrap: true,
     richMarkdownSpellcheckEnabled: true,
     markdownReviewToolsEnabled: true,
+    // Why off: this is the only setting that lets Orca type into a live agent
+    // session on the user's behalf. It must be chosen, never inherited.
+    autopilotAutoAnswerEnabled: false,
     primarySelectionMiddleClickPaste: getDefaultPrimarySelectionMiddleClickPaste(),
     primarySelectionMiddleClickPasteDefaultedForLinux:
       typeof process !== 'undefined' && process.platform === 'linux',

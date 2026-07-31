@@ -19,6 +19,7 @@ import {
 } from './autopilot/decision-recorder'
 import { AutopilotShadowObserver } from './autopilot/shadow-observer'
 import { createAutopilotAnswerGenerator } from './autopilot/answer-generation'
+import { sendAutopilotAnswer } from './autopilot/answer-sender'
 import { ensureActiveOrcaProfile, initOrcaProfilePaths } from './orca-profiles/profile-index-store'
 import { getOrcaCloudAuthConfig } from './orca-profiles/profile-cloud-auth-config'
 import { getProfileUserDataPath } from './orca-profiles/profile-storage-paths'
@@ -444,6 +445,19 @@ function getAutopilotShadowObserver(): AutopilotShadowObserver | null {
         // Why: a neutral directory. The generating CLI reasons about the question
         // text alone, so it must not inherit a project's agent configuration.
         getLocalCwd: () => app.getPath('home')
+      }),
+    send: (request) =>
+      sendAutopilotAnswer(request, {
+        isEnabled: () => currentStore.getSettings().autopilotAutoAnswerEnabled === true,
+        readLivePrompt: (paneKey) =>
+          agentHookServer.getStatusSnapshotForPane(paneKey)[0]?.interactivePrompt,
+        wasAlreadyAnswered: (paneKey, questionText) =>
+          getAutopilotDecisionStore()
+            .findPriorAnswers(questionText, {
+              provenance: 'autopilot'
+            })
+            .some((row) => row.paneKey === paneKey),
+        write: (write) => currentRuntime.writeAutopilotAnswerKeystroke(write)
       })
   })
   return autopilotShadowObserver

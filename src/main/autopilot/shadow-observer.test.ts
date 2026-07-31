@@ -119,12 +119,81 @@ describe('AutopilotShadowObserver', () => {
     await expect(observer.observeAsync(waitingStatus())).resolves.toBeUndefined()
   })
 
-  it('exposes no way to send input into a pane', () => {
+  it('has no send capability of its own — only an injected one', () => {
     const { observer } = setup()
     const surface = [
       ...Object.getOwnPropertyNames(Object.getPrototypeOf(observer)),
       ...Object.getOwnPropertyNames(observer)
     ]
+    // Sending exists from M3, but it arrives through deps. The observer must
+    // never grow its own write path, so removing the dep still removes sending.
     expect(surface.filter((name) => /send|write|inject|paste|type/i.test(name))).toEqual([])
+  })
+})
+
+describe('AutopilotShadowObserver sending', () => {
+  function sendingSetup(sendResult: { sent: boolean } = { sent: true }) {
+    const store = new AutopilotDecisionStore(':memory:')
+    const send = vi.fn().mockReturnValue(sendResult)
+    store.recordDecision({
+      paneKey: 'pane-0',
+      agentType: 'claude',
+      questionText: 'Which auth should the API use?',
+      promptJson: interactivePrompt,
+      provenance: 'human',
+      answer: 'API keys'
+    })
+    const observer = new AutopilotShadowObserver({
+      getStore: () => store,
+      createGenerator: () => null,
+      send
+    })
+    return { store, observer, send }
+  }
+
+  it('sends the recalled answer and records it with autopilot provenance', async () => {
+    const { store, observer, send } = sendingSetup()
+    await observer.observeAsync(waitingStatus())
+    expect(send).toHaveBeenCalledWith(
+      expect.objectContaining({ paneKey: 'pane-1', answer: 'API keys', connectionId: null })
+    )
+    const autopilotRows = store.findPriorAnswers('Which auth should the API use?', {
+      provenance: 'autopilot'
+    })
+    expect(autopilotRows).toHaveLength(1)
+    expect(autopilotRows[0].answer).toBe('API keys')
+  })
+
+  it('records nothing as an autopilot decision when the send was refused', async () => {
+    const { store, observer } = sendingSetup({ sent: false })
+    await observer.observeAsync(waitingStatus())
+    expect(
+      store.findPriorAnswers('Which auth should the API use?', { provenance: 'autopilot' })
+    ).toHaveLength(0)
+  })
+
+  it('never sends an abstention', async () => {
+    const store = new AutopilotDecisionStore(':memory:')
+    const send = vi.fn()
+    const observer = new AutopilotShadowObserver({
+      getStore: () => store,
+      createGenerator: () => null,
+      send
+    })
+    await observer.observeAsync(waitingStatus())
+    expect(send).not.toHaveBeenCalled()
+    expect(store.shadowAgreement().abstained).toBe(1)
+  })
+
+  it('records the shadow proposal even when sending is wired, so the audit is never blinded', async () => {
+    const { store, observer } = sendingSetup()
+    await observer.observeAsync(waitingStatus())
+    expect(store.shadowAgreement().pending).toBe(1)
+  })
+
+  it('passes the pane connection through so the sender can refuse SSH', async () => {
+    const { observer, send } = sendingSetup()
+    await observer.observeAsync({ ...waitingStatus(), connectionId: 'ssh-1' })
+    expect(send).toHaveBeenCalledWith(expect.objectContaining({ connectionId: 'ssh-1' }))
   })
 })
