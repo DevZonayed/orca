@@ -1,28 +1,33 @@
 name: Fork Build
 
-run-name: Fork build ${{ inputs.platform }} (${{ github.ref_name }})
+run-name: Fork build ${{ github.ref_name }}
 
 # Why: release-cut, release-mac-build and hourly-mac-build are all gated to
 # stablyai/orca and use org-only Blacksmith runners, so a fork has no way to
 # produce an installable artifact. This is that way: unsigned, no notarization,
-# no publish — just pack and upload. Never runs on upstream.
+# published to this fork's own Releases tab. Never runs on upstream.
+#
+# Publishing goes through `gh release`, not electron-builder's own publisher:
+# the `publish:` block in config/electron-builder.config.cjs is hardcoded to
+# owner `stablyai`, so `--publish always` would target upstream and 403. Driving
+# the release here keeps that shared config untouched for clean upstream merges.
 
 on:
   workflow_dispatch:
-    inputs:
-      platform:
-        description: Platform to build
-        required: true
-        type: choice
-        default: mac
-        options:
-          - mac
-          - linux
 
 jobs:
   build:
     if: github.repository != 'stablyai/orca'
-    runs-on: ${{ inputs.platform == 'mac' && 'macos-15' || 'ubuntu-latest' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: mac
+            os: macos-15
+          - platform: linux
+            os: ubuntu-latest
+
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 120
 
     steps:
@@ -40,13 +45,13 @@ jobs:
 
       # Mirrors release-cut: pnpm's bundled node-gyp fails the native postinstall on Linux.
       - name: Use external node-gyp (Linux only)
-        if: runner.os == 'Linux'
+        if: matrix.platform == 'linux'
         run: |
           npm install -g node-gyp@11.5.0
           echo "npm_config_node_gyp=$(npm root -g)/node-gyp/bin/node-gyp.js" >> "$GITHUB_ENV"
 
       - name: Install Linux computer-use provider dependencies
-        if: runner.os == 'Linux'
+        if: matrix.platform == 'linux'
         run: sudo apt-get update && sudo apt-get install -y python3-gi gir1.2-atspi-2.0 at-spi2-core xclip xdotool
 
       - name: Install dependencies
@@ -54,33 +59,85 @@ jobs:
 
       # Why not `pnpm run build:mac` etc: those are local-dev scripts and omit
       # `--publish never`, so electron-builder auto-publishes on CI and fails on
-      # the missing GH_TOKEN after packaging. release-cut drives electron-builder
-      # directly for the same reason.
+      # the missing GH_TOKEN after packaging.
       - name: Build desktop bundle
         run: pnpm run build:desktop
 
       - name: Build macOS helper apps
-        if: runner.os == 'macOS'
+        if: matrix.platform == 'mac'
         run: pnpm run build:computer-macos && pnpm run build:notification-status-macos
 
       - name: Ensure Electron native runtime
         run: pnpm run ensure:electron-runtime
 
       - name: Package macOS
-        if: runner.os == 'macOS'
+        if: matrix.platform == 'mac'
         run: pnpm exec electron-builder --config config/electron-builder.config.cjs --mac --publish never
 
       - name: Package Linux
-        if: runner.os == 'Linux'
+        if: matrix.platform == 'linux'
         run: pnpm exec electron-builder --config config/electron-builder.config.cjs --linux AppImage deb --publish never
 
       - uses: actions/upload-artifact@v7
         with:
-          name: orca-${{ inputs.platform }}-${{ github.sha }}
+          name: orca-${{ matrix.platform }}
           path: |
             dist/*.dmg
             dist/*.zip
             dist/*.AppImage
             dist/*.deb
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 7
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/download-artifact@v8
+        with:
+          path: release-assets
+          merge-multiple: true
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REF_NAME: ${{ github.ref_name }}
+          SHA: ${{ github.sha }}
+          RUN_NUMBER: ${{ github.run_number }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          VERSION="$(node -p "require('./package.json').version")"
+          TAG="fork-v${VERSION}-build.${RUN_NUMBER}"
+
+          {
+            echo "Unsigned fork build of \`${REF_NAME}\` at \`${SHA:0:12}\`."
+            echo
+            echo "Built by [run ${RUN_ID}](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}) from Orca ${VERSION}."
+            echo
+            echo '## Install'
+            echo
+            echo '**macOS** — mount the `.dmg` for your chip (`arm64` for Apple Silicon, `x64` for Intel) and drag Orca to Applications. It is unsigned and un-notarized, so Gatekeeper blocks the first launch until you clear the quarantine flag:'
+            echo
+            echo '```'
+            echo 'xattr -dr com.apple.quarantine /Applications/Orca.app'
+            echo '```'
+            echo
+            echo '**Linux** — `sudo dpkg -i orca-ide_*.deb`, or `chmod +x orca-linux.AppImage && ./orca-linux.AppImage`.'
+            echo
+            echo '> Not an official stablyai/orca release. Unsigned, not notarized, and the in-app updater still points at upstream.'
+          } >notes.md
+
+          gh release create "$TAG" release-assets/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$SHA" \
+            --title "Orca ${VERSION} (fork build ${RUN_NUMBER})" \
+            --notes-file notes.md
+
+          echo "Published $TAG" >>"$GITHUB_STEP_SUMMARY"
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json url --jq .url >>"$GITHUB_STEP_SUMMARY"
