@@ -9,6 +9,9 @@ export type AgentQuestionAnsweredInferenceRequest = {
   baselineStateStartedAt: number
   baselinePrompt: string
   baselineAgentType: AgentType | undefined
+  /** The submit keystroke, so main can resolve which option was chosen against
+   *  its own cached prompt. Absent for answer surfaces that never see one. */
+  submittedData?: string
 }
 
 /** True for the ask-the-user-a-question tool across agents: Claude's

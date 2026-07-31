@@ -50,8 +50,19 @@ describe('agent question-answered inference', () => {
       baselineUpdatedAt: 1_000,
       baselineStateStartedAt: 900,
       baselinePrompt: 'pick a color',
-      baselineAgentType: 'claude'
+      baselineAgentType: 'claude',
+      submittedData: '\r'
     })
+  })
+
+  it('forwards the digit that was pressed so main can resolve the chosen option', () => {
+    const { inference, inferQuestionAnswered } = makeInference(makeWaitingQuestionEntry())
+
+    inference.observeSentTerminalInput('2')
+
+    expect(inferQuestionAnswered).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ submittedData: '2' })
+    )
   })
 
   it('accepts kitty-keyboard Enter encodings', () => {

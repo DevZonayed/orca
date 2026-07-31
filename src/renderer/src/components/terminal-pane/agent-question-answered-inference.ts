@@ -25,7 +25,8 @@ type AgentQuestionAnsweredInferenceDeps = {
 
 function inferQuestionAnsweredFromEntry(
   deps: AgentQuestionAnsweredInferenceDeps,
-  entry: AgentStatusEntry | undefined
+  entry: AgentStatusEntry | undefined,
+  submittedData?: string
 ): boolean {
   const now = deps.now ?? Date.now
   if (
@@ -42,7 +43,8 @@ function inferQuestionAnsweredFromEntry(
     baselineUpdatedAt: entry.updatedAt,
     baselineStateStartedAt: entry.stateStartedAt,
     baselinePrompt: entry.prompt,
-    baselineAgentType: entry.agentType
+    baselineAgentType: entry.agentType,
+    ...(submittedData === undefined ? {} : { submittedData })
   })
   return true
 }
@@ -79,7 +81,11 @@ export function createAgentQuestionAnsweredInference({
       if (!entry || !isQuestionAnsweredSubmitInput(data, entry.interactivePrompt)) {
         return
       }
-      inferQuestionAnsweredFromEntry({ paneKey, getStatusEntry, inferQuestionAnswered, now }, entry)
+      inferQuestionAnsweredFromEntry(
+        { paneKey, getStatusEntry, inferQuestionAnswered, now },
+        entry,
+        data
+      )
     }
   }
 }
