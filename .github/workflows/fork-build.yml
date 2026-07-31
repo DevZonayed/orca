@@ -53,17 +53,31 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build macOS
+      # Why not `pnpm run build:mac` etc: those are local-dev scripts and omit
+      # `--publish never`, so electron-builder auto-publishes on CI and fails on
+      # the missing GH_TOKEN after packaging. release-cut drives electron-builder
+      # directly for the same reason.
+      - name: Build desktop bundle
+        run: pnpm run build:desktop
+
+      - name: Build macOS helper apps
         if: runner.os == 'macOS'
-        run: pnpm run build:mac
+        run: pnpm run build:computer-macos && pnpm run build:notification-status-macos
 
-      - name: Build Windows
+      - name: Ensure Electron native runtime
+        run: pnpm run ensure:electron-runtime
+
+      - name: Package macOS
+        if: runner.os == 'macOS'
+        run: pnpm exec electron-builder --config config/electron-builder.config.cjs --mac --publish never
+
+      - name: Package Windows
         if: runner.os == 'Windows'
-        run: pnpm run build:win
+        run: pnpm exec electron-builder --config config/electron-builder.config.cjs --win --publish never
 
-      - name: Build Linux
+      - name: Package Linux
         if: runner.os == 'Linux'
-        run: pnpm run build:linux
+        run: pnpm exec electron-builder --config config/electron-builder.config.cjs --linux AppImage deb --publish never
 
       - uses: actions/upload-artifact@v7
         with:
