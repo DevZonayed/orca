@@ -1,4 +1,6 @@
-import type Database from '../sqlite/sync-database'
+import { chmodSync, existsSync, mkdirSync } from 'node:fs'
+import { dirname } from 'node:path'
+import Database from '../sqlite/sync-database'
 
 // Schema versions: v1 initial decisions table. v2 adds shadow_proposals.
 // v3 adds mined_files so a re-scan skips unchanged transcripts.
@@ -57,4 +59,38 @@ export function createAutopilotTables(db: Database.Database): void {
         ON decisions (question_text, answer, provenance)
         WHERE answer IS NOT NULL AND pane_key = '';
   `)
+}
+
+function hardenDatabaseFiles(dbPath: string): void {
+  if (dbPath === ':memory:' || process.platform === 'win32') {
+    // Why: Windows relies on Orca's current-user-only userData DACL; POSIX mode bits are inert there.
+    return
+  }
+  for (const path of [dbPath, `${dbPath}-wal`, `${dbPath}-shm`]) {
+    if (existsSync(path)) {
+      chmodSync(path, 0o600)
+    }
+  }
+}
+
+/**
+ * Open Autopilot's database, create its tables, and stamp the schema version.
+ *
+ * One connection is shared by the store and the activity report, so a reader
+ * never opens a second handle to the same file.
+ */
+export function openAutopilotDatabase(dbPath: string): Database.Database {
+  if (dbPath !== ':memory:') {
+    mkdirSync(dirname(dbPath), { recursive: true })
+  }
+  const db = new Database(dbPath)
+  db.pragma('journal_mode = WAL')
+  db.pragma('synchronous = NORMAL')
+  db.pragma('busy_timeout = 5000')
+  createAutopilotTables(db)
+  if (Number(db.pragma('user_version', { simple: true }) ?? 0) < AUTOPILOT_SCHEMA_VERSION) {
+    db.exec(`PRAGMA user_version = ${AUTOPILOT_SCHEMA_VERSION}`)
+  }
+  hardenDatabaseFiles(dbPath)
+  return db
 }

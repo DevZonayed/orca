@@ -10102,6 +10102,24 @@
           "webUnavailable": "Switching builds is only available in the desktop app.",
           "hourlyMacOnlyAria": "Hourly (macOS only)",
           "hourlyMacOnly": "Hourly builds are produced only for macOS. Linux and Windows stay on Stable or RC."
+        },
+        "autopilot-activity-copy": {
+          "title": "Autopilot activity",
+          "description": "What Autopilot would have answered, scored against what you actually chose. Recorded whether or not Autopilot is turned on.",
+          "empty": "Nothing recorded yet. Answer an agent question and it will appear here.",
+          "untested": "Not yet scored",
+          "declined": "Why it declined",
+          "recent": "Recent questions",
+          "proposed": "proposed “{answer}”",
+          "chose": "· you chose “{answer}”",
+          "stat": {
+            "agreement": "Agreement",
+            "scored": "Scored",
+            "sent": "Answered for you",
+            "declined": "Declined",
+            "pending": "Awaiting your answer",
+            "decisions": "Decisions remembered"
+          }
         }
       },
       "right": {

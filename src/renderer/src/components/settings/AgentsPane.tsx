@@ -35,6 +35,7 @@ import {
   getAutopilotAutoAnswerDescription,
   getAutopilotAutoAnswerTitle
 } from './autopilot-auto-answer-copy'
+import { AutopilotActivityPanel } from './AutopilotActivityPanel'
 import {
   SettingsBadge,
   SettingsSegmentedControl,
@@ -872,6 +873,8 @@ export function AgentsPane({
       <AgentGeneratedTabTitlesSetting settings={settings} updateSettings={updateSettings} />
 
       <AutopilotAutoAnswerSetting settings={settings} updateSettings={updateSettings} />
+
+      <AutopilotActivityPanel />
 
       <AgentAwakeSetting settings={settings} updateSettings={updateSettings} />
 
