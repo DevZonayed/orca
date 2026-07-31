@@ -12,7 +12,7 @@ export function autopilotDatabasePath(): string {
 }
 
 /** Opened on first answered question, so users who never see one pay nothing. */
-function getStore(): AutopilotDecisionStore {
+export function getAutopilotDecisionStore(): AutopilotDecisionStore {
   if (!store) {
     store = new AutopilotDecisionStore(autopilotDatabasePath())
   }
@@ -27,7 +27,8 @@ function getStore(): AutopilotDecisionStore {
  */
 export function recordAnsweredQuestion(record: QuestionAnsweredRecord): void {
   try {
-    getStore().recordDecision({
+    const store = getAutopilotDecisionStore()
+    store.recordDecision({
       paneKey: record.paneKey,
       agentType: record.agentType,
       questionText: record.answered.question,
@@ -37,6 +38,12 @@ export function recordAnsweredQuestion(record: QuestionAnsweredRecord): void {
       ...(record.answered.answer ? { answer: record.answered.answer } : {}),
       ...(record.worktreeId ? { worktreeId: record.worktreeId } : {})
     })
+    // Why: the human's answer is the grade for any shadow proposal still open on
+    // this pane. Skipped when the choice is unknowable (Enter), because scoring
+    // against an unknown answer would report a mismatch that never happened.
+    if (record.answered.answer) {
+      store.resolveProposal(record.paneKey, record.answered.question, record.answered.answer)
+    }
   } catch (error) {
     console.warn('[autopilot] failed to record answered question', error)
   }
