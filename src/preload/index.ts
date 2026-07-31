@@ -4,6 +4,7 @@ import { electronAPI } from '@electron-toolkit/preload'
 import { preloadE2EConfig } from './e2e-config'
 import { glApi } from './gitlab'
 import type { AppIdentity } from '../shared/app-identity'
+import type { AutopilotActivity } from '../shared/autopilot-activity'
 import type { DashboardSnapshot, DashboardRevealAgentArgs } from '../shared/dashboard-snapshot'
 import type {
   TerminalPreviewConnectResult,
@@ -4662,6 +4663,12 @@ const api = {
       ipcRenderer.on('mobile:unpairedDeviceAuthFailure', listener)
       return () => ipcRenderer.removeListener('mobile:unpairedDeviceAuthFailure', listener)
     }
+  },
+
+  autopilot: {
+    /** Read-only shadow-mode activity for the settings panel. Pulled on demand:
+     *  the main-side read is synchronous sqlite, so it must not run per render. */
+    getActivity: (): Promise<AutopilotActivity> => ipcRenderer.invoke('autopilot:getActivity')
   },
 
   agentStatus: {

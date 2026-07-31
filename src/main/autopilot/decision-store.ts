@@ -1,8 +1,9 @@
-import { chmodSync, existsSync, mkdirSync } from 'node:fs'
-import { dirname } from 'node:path'
-import Database from '../sqlite/sync-database'
+import type Database from '../sqlite/sync-database'
 import { rankRelatedQuestions } from './question-similarity'
-import { AUTOPILOT_SCHEMA_VERSION, createAutopilotTables } from './autopilot-schema'
+import { openAutopilotDatabase } from './autopilot-schema'
+import { readAutopilotActivity, type AutopilotActivity } from './activity-report'
+
+export type { AutopilotActivity, ActivityProposal, AbstentionReason } from './activity-report'
 import {
   toRow,
   type AutopilotDecisionInput,
@@ -31,18 +32,6 @@ export type {
   ShadowProposalRow
 } from './shadow-proposal-rows'
 
-function hardenDatabaseFiles(dbPath: string): void {
-  if (dbPath === ':memory:' || process.platform === 'win32') {
-    // Why: Windows relies on Orca's current-user-only userData DACL; POSIX mode bits are inert there.
-    return
-  }
-  for (const path of [dbPath, `${dbPath}-wal`, `${dbPath}-shm`]) {
-    if (existsSync(path)) {
-      chmodSync(path, 0o600)
-    }
-  }
-}
-
 /**
  * Durable record of questions agents asked and the answers that settled them.
  *
@@ -52,29 +41,9 @@ function hardenDatabaseFiles(dbPath: string): void {
 export class AutopilotDecisionStore {
   private readonly db: Database.Database
 
-  constructor(dbPath: string) {
-    if (dbPath !== ':memory:') {
-      mkdirSync(dirname(dbPath), { recursive: true })
-    }
-    this.db = new Database(dbPath)
-    this.db.pragma('journal_mode = WAL')
-    this.db.pragma('synchronous = NORMAL')
-    this.db.pragma('busy_timeout = 5000')
-    this.createTables()
-    this.migrate()
-    hardenDatabaseFiles(dbPath)
-  }
-
-  private createTables(): void {
-    createAutopilotTables(this.db)
-  }
-
-  private migrate(): void {
-    const current = Number(this.db.pragma('user_version', { simple: true }) ?? 0)
-    if (current >= AUTOPILOT_SCHEMA_VERSION) {
-      return
-    }
-    this.db.exec(`PRAGMA user_version = ${AUTOPILOT_SCHEMA_VERSION}`)
+  /** Accepts an already-open connection so the activity report can share it. */
+  constructor(source: string | Database.Database) {
+    this.db = typeof source === 'string' ? openAutopilotDatabase(source) : source
   }
 
   recordDecision(decision: AutopilotDecisionInput): AutopilotDecisionRow {
@@ -274,6 +243,11 @@ export class AutopilotDecisionStore {
          FROM shadow_proposals`
       )
       .get() as ShadowAgreement
+  }
+
+  /** Everything the settings panel shows, in one bounded read. */
+  readActivity(): AutopilotActivity {
+    return readAutopilotActivity(this.db)
   }
 
   close(): void {
