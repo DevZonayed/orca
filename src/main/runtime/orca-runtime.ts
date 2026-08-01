@@ -2640,6 +2640,10 @@ async function hasLocalWorktreeBaseRef(
   )
 }
 
+/** Matches native chat's question pacing: a key batched with the next one
+ *  commits before the selector has applied it. */
+const AUTOPILOT_ANSWER_STEP_MS = 120
+
 export class OrcaRuntimeService {
   private readonly runtimeId = randomUUID()
   private readonly startedAt = Date.now()
@@ -10037,7 +10041,7 @@ export class OrcaRuntimeService {
   writeAutopilotAnswerKeystroke(request: {
     paneKey: string
     expectedInteractivePrompt: string
-    data: string
+    keystrokes: readonly string[]
   }): { sent: boolean; reason?: string } {
     const snapshot = this.latestAgentStatusByPaneKey.get(request.paneKey)
     if (!snapshot) {
@@ -10049,11 +10053,31 @@ export class OrcaRuntimeService {
     if (snapshot.payload.interactivePrompt !== request.expectedInteractivePrompt) {
       return { sent: false, reason: 'prompt-changed' }
     }
-    if (request.data.length !== 1) {
-      return { sent: false, reason: 'not-a-single-keystroke' }
+    if (request.keystrokes.length === 0) {
+      return { sent: false, reason: 'nothing-to-send' }
     }
-    const wrote = this.ptyController?.write(snapshot.ptyId, request.data) ?? false
-    return wrote ? { sent: true } : { sent: false, reason: 'not-writable' }
+    const [first, ...rest] = request.keystrokes
+    const ptyId = snapshot.ptyId
+    if (!(this.ptyController?.write(ptyId, first) ?? false)) {
+      return { sent: false, reason: 'not-writable' }
+    }
+    // Why: the remaining keys cannot re-check the prompt — the selector moves
+    // between them by design, so the payload is expected to change. The
+    // verification above covers the sequence, which is the same guarantee a
+    // human answering through native chat gets.
+    rest.forEach((keys, index) => {
+      setTimeout(
+        () => {
+          try {
+            this.ptyController?.write(ptyId, keys)
+          } catch {
+            // The pane may have closed mid-sequence; the agent simply stays waiting.
+          }
+        },
+        (index + 1) * AUTOPILOT_ANSWER_STEP_MS
+      )
+    })
+    return { sent: true }
   }
 
   getPtyOutputSequence(ptyId: string): number {

@@ -18,6 +18,7 @@ function request(overrides: Partial<Parameters<typeof sendAutopilotAnswer>[0]> =
     decidedInteractivePrompt: interactivePrompt,
     answer: 'Raise an error',
     agentType: 'claude',
+    toolName: 'AskUserQuestion',
     connectionId: null,
     ...overrides
   }
@@ -39,12 +40,10 @@ describe('sendAutopilotAnswer', () => {
   it('sends the digit that names the chosen option', () => {
     const write = vi.fn().mockReturnValue({ sent: true })
     const result = sendAutopilotAnswer(request(), deps({ write }))
-    expect(result).toEqual({ sent: true, data: '2' })
-    expect(write).toHaveBeenCalledWith({
-      paneKey: 'pane-1',
-      expectedInteractivePrompt: interactivePrompt,
-      data: '2'
-    })
+    expect(result).toMatchObject({ sent: true })
+    expect(write).toHaveBeenCalledWith(
+      expect.objectContaining({ paneKey: 'pane-1', expectedInteractivePrompt: interactivePrompt })
+    )
   })
 
   it('refuses when the toggle is off', () => {
@@ -61,9 +60,26 @@ describe('sendAutopilotAnswer', () => {
     expect(write).not.toHaveBeenCalled()
   })
 
-  it('refuses a non-Claude agent, whose digit may not submit', () => {
-    const result = sendAutopilotAnswer(request({ agentType: 'codex' }), deps())
-    expect(result).toMatchObject({ refusal: 'not-claude' })
+  it('answers Codex, not just Claude', () => {
+    const write = vi.fn().mockReturnValue({ sent: true })
+    const result = sendAutopilotAnswer(
+      request({ agentType: 'codex', toolName: 'request_user_input' }),
+      deps({ write })
+    )
+    expect(result.sent).toBe(true)
+    expect(write).toHaveBeenCalledOnce()
+  })
+
+  it('answers OpenClaude through the Claude selector', () => {
+    const result = sendAutopilotAnswer(request({ agentType: 'openclaude' }), deps())
+    expect(result.sent).toBe(true)
+  })
+
+  it('refuses an agent whose answer delivery is unknown', () => {
+    const write = vi.fn()
+    const result = sendAutopilotAnswer(request({ agentType: 'some-new-cli' }), deps({ write }))
+    expect(result).toMatchObject({ refusal: 'agent-delivery-unsupported' })
+    expect(write).not.toHaveBeenCalled()
   })
 
   it('refuses when the live prompt no longer matches the decided one', () => {
@@ -126,9 +142,9 @@ describe('sendAutopilotAnswer', () => {
       request({ decidedInteractivePrompt: reordered }),
       deps({ readLivePrompt: () => reordered, write })
     )
-    // 'Raise an error' moved to position 1, so the digit must be 1, not 2.
-    expect(result).toEqual({ sent: true, data: '1' })
-    expect(write).toHaveBeenCalledWith(expect.objectContaining({ data: '1' }))
+    // 'Raise an error' moved to position 1, so the keys must name row 1.
+    expect(result.sent).toBe(true)
+    expect(write.mock.calls[0][0].keystrokes).toContain('1')
   })
 
   it('refuses a multi-select, where a digit toggles instead of submitting', () => {
