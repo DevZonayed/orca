@@ -3543,6 +3543,9 @@ export type PreloadApi = {
     /** Read-only shadow-mode activity for the settings panel. Pulled on demand:
      *  the main-side read is synchronous sqlite, so it must not run per render. */
     getActivity: () => Promise<AutopilotActivity>
+    /** Arm or disarm one session for Autopilot. */
+    setPaneArmed: (paneKey: string, armed: boolean) => Promise<void>
+    forgetPane: (paneKey: string) => Promise<void>
   }
   agentStatus: {
     /** Listen for agent status updates forwarded from native hook receivers. */

@@ -328,6 +328,13 @@ function TerminalPane(
   const isRendererVisible = isVisible && isWorktreeActive
   const isVisibleRef = useRef(isRendererVisible)
   isVisibleRef.current = isRendererVisible
+  // Why: the pane control only appears when the global switch is on — arming a
+  // session while Autopilot is globally off would look armed but never act.
+  const autopilotAvailable = useAppStore(
+    (store) => store.settings?.autopilotAutoAnswerEnabled === true
+  )
+  const autopilotArmedByPaneKey = useAppStore((store) => store.autopilotArmedByPaneKey)
+  const setAutopilotPaneArmed = useAppStore((store) => store.setAutopilotPaneArmed)
   const sshReconnectTargetId = useAppStore((store) => {
     const connectionId = getConnectionIdFromState(store, worktreeId)
     // Why: runtime-owned SSH targets are internal plumbing users can't connect to, so a reconnect prompt would mislead.
@@ -3127,6 +3134,11 @@ function TerminalPane(
         />
       ) : null}
       <TerminalPaneHeaderOverlay
+        autopilotAvailable={autopilotAvailable}
+        isPaneArmed={(leafId) => autopilotArmedByPaneKey[makePaneKey(tabId, leafId)] === true}
+        onToggleAutopilotArmed={(leafId, armed) =>
+          setAutopilotPaneArmed(makePaneKey(tabId, leafId), armed)
+        }
         tabId={tabId}
         worktreeId={worktreeId}
         cwd={cwd ?? ''}

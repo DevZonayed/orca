@@ -14,6 +14,7 @@ import { WORKSPACE_FILE_PATH_MIME, WORKSPACE_FILE_PATHS_MIME } from '@/lib/works
 import { isImeCompositionKeyDown } from '@/lib/ime-composition-keyboard-event'
 import type { PtyTransport } from './pty-transport'
 import { handleInternalTerminalFileDrop } from './terminal-drop-handler'
+import { PaneAutopilotArmToggle } from './PaneAutopilotArmToggle'
 
 export type PaneTitleOverlayRect = {
   left: number
@@ -26,6 +27,10 @@ type TerminalPaneHeaderOverlayProps = {
   worktreeId: string
   cwd: string
   showAlwaysOnHeaders: boolean
+  /** Only shown when the global Autopilot switch is on; arming is per session. */
+  autopilotAvailable?: boolean
+  isPaneArmed?: (leafId: string) => boolean
+  onToggleAutopilotArmed?: (leafId: string, armed: boolean) => void
   /** Used by ephemeral one-off command terminals that omit the header affordance. */
   showSplitButton?: boolean
   paneCount: number
@@ -70,6 +75,9 @@ export default function TerminalPaneHeaderOverlay({
   worktreeId,
   cwd,
   showAlwaysOnHeaders,
+  autopilotAvailable = false,
+  isPaneArmed,
+  onToggleAutopilotArmed,
   showSplitButton = true,
   paneCount,
   activePaneId,
@@ -123,6 +131,7 @@ export default function TerminalPaneHeaderOverlay({
         const overlayRect = paneTitleOverlayRects[pane.id]
         const isActivePane = activePaneId === pane.id
         const isChromeless = showAlwaysOnHeaders && !title && !isEditing
+        const armed = isPaneArmed?.(pane.leafId) === true
         const showHeader = overlayRect && (showAlwaysOnHeaders || Boolean(title) || isEditing)
         if (!showHeader || !overlayRect) {
           return null
@@ -244,6 +253,12 @@ export default function TerminalPaneHeaderOverlay({
                   </button>
                 ) : null}
                 <div className="pane-title-actions ml-auto flex shrink-0 items-center gap-0">
+                  {autopilotAvailable ? (
+                    <PaneAutopilotArmToggle
+                      armed={armed}
+                      onToggle={(next) => onToggleAutopilotArmed?.(pane.leafId, next)}
+                    />
+                  ) : null}
                   {canContinueAgentSessionInNewSession && isActivePane ? (
                     <Tooltip>
                       <TooltipTrigger asChild>
