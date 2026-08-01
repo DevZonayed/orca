@@ -212,3 +212,29 @@ export function recallNext(history: HistoryState): HistoryRecall {
   }
   return { history: { entries: history.entries, index }, draft: history.entries[index] }
 }
+
+/**
+ * Whether the send button is inert.
+ *
+ * While the agent works the button is still live for a non-empty draft, because
+ * it queues rather than sends; with nothing typed it falls back to the stop
+ * affordance, which needs a live pty.
+ */
+export function isSendButtonDisabled({
+  isWorking,
+  hasDraft,
+  disabled,
+  hasPty,
+  canStop
+}: {
+  isWorking: boolean
+  hasDraft: boolean
+  disabled: boolean
+  hasPty: boolean
+  canStop: boolean
+}): boolean {
+  if (isWorking) {
+    return hasDraft ? disabled : !hasPty || !canStop
+  }
+  return disabled || !hasDraft
+}
