@@ -1,8 +1,6 @@
-import {
-  readAskUserQuestionPrompt,
-  type AskUserQuestionPrompt
-} from '../../shared/agent-question-answered-option'
-import { isQuestionAnsweredSubmitInput } from '../../shared/agent-question-answered-intent'
+import { readAskUserQuestionPrompt } from '../../shared/agent-question-answered-option'
+import { parseAskFromStatus } from '../../shared/native-chat-ask'
+import { planAutopilotAnswerDelivery } from '../../shared/autopilot-answer-delivery'
 import { classifyQuestionSafety } from '../../shared/autopilot-destructive-gate'
 
 export type AutopilotSendRefusal =
@@ -10,20 +8,22 @@ export type AutopilotSendRefusal =
   | 'pane-not-armed'
   | 'no-answer'
   | 'not-local'
-  | 'not-claude'
+  | 'agent-delivery-unsupported'
   | 'destructive'
   | 'prompt-changed'
   | 'answer-not-an-option'
-  | 'keystroke-would-not-submit'
+  | 'multi-select'
   | 'already-answered'
   | 'write-refused'
 
 export type AutopilotSendResult =
-  | { sent: true; data: string }
+  | { sent: true; keystrokes: string[] }
   | { sent: false; refusal: AutopilotSendRefusal; detail?: string }
 
 export type AutopilotSendRequest = {
   paneKey: string
+  /** The question tool that produced this prompt; the registry parses by it. */
+  toolName: string | undefined
   /** The exact payload the decision was made against. */
   decidedInteractivePrompt: string
   answer: string
@@ -40,7 +40,11 @@ export type AutopilotSendDeps = {
   /** The pane's live payload, re-read at send time rather than trusted from the decision. */
   readLivePrompt: (paneKey: string) => string | undefined
   wasAlreadyAnswered: (paneKey: string, questionText: string) => boolean
-  write: (request: { paneKey: string; expectedInteractivePrompt: string; data: string }) => {
+  write: (request: {
+    paneKey: string
+    expectedInteractivePrompt: string
+    keystrokes: readonly string[]
+  }) => {
     sent: boolean
     reason?: string
   }
@@ -48,18 +52,6 @@ export type AutopilotSendDeps = {
 
 function refuse(refusal: AutopilotSendRefusal, detail?: string): AutopilotSendResult {
   return { sent: false, refusal, ...(detail ? { detail } : {}) }
-}
-
-/** The keystroke that picks `answer` out of the live prompt, or null. */
-function resolveKeystroke(prompt: AskUserQuestionPrompt, answer: string): string | null {
-  const index = prompt.options.findIndex((option) => option.label === answer)
-  if (index < 0) {
-    return null
-  }
-  // Why: derived from the LIVE prompt, never carried from the decision. If the
-  // agent reordered its options in the interval, the old index now names a
-  // different row — which is exactly how a safe answer becomes a wrong one.
-  return String(index + 1)
 }
 
 /**
@@ -90,12 +82,6 @@ export function sendAutopilotAnswer(
   if (request.connectionId !== null) {
     return refuse('not-local')
   }
-  // Why: the single-keystroke submit contract is Claude's AskUserQuestion. Other
-  // agents' prompts may advance rather than submit on a digit.
-  if (request.agentType !== 'claude') {
-    return refuse('not-claude')
-  }
-
   const live = deps.readLivePrompt(request.paneKey)
   if (!live || live !== request.decidedInteractivePrompt) {
     return refuse('prompt-changed')
@@ -103,6 +89,12 @@ export function sendAutopilotAnswer(
   const prompt = readAskUserQuestionPrompt(live)
   if (!prompt) {
     return refuse('prompt-changed')
+  }
+
+  // Why: one option cannot settle a multi-select, and the old digit check that
+  // implied this is gone. Stated explicitly so the guarantee is not incidental.
+  if (prompt.multiSelect) {
+    return refuse('multi-select')
   }
 
   const safety = classifyQuestionSafety(prompt)
@@ -116,20 +108,27 @@ export function sendAutopilotAnswer(
     return refuse('already-answered')
   }
 
-  const data = resolveKeystroke(prompt, request.answer)
-  if (!data) {
+  const ask = parseAskFromStatus(live, request.toolName)
+  const optionIndex = ask?.questions[0]?.options.findIndex(
+    (option) => option.label === request.answer
+  )
+  if (!ask || optionIndex === undefined || optionIndex < 0) {
     return refuse('answer-not-an-option')
   }
-  // Why: the same gate the human's keystroke passes through. If this digit would
-  // not have completed the prompt for a person, it must not be sent for one.
-  if (!isQuestionAnsweredSubmitInput(data, live)) {
-    return refuse('keystroke-would-not-submit')
+  // Why: the same builders native chat uses when a human answers, so Autopilot
+  // drives each agent's selector exactly as a person would. Nothing here knows
+  // what Claude or Codex keys look like.
+  const plan = planAutopilotAnswerDelivery(request.agentType, ask, optionIndex)
+  if (!plan.ok) {
+    return refuse('agent-delivery-unsupported', plan.refusal)
   }
 
   const result = deps.write({
     paneKey: request.paneKey,
     expectedInteractivePrompt: live,
-    data
+    keystrokes: plan.delivery.keystrokes
   })
-  return result.sent ? { sent: true, data } : refuse('write-refused', result.reason)
+  return result.sent
+    ? { sent: true, keystrokes: plan.delivery.keystrokes }
+    : refuse('write-refused', result.reason)
 }

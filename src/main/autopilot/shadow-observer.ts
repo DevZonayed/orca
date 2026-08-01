@@ -17,6 +17,7 @@ export type ObservedAgentStatus = {
     state: string
     prompt?: string
     agentType?: string
+    toolName?: string
     interactivePrompt?: string
     lastAssistantMessage?: string
   }
@@ -165,6 +166,7 @@ export class AutopilotShadowObserver {
       decidedInteractivePrompt: interactivePrompt,
       answer: proposal.answer,
       agentType: status.payload.agentType,
+      toolName: status.payload.toolName,
       connectionId: status.connectionId ?? null
     })
     if (!result.sent) {
