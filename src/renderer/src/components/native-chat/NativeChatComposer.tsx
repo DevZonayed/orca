@@ -377,6 +377,7 @@ export const NativeChatComposer = forwardRef<NativeChatComposerHandle, NativeCha
 
     return (
       <NativeChatComposerField
+        paneKey={paneKey}
         textareaRef={textareaRef}
         draft={draft}
         disabled={disabled}

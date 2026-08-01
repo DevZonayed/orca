@@ -2,6 +2,7 @@ import { ArrowUp, Mic, Plus, Square } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { translate } from '@/i18n/i18n'
+import { NativeChatAutopilotToggle } from './NativeChatAutopilotToggle'
 import type {
   SessionOptionDescriptor,
   SessionOptionsSurface
@@ -9,6 +10,8 @@ import type {
 import { NativeChatSessionOptionPickers } from './NativeChatSessionOptionPickers'
 
 export type NativeChatComposerActionsProps = {
+  /** Identifies the session for the Autopilot arming toggle. */
+  paneKey: string
   attachDisabled: boolean
   dictationDisabled: boolean
   sendDisabled: boolean
@@ -26,6 +29,7 @@ export type NativeChatComposerActionsProps = {
 }
 
 export function NativeChatComposerActions({
+  paneKey,
   attachDisabled,
   dictationDisabled,
   sendDisabled,
@@ -47,6 +51,7 @@ export function NativeChatComposerActions({
   return (
     <div className="flex w-full items-center justify-between gap-2">
       <div className="flex min-w-0 items-center gap-0.5">
+        <NativeChatAutopilotToggle paneKey={paneKey} />
         <Tooltip>
           <TooltipTrigger asChild>
             <Button

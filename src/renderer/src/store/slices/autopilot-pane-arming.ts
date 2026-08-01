@@ -15,10 +15,30 @@ export type AutopilotPaneArmingSlice = {
  * so a failed push can only under-arm. Arming is the state that has to be
  * successfully communicated; disarming is the default.
  */
-function pushToMain(paneKey: string, armed: boolean): void {
-  void window.api.autopilot?.setPaneArmed?.(paneKey, armed)?.catch?.((error: unknown) => {
-    console.warn('[autopilot] could not sync pane arming', error)
-  })
+function pushToMain(paneKey: string, armed: boolean, onFailed: () => void): void {
+  try {
+    const push = window.api?.autopilot?.setPaneArmed?.(paneKey, armed)
+    if (!push) {
+      // Why: no bridge means main can never learn about this pane, so claiming
+      // it is armed in the UI would be a lie. Only arming needs the bridge —
+      // disarming is already main's default.
+      if (armed) {
+        onFailed()
+      }
+      return
+    }
+    void push.catch((error: unknown) => {
+      console.warn('[autopilot] could not sync pane arming', error)
+      if (armed) {
+        onFailed()
+      }
+    })
+  } catch (error) {
+    console.warn('[autopilot] pane arming bridge unavailable', error)
+    if (armed) {
+      onFailed()
+    }
+  }
 }
 
 export const createAutopilotPaneArmingSlice: StateCreator<
@@ -29,7 +49,6 @@ export const createAutopilotPaneArmingSlice: StateCreator<
 > = (set) => ({
   autopilotArmedByPaneKey: {},
   setAutopilotPaneArmed: (paneKey, armed) => {
-    pushToMain(paneKey, armed)
     set((s) => {
       if ((s.autopilotArmedByPaneKey[paneKey] ?? false) === armed) {
         return s
@@ -40,9 +59,21 @@ export const createAutopilotPaneArmingSlice: StateCreator<
       }
       return { autopilotArmedByPaneKey: { ...s.autopilotArmedByPaneKey, [paneKey]: true } }
     })
+    // Why: after the optimistic update, so a failed push can roll it back and
+    // the UI never claims a session is armed that main will refuse to answer.
+    pushToMain(paneKey, armed, () =>
+      set((s) => {
+        const { [paneKey]: _removed, ...rest } = s.autopilotArmedByPaneKey
+        return { autopilotArmedByPaneKey: rest }
+      })
+    )
   },
   forgetAutopilotPaneArming: (paneKey) => {
-    void window.api.autopilot?.forgetPane?.(paneKey)?.catch?.(() => {})
+    try {
+      void window.api?.autopilot?.forgetPane?.(paneKey)?.catch?.(() => {})
+    } catch {
+      // Forgetting is best-effort; main drops unknown panes anyway.
+    }
     set((s) => {
       if (!(paneKey in s.autopilotArmedByPaneKey)) {
         return s
