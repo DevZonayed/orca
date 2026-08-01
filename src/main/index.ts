@@ -20,6 +20,7 @@ import {
 import { AutopilotShadowObserver } from './autopilot/shadow-observer'
 import { createAutopilotAnswerGenerator } from './autopilot/answer-generation'
 import { sendAutopilotAnswer } from './autopilot/answer-sender'
+import { isPaneArmed } from './autopilot/pane-arming'
 import { seedAutopilotMemoryFromHistory } from './autopilot/mining-runner'
 import { ensureActiveOrcaProfile, initOrcaProfilePaths } from './orca-profiles/profile-index-store'
 import { getOrcaCloudAuthConfig } from './orca-profiles/profile-cloud-auth-config'
@@ -450,6 +451,7 @@ function getAutopilotShadowObserver(): AutopilotShadowObserver | null {
     send: (request) =>
       sendAutopilotAnswer(request, {
         isEnabled: () => currentStore.getSettings().autopilotAutoAnswerEnabled === true,
+        isPaneArmed,
         readLivePrompt: (paneKey) =>
           agentHookServer.getStatusSnapshotForPane(paneKey)[0]?.interactivePrompt,
         wasAlreadyAnswered: (paneKey, questionText) =>

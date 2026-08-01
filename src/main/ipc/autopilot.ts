@@ -1,5 +1,6 @@
 import { ipcMain } from 'electron'
 import { getAutopilotDecisionStore } from '../autopilot/decision-recorder'
+import { forgetPaneArming, setPaneArmed } from '../autopilot/pane-arming'
 import type { AutopilotActivity } from '../autopilot/decision-store'
 
 /** What the panel shows before anything has been observed, and after a failure. */
@@ -16,6 +17,19 @@ const EMPTY_ACTIVITY: AutopilotActivity = {
 }
 
 export function registerAutopilotHandlers(): void {
+  ipcMain.removeHandler('autopilot:setPaneArmed')
+  ipcMain.handle('autopilot:setPaneArmed', (_event, paneKey: unknown, armed: unknown): void => {
+    if (typeof paneKey !== 'string' || paneKey.length === 0) {
+      return
+    }
+    setPaneArmed(paneKey, armed === true)
+  })
+  ipcMain.removeHandler('autopilot:forgetPane')
+  ipcMain.handle('autopilot:forgetPane', (_event, paneKey: unknown): void => {
+    if (typeof paneKey === 'string') {
+      forgetPaneArming(paneKey)
+    }
+  })
   ipcMain.removeHandler('autopilot:getActivity')
   ipcMain.handle('autopilot:getActivity', (): AutopilotActivity => {
     try {
