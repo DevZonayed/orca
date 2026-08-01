@@ -133,3 +133,6 @@ src/renderer/src/i18n/locales/.es-catalog-cache.json
 
 # Bench result JSONs are working artifacts
 tools/benchmarks/results/terminal-pipeline-*.json
+branch_structure.json
+temp_auto_push.bat
+temp_interactive_push.bat

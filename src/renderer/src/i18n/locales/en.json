@@ -14553,7 +14553,17 @@
         "allow": "Allow",
         "deny": "Deny"
       },
-      "launchPromptNotDelivered": "Not delivered — check the terminal"
+      "launchPromptNotDelivered": "Not delivered — check the terminal",
+      "queue": {
+        "title": "Queued ({value0})",
+        "pause": "Pause queue",
+        "resume": "Resume queue",
+        "pausedNotice": "Paused — nothing will be sent.",
+        "edit": "Edit queued prompt",
+        "moveUp": "Move up",
+        "moveDown": "Move down",
+        "remove": "Remove from queue"
+      }
     },
     "tab": {
       "bar": {

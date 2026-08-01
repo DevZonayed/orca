@@ -23,6 +23,7 @@ vi.mock('./NativeChatAutocompleteMenus', () => ({
 }))
 
 import { NativeChatComposerField } from './NativeChatComposerField'
+import { useAppStore } from '../../store'
 
 afterEach(() => cleanup())
 
@@ -95,5 +96,16 @@ describe('native chat composer autogrow', () => {
     // A JS measure pass writes style.height and only re-measures on the next
     // value change, so a re-wrap from a window/pane resize would strand it.
     expect(renderField('a\n'.repeat(6)).style.height).toBe('')
+  })
+})
+
+describe('composer field wiring', () => {
+  it('renders the prompt queue for this pane', () => {
+    // Why this test exists: rendering NativeChatPromptQueue in isolation passes
+    // whether or not it is wired into the composer. This fails if it is not.
+    useAppStore.setState({ promptQueuesByPaneKey: {} })
+    useAppStore.getState().enqueuePromptForPane('tab-1:pane-1', 'queued instruction')
+    renderField('')
+    expect(screen.getByText('queued instruction')).toBeTruthy()
   })
 })
