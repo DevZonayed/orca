@@ -1,6 +1,7 @@
 import { forwardRef, useCallback, useImperativeHandle, useMemo, useRef, useState } from 'react'
 import { useAppStore } from '../../store'
-import { sendRuntimePtyInput } from '@/runtime/runtime-terminal-inspection'
+import { usePromptQueueForSession } from './use-drain-prompt-queue-on-idle'
+import { useNativeChatInterrupt } from './use-native-chat-interrupt'
 import { getSettingsForAgentTabRuntimeOwner } from '@/lib/agent-paste-draft'
 import {
   sendNativeChatMessage,
@@ -14,6 +15,7 @@ import { emitNativeChatMessageSent } from '@/lib/native-chat-telemetry'
 import {
   applyMentionSuggestion,
   EMPTY_HISTORY,
+  isSendButtonDisabled,
   pushHistory,
   type HistoryState
 } from './native-chat-composer-state'
@@ -46,12 +48,6 @@ export type {
   NativeChatComposerHandle,
   NativeChatComposerProps
 } from './native-chat-composer-types'
-
-// Why: a plain ESC byte is what the agent TUIs read as the interrupt key over a
-// PTY (matching how xterm forwards Escape). The richer interrupt-intent
-// inference (agent-interrupt-intent.ts) is driven by the existing PTY input
-// observers, so writing ESC through the same send path feeds that machinery.
-const ESC = '\x1b'
 
 /**
  * Rich native input for the chat view. Sends prompts into the running agent
@@ -174,9 +170,13 @@ export const NativeChatComposer = forwardRef<NativeChatComposerHandle, NativeCha
         setDraft,
         setNotice
       })
-    const sendButtonDisabled = isWorking
-      ? !hasPty || !onStop
-      : disabled || (draft.trim() === '' && imageAttachments.length === 0)
+    const sendButtonDisabled = isSendButtonDisabled({
+      isWorking,
+      hasDraft: draft.trim() !== '' || imageAttachments.length > 0,
+      disabled,
+      hasPty,
+      canStop: Boolean(onStop)
+    })
 
     const { insertTypedText, focus } = useNativeChatTypedInsertion({
       textareaRef,
@@ -234,112 +234,120 @@ export const NativeChatComposer = forwardRef<NativeChatComposerHandle, NativeCha
         readTerminalScreen
       })
 
-    const send = useCallback(() => {
-      const text = draft
-      const imagePaths = imageAttachments.map((attachment) => attachment.path)
-      if ((text.trim() === '' && imagePaths.length === 0) || disabled) {
-        return
-      }
-      // Why: block a normal send while a session-option command (e.g. /model) is
-      // still writing its body+delayed-Enter to the same pty, so the two write
-      // sequences can't interleave on one input line.
-      if (isDispatchingSessionOption) {
-        return
-      }
-      const target = resolveTarget()
-      if (!target) {
-        return
-      }
-      const classification = classifySend(text)
-      // A parked launch draft must be cleared line-by-line before the body.
-      const { sendOptions } = resolveNativeChatLaunchDraftSend({
+    // `queuedText` is set only when draining the queue; a click passes an event,
+    // so callers go through `handleSend` rather than binding this directly.
+    const send = useCallback(
+      (queuedText?: string) => {
+        const text = typeof queuedText === 'string' ? queuedText : draft
+        const imagePaths = imageAttachments.map((attachment) => attachment.path)
+        if ((text.trim() === '' && imagePaths.length === 0) || disabled) {
+          return
+        }
+        // Why: block a normal send while a session-option command (e.g. /model) is
+        // still writing its body+delayed-Enter to the same pty, so the two write
+        // sequences can't interleave on one input line.
+        if (isDispatchingSessionOption) {
+          return
+        }
+        const target = resolveTarget()
+        if (!target) {
+          return
+        }
+        const classification = classifySend(text)
+        // A parked launch draft must be cleared line-by-line before the body.
+        const { sendOptions } = resolveNativeChatLaunchDraftSend({
+          launchDraft,
+          launchDraftResolved,
+          agent,
+          readScreen: () => readTerminalScreen?.()
+        })
+        let pendingHandle: NativeChatSendHandle | null = null
+        // Why: image attachments take the attachment send path even for a
+        // command/unknown send, otherwise `clearImageAttachments()` below drops
+        // them silently when the text starts with the agent's slash/skill prefix.
+        if (classification !== 'chat' && imagePaths.length === 0) {
+          pendingHandle = sendNativeChatMessage(target.settings, target.ptyId, text, sendOptions)
+        } else if (imagePaths.length > 0) {
+          pendingHandle = sendNativeChatMessageWithImageAttachments(
+            target.settings,
+            target.ptyId,
+            text,
+            imagePaths,
+            sendOptions
+          )
+        } else if (text.trim().length > 0) {
+          pendingHandle = sendNativeChatMessage(target.settings, target.ptyId, text, sendOptions)
+        } else {
+          submitNativeChatPrompt(target.settings, target.ptyId)
+        }
+        if (classification !== 'chat') {
+          if (pendingHandle) {
+            trackPendingSend(pendingHandle)
+          }
+          // Why: only verified catalog commands can truthfully claim they ran or
+          // mutate session-option state; unknown slash-like text has no such proof.
+          if (classification === 'command') {
+            onSlashCommand?.(text.trim())
+            sessionOptionsSurface?.recordOutgoingCommand(text.trim())
+          }
+        } else {
+          const pendingId = onOptimisticSend?.(text, imagePaths)
+          if (pendingHandle) {
+            trackPendingSend(pendingHandle, pendingId)
+          }
+        }
+        // Why: U10 telemetry — record adoption + local-vs-remote runtime split. The
+        // agent prop is the loose AgentType; the emitter narrows unknowns to 'other'.
+        emitNativeChatMessageSent({
+          agent,
+          runtime: nativeChatComposerTargetIsRemote(target.ptyId) ? 'remote' : 'local'
+        })
+        setHistory((prev) => pushHistory(prev, text))
+        setDraft('')
+        setCaret(0)
+        clearSkillOrigin()
+        clearImageAttachments()
+        setNotice(null)
+        // The send cleared the TUI input line before its body, so retire the seed.
+        useAppStore.getState().clearNativeChatLaunchDraft(terminalTabId)
+      },
+      [
+        agent,
+        classifySend,
+        clearSkillOrigin,
+        clearImageAttachments,
+        draft,
+        imageAttachments,
+        disabled,
+        isDispatchingSessionOption,
         launchDraft,
         launchDraftResolved,
-        agent,
-        readScreen: () => readTerminalScreen?.()
-      })
-      let pendingHandle: NativeChatSendHandle | null = null
-      // Why: image attachments take the attachment send path even for a
-      // command/unknown send, otherwise `clearImageAttachments()` below drops
-      // them silently when the text starts with the agent's slash/skill prefix.
-      if (classification !== 'chat' && imagePaths.length === 0) {
-        pendingHandle = sendNativeChatMessage(target.settings, target.ptyId, text, sendOptions)
-      } else if (imagePaths.length > 0) {
-        pendingHandle = sendNativeChatMessageWithImageAttachments(
-          target.settings,
-          target.ptyId,
-          text,
-          imagePaths,
-          sendOptions
-        )
-      } else if (text.trim().length > 0) {
-        pendingHandle = sendNativeChatMessage(target.settings, target.ptyId, text, sendOptions)
-      } else {
-        submitNativeChatPrompt(target.settings, target.ptyId)
-      }
-      if (classification !== 'chat') {
-        if (pendingHandle) {
-          trackPendingSend(pendingHandle)
-        }
-        // Why: only verified catalog commands can truthfully claim they ran or
-        // mutate session-option state; unknown slash-like text has no such proof.
-        if (classification === 'command') {
-          onSlashCommand?.(text.trim())
-          sessionOptionsSurface?.recordOutgoingCommand(text.trim())
-        }
-      } else {
-        const pendingId = onOptimisticSend?.(text, imagePaths)
-        if (pendingHandle) {
-          trackPendingSend(pendingHandle, pendingId)
-        }
-      }
-      // Why: U10 telemetry — record adoption + local-vs-remote runtime split. The
-      // agent prop is the loose AgentType; the emitter narrows unknowns to 'other'.
-      emitNativeChatMessageSent({
-        agent,
-        runtime: nativeChatComposerTargetIsRemote(target.ptyId) ? 'remote' : 'local'
-      })
-      setHistory((prev) => pushHistory(prev, text))
-      setDraft('')
-      setCaret(0)
-      clearSkillOrigin()
-      clearImageAttachments()
-      setNotice(null)
-      // The send cleared the TUI input line before its body, so retire the seed.
-      useAppStore.getState().clearNativeChatLaunchDraft(terminalTabId)
-    }, [
-      agent,
-      classifySend,
-      clearSkillOrigin,
-      clearImageAttachments,
-      draft,
-      imageAttachments,
-      disabled,
-      isDispatchingSessionOption,
-      launchDraft,
-      launchDraftResolved,
-      readTerminalScreen,
-      resolveTarget,
-      onOptimisticSend,
-      onSlashCommand,
-      sessionOptionsSurface,
-      terminalTabId,
-      trackPendingSend,
-      setDraft
-    ])
+        readTerminalScreen,
+        resolveTarget,
+        onOptimisticSend,
+        onSlashCommand,
+        sessionOptionsSurface,
+        terminalTabId,
+        trackPendingSend,
+        setDraft
+      ]
+    )
 
-    const interrupt = useCallback(() => {
-      cancelPendingSends()
-      if (isWorking && onStop) {
-        onStop()
-        return
-      }
-      const target = resolveTarget()
-      if (!target) {
-        return
-      }
-      sendRuntimePtyInput(target.settings, target.ptyId, ESC)
-    }, [cancelPendingSends, isWorking, onStop, resolveTarget])
+    const handleSend = usePromptQueueForSession({
+      paneKey,
+      isWorking,
+      draft,
+      send,
+      setDraft,
+      clearImageAttachments
+    })
+
+    const interrupt = useNativeChatInterrupt({
+      cancelPendingSends,
+      isWorking,
+      onStop,
+      resolveTarget
+    })
 
     const dispatchPickerCommand = useNativeChatPickerCommandDispatch({
       agent,
@@ -432,7 +440,7 @@ export const NativeChatComposer = forwardRef<NativeChatComposerHandle, NativeCha
         onDictationToggle={toggleDictation}
         onDictationHoldStart={startHoldDictation}
         onDictationHoldEnd={stopHoldDictation}
-        onSend={send}
+        onSend={handleSend}
         onStop={interrupt}
         sessionOptionsSurface={sessionOptionsSurface}
         sessionOptionsSnapshot={sessionOptionsSnapshot}
