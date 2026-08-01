@@ -25,6 +25,7 @@ import type { RuntimeEnvironmentSshSlice } from './slices/runtime-environment-ss
 import type { AgentStatusSlice } from './slices/agent-status'
 import type { PaneForegroundAgentSlice } from './slices/pane-foreground-agent'
 import type { PromptQueueSlice } from './slices/prompt-queue'
+import type { AutopilotPaneArmingSlice } from './slices/autopilot-pane-arming'
 import type { DiffCommentsSlice } from './slices/diffComments'
 import type { DetectedAgentsSlice } from './slices/detected-agents'
 import type { RuntimeDetectedAgentsSlice } from './slices/runtime-detected-agents'
@@ -67,6 +68,7 @@ export type AppState = RepoSlice &
   AgentStatusSlice &
   PaneForegroundAgentSlice &
   PromptQueueSlice &
+  AutopilotPaneArmingSlice &
   DiffCommentsSlice &
   DetectedAgentsSlice &
   RuntimeDetectedAgentsSlice &

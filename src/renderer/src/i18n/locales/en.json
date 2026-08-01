@@ -14608,6 +14608,10 @@
       "sent": "Session context sent to {{agent}} in a new session.",
       "deliveryFailed": "The new {{agent}} session started, but its context could not be sent.",
       "launchFailed": "Could not start a new {{agent}} session."
+    },
+    "terminalPane": {
+      "autopilotArmed": "Autopilot on for this session",
+      "autopilotDisarmed": "Autopilot off for this session"
     }
   },
   "dashboardPopout": {

@@ -4668,7 +4668,13 @@ const api = {
   autopilot: {
     /** Read-only shadow-mode activity for the settings panel. Pulled on demand:
      *  the main-side read is synchronous sqlite, so it must not run per render. */
-    getActivity: (): Promise<AutopilotActivity> => ipcRenderer.invoke('autopilot:getActivity')
+    getActivity: (): Promise<AutopilotActivity> => ipcRenderer.invoke('autopilot:getActivity'),
+    /** Arm or disarm one session. Main defaults anything it has not heard
+     *  about to disarmed, so a failed call can only under-arm. */
+    setPaneArmed: (paneKey: string, armed: boolean): Promise<void> =>
+      ipcRenderer.invoke('autopilot:setPaneArmed', paneKey, armed),
+    forgetPane: (paneKey: string): Promise<void> =>
+      ipcRenderer.invoke('autopilot:forgetPane', paneKey)
   },
 
   agentStatus: {
