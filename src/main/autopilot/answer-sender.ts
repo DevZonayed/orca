@@ -7,6 +7,7 @@ import { classifyQuestionSafety } from '../../shared/autopilot-destructive-gate'
 
 export type AutopilotSendRefusal =
   | 'disabled'
+  | 'pane-not-armed'
   | 'no-answer'
   | 'not-local'
   | 'not-claude'
@@ -32,7 +33,10 @@ export type AutopilotSendRequest = {
 }
 
 export type AutopilotSendDeps = {
+  /** The global master switch. Off means no pane may send, whatever it asked for. */
   isEnabled: () => boolean
+  /** Whether this specific session was armed by the human. Defaults to false. */
+  isPaneArmed: (paneKey: string) => boolean
   /** The pane's live payload, re-read at send time rather than trusted from the decision. */
   readLivePrompt: (paneKey: string) => string | undefined
   wasAlreadyAnswered: (paneKey: string, questionText: string) => boolean
@@ -71,6 +75,12 @@ export function sendAutopilotAnswer(
 ): AutopilotSendResult {
   if (!deps.isEnabled()) {
     return refuse('disabled')
+  }
+  // Why: two keys, not one. The global switch says Autopilot may act at all;
+  // arming says this session wants it. Running many agents across projects means
+  // "on everywhere" is never the right shape.
+  if (!deps.isPaneArmed(request.paneKey)) {
+    return refuse('pane-not-armed')
   }
   if (!request.answer) {
     return refuse('no-answer')

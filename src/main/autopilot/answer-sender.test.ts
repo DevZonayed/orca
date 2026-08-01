@@ -26,6 +26,8 @@ function request(overrides: Partial<Parameters<typeof sendAutopilotAnswer>[0]> =
 function deps(overrides: Partial<AutopilotSendDeps> = {}): AutopilotSendDeps {
   return {
     isEnabled: () => true,
+    // Armed by default so the existing cases keep testing the rung they name.
+    isPaneArmed: () => true,
     readLivePrompt: () => interactivePrompt,
     wasAlreadyAnswered: () => false,
     write: () => ({ sent: true }),
@@ -159,5 +161,47 @@ describe('sendAutopilotAnswer', () => {
   it('refuses an empty answer', () => {
     const result = sendAutopilotAnswer(request({ answer: '' }), deps())
     expect(result).toMatchObject({ refusal: 'no-answer' })
+  })
+
+  it('refuses a pane the human never armed, even with the global switch on', () => {
+    const write = vi.fn()
+    const result = sendAutopilotAnswer(request(), deps({ isPaneArmed: () => false, write }))
+    expect(result).toMatchObject({ sent: false, refusal: 'pane-not-armed' })
+    expect(write).not.toHaveBeenCalled()
+  })
+
+  it('requires both keys: the global switch off disarms an armed pane', () => {
+    const write = vi.fn()
+    const result = sendAutopilotAnswer(
+      request(),
+      deps({ isEnabled: () => false, isPaneArmed: () => true, write })
+    )
+    expect(result).toMatchObject({ refusal: 'disabled' })
+    expect(write).not.toHaveBeenCalled()
+  })
+
+  it('arms only the pane that asked for it', () => {
+    const armed = new Set(['pane-1'])
+    const write = vi.fn().mockReturnValue({ sent: true })
+    expect(
+      sendAutopilotAnswer(
+        request({ paneKey: 'pane-1' }),
+        deps({
+          isPaneArmed: (key) => armed.has(key),
+          readLivePrompt: () => interactivePrompt,
+          write
+        })
+      ).sent
+    ).toBe(true)
+    expect(
+      sendAutopilotAnswer(
+        request({ paneKey: 'pane-2' }),
+        deps({
+          isPaneArmed: (key) => armed.has(key),
+          readLivePrompt: () => interactivePrompt,
+          write
+        })
+      )
+    ).toMatchObject({ refusal: 'pane-not-armed' })
   })
 })
