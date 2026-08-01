@@ -20,6 +20,7 @@ import type {
 } from '../../../../shared/native-chat-session-options'
 
 export type NativeChatComposerFieldProps = {
+  paneKey: string
   textareaRef: RefObject<HTMLTextAreaElement | null>
   draft: string
   disabled: boolean
@@ -62,6 +63,7 @@ export type NativeChatComposerImageAttachment = {
 }
 
 export function NativeChatComposerField({
+  paneKey,
   textareaRef,
   draft,
   disabled,
@@ -199,6 +201,7 @@ export function NativeChatComposerField({
             />
             <div className="flex flex-wrap items-center gap-2 pt-0.5">
               <NativeChatComposerActions
+                paneKey={paneKey}
                 attachDisabled={attachDisabled}
                 dictationDisabled={dictationDisabled}
                 sendDisabled={sendButtonDisabled}

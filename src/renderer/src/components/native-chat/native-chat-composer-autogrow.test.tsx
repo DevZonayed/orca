@@ -29,6 +29,7 @@ afterEach(() => cleanup())
 function renderField(draft: string): HTMLTextAreaElement {
   render(
     <NativeChatComposerField
+      paneKey="tab-1:pane-1"
       textareaRef={createRef<HTMLTextAreaElement>()}
       draft={draft}
       disabled={false}
