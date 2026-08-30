@@ -210,7 +210,7 @@
     "oxlint": "^1.75.0",
     "oxlint-plugin-react-doctor": "0.9.1",
     "oxlint-tsgolint": "7.0.2001",
-    "pdfjs-dist": "^5.7.284",
+    "pdfjs-dist": "^6.2.108",
     "pngjs": "^7.0.0",
     "radix-ui": "^1.6.2",
     "react": "^19.2.7",
